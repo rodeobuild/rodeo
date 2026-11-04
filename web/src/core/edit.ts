@@ -809,7 +809,7 @@ export class Session implements EditSession {
   readonly doc: Model;
   private undoStack: Step[] = [];
   private redoStack: Step[] = [];
-  private savedTop: Step | null = null;
+  private savedTop: Step | null | undefined = null;
   private listeners = new Set<(e: ChangeEvent) => void>();
   private templates = new Map<number, Template>();
   /** an aux record's header per type, as the file has one (null: it has none) */
@@ -961,9 +961,18 @@ export class Session implements EditSession {
   }
 
   applyRemote(op: SpliceOp): void {
-    this.doc.datas.splice(op.start, op.del, ...op.add);
-    if (op.header) this.doc.patchHeader(op.header.at, op.header.bytes);
-    this.doc.rebuild();
+    const before = this.doc.datas;
+    const header = this.doc.header;
+    try {
+      this.doc.datas = spliced(before, op.start, op.del, op.add);
+      if (op.header) this.doc.patchHeader(op.header.at, op.header.bytes);
+      this.doc.rebuild();
+    } catch (err) {
+      this.doc.datas = before;
+      this.doc.patchHeader(0, header);
+      this.doc.rebuild();
+      throw err;
+    }
     // undo still turns back this session's own steps, rebased past the change; a step it touched,
     // and every step before that, can no longer be undone
     let r: Splice = { start: op.start, del: op.del, add: op.add.length };
@@ -991,6 +1000,11 @@ export class Session implements EditSession {
 
   markSaved(): void {
     this.savedTop = this.undoStack.at(-1) ?? null;
+    this.emit("all", []);
+  }
+
+  markUnsaved(): void {
+    this.savedTop = undefined;
     this.emit("all", []);
   }
 

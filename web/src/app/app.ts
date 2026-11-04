@@ -18,7 +18,7 @@ import { Palettes } from "./dock.ts";
 import { byId, nextPaint, nextTask } from "./dom.ts";
 import { chooseSaveTarget, downloadBlob, installFileDrop, pickFile } from "./fileio.ts";
 import { inflater } from "./inflate.ts";
-import { documentBlob, documentBytes, holdOptions, writeToFile } from "./writeOut.ts";
+import { documentBlob, documentBytes, holdOptions, saveSnapshot, writeToFile } from "./writeOut.ts";
 import { floating3d, mountFloatingPanes, redrawFloating, type PlanAt } from "./floatingPanes.ts";
 import { createSymbolDialog, duplicateArrayDialog } from "./arrayDialog.ts";
 import { installAutosave } from "./autosave.ts";
@@ -395,6 +395,7 @@ export class App {
   private untitledCount = 0;
   /** the open drawings, in tab order */
   private readonly drawings: OpenDrawing[] = [];
+  private autosave: ReturnType<typeof installAutosave> | null = null;
   /** the drawing the window shows, one of `drawings` */
   private shown: OpenDrawing | null = null;
   /** draws the tab strip again */
@@ -1134,7 +1135,7 @@ export class App {
       else void this.openFile(file, handle);
     });
     void loadRecent();
-    installAutosave({ openDocument: async (bytes, name) => void (await this.openDocument(bytes, name, null)) });
+    this.autosave = installAutosave({ openDocument: async (bytes, name) => (await this.openDocument(bytes, name, null)) === "open" ? store.session : null });
     window.addEventListener("beforeunload", (e) => {
       if (store.session?.dirty || this.drawings.some((d) => d.session.dirty)) {
         e.preventDefault();
@@ -2164,8 +2165,15 @@ export class App {
       view: null,
     };
     const at = replacing ? this.drawings.indexOf(replacing) : -1;
-    if (at >= 0) this.drawings[at] = d;
+    if (at >= 0) {
+      this.autosave?.forget(this.drawings[at].session);
+      this.drawings[at] = d;
+    }
     else this.drawings.push(d);
+    this.autosave?.track(session, () => ({
+      name: store.session === session ? store.fileName : d.name,
+      size: store.session === session ? store.fileSize : d.fileSize,
+    }));
     this.present(d);
   }
 
@@ -2271,6 +2279,7 @@ export class App {
     const i = this.drawings.indexOf(d);
     if (i < 0) return;
     this.drawings.splice(i, 1);
+    this.autosave?.forget(d.session);
     if (d !== this.shown) {
       this.redrawTabs();
       return;
@@ -2384,7 +2393,7 @@ export class App {
     if (source?.save) {
       // an upload takes a while: an edit made meanwhile isn't in it, so the drawing stays unsaved
       let editedSince = false;
-      const off = session.onStep(() => (editedSince = true));
+      const off = session.onChange(() => (editedSince = true));
       try {
         const started = performance.now();
         const bytes = await documentBytes(session);
@@ -2424,7 +2433,7 @@ export class App {
    */
   private async writeFile(session: EditSession, handle: FileSystemFileHandle, follow: boolean, saved: () => void): Promise<boolean> {
     let edited = false;
-    const off = session.onStep(() => (edited = true));
+    const off = session.onChange(() => (edited = true));
     const stop = new AbortController();
     const overlay = slowLoading(`Saving ${baseName(handle.name)}…`, () => stop.abort());
     try {
@@ -2461,8 +2470,9 @@ export class App {
         }
         void rememberRecent(target.handle);
       } else {
-        downloadBlob(suggested, await documentBlob(session));
-        if (store.session === session) session.markSaved();
+        await saveSnapshot(session, async () => downloadBlob(suggested, await documentBlob(session)), () => {
+          if (store.session === session) session.markSaved();
+        });
       }
       store.emit("session", "file");
     } catch (err) {
