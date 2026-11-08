@@ -1,15 +1,18 @@
 // PDF import, the reading side. openPdf (no DOM) finds a PDF file's pages, and page() draws one
-// page's content into its vector paths and its text, in page space: points, y up, the origin at
-// the bottom left of the page as it is shown (its /Rotate applied). Paths keep the colours they
-// print in and their line widths; curves are flattened; Form XObjects are followed. Text is read
-// through each font's ToUnicode map or its encoding, and runs on one baseline are joined into one
-// string. Pictures, shadings and clipping are left out (pictures and shadings counted).
+// page's content into its vector paths, its text and its pictures, in page space: points, y up, the
+// origin at the bottom left of the page as it is shown (its /Rotate applied). Paths keep the colours
+// they print in and their line widths; curves are flattened; Form XObjects are followed. Text is
+// read through each font's ToUnicode map or its encoding, and runs on one baseline are joined into
+// one string. A picture is read when its edges run along the page's axes and its format is one read
+// here: a JPEG as it is, other samples as PNG, an 8-bit soft mask as transparency. Turned pictures,
+// other formats, shadings and clipping are left out (and counted).
 //
 // Objects are found by scanning the file for "n g obj" and inside object streams, so a damaged
 // cross-reference table doesn't matter; the last definition of an object wins, as an incremental
 // update's would. Encrypted files are refused. Streams decode with the Flate, LZW, ASCII hex,
 // ASCII85 and run-length filters, with PNG and TIFF predictors.
 
+import { crc32, setU32be } from "../core/bytes.ts";
 import type { BBox, Pt } from "../core/types.ts";
 
 /** 0 to 1 each */
@@ -45,12 +48,31 @@ export interface PdfText {
   color: PdfColor;
 }
 
+/** A picture on the page: the box it fills, in page points, and its pixels. */
+export interface PdfPicture {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  mime: "image/png" | "image/jpeg";
+  bytes: Uint8Array;
+  /** pixels */
+  width: number;
+  height: number;
+  /** a JPEG's transparency, one byte a pixel (a PNG keeps its own) */
+  alpha?: { width: number; height: number; bytes: Uint8Array };
+  /** how many of the page's paths were painted before it: it lies over those and beneath the rest */
+  over: number;
+}
+
 export interface PdfPage {
   /** points */
   width: number;
   height: number;
   paths: PdfPath[];
   texts: PdfText[];
+  /** in paint order, so the first lies beneath the rest */
+  pictures: PdfPicture[];
   /** what was left out, by kind */
   skipped: Record<string, number>;
 }
@@ -63,6 +85,10 @@ export interface PdfFile {
 
 /** most paths and texts one page may have */
 const MAX_ITEMS = 200_000;
+/** most pictures one page may have */
+const MAX_PICTURES = 200;
+/** a picture with more pixels than this is left out */
+const MAX_PICTURE_PIXELS = 40_000_000;
 /** deepest Form XObject nesting that is followed */
 const MAX_FORM_DEPTH = 12;
 /** a path with more subpaths than this isn't searched for holes: each subpath is its own shape */
@@ -637,7 +663,7 @@ class Reader {
     return new Stream(o, b.subarray(start, end));
   }
 
-  /** A stream's data with its filters undone; image filters throw UnsupportedFilter. */
+  /** A stream's data with its filters undone; image filters throw UnsupportedFilter, except a JPEG left last. */
   decode(s: Stream): Promise<Uint8Array> {
     let p = this.decoded.get(s);
     if (!p) {
@@ -647,9 +673,14 @@ class Reader {
     return p;
   }
 
-  private async undo(s: Stream): Promise<Uint8Array> {
+  /** The names of a stream's filters, in the order they are undone. */
+  filtersOf(s: Stream): string[] {
     const f = this.get(s.dict.get("Filter") ?? s.dict.get("F"));
-    const filters = (Array.isArray(f) ? f.map((x) => this.get(x)) : [f]).map(nameOf).filter((x): x is string => x !== null);
+    return (Array.isArray(f) ? f.map((x) => this.get(x)) : [f]).map(nameOf).filter((x): x is string => x !== null);
+  }
+
+  private async undo(s: Stream): Promise<Uint8Array> {
+    const filters = this.filtersOf(s);
     const pr = this.get(s.dict.get("DecodeParms") ?? s.dict.get("DP"));
     const parms = Array.isArray(pr) ? pr.map((x) => this.get(x)) : [pr];
     let data = s.raw;
@@ -657,6 +688,11 @@ class Reader {
       const p = parms[i];
       const dp = isDict(p) ? p : null;
       switch (name) {
+        case "DCTDecode":
+        case "DCT":
+          // a JPEG is left as it is for the picture reader, which is the only thing that reads it
+          if (i < filters.length - 1) throw new UnsupportedFilter(name);
+          break;
         case "FlateDecode":
         case "Fl":
           data = unpredict(await inflate(data), dp);
@@ -848,6 +884,108 @@ async function loadFont(r: Reader, font: Dict): Promise<Font> {
   };
 }
 
+// ---- pictures ------------------------------------------------------------------------------
+
+/** an image's pixels, one byte each, such as a soft mask */
+interface Plane {
+  width: number;
+  height: number;
+  bytes: Uint8Array;
+}
+
+/** an image's colours: 1 or 3 channels a sample, or, when indexed, a palette of `channels` a colour each */
+interface ImageSpace {
+  channels: 1 | 3;
+  lookup: { hival: number; table: Uint8Array } | null;
+}
+
+/** An image's colour space as the picture reader takes it; null for one it doesn't (CMYK, Lab, separations, patterns). */
+function imageSpace(r: Reader, o: Obj | undefined, res: Dict | null): ImageSpace | null {
+  const v = r.get(o);
+  const name = nameOf(v);
+  if (name === "DeviceGray" || name === "G" || name === "CalGray") return { channels: 1, lookup: null };
+  if (name === "DeviceRGB" || name === "RGB" || name === "CalRGB") return { channels: 3, lookup: null };
+  if (name !== null) {
+    // a name the resources give the colour space
+    const named = res ? r.get(res.get("ColorSpace")) : null;
+    const cs = isDict(named) ? named.get(name) : undefined;
+    return cs === undefined ? null : imageSpace(r, cs, null);
+  }
+  if (!Array.isArray(v) || v.length === 0) return null;
+  switch (nameOf(r.get(v[0]))) {
+    case "ICCBased": {
+      const s = r.get(v[1]);
+      const n = s instanceof Stream ? num(r.get(s.dict.get("N"))) : 0;
+      if (n === 1) return { channels: 1, lookup: null };
+      return n === 3 ? { channels: 3, lookup: null } : null;
+    }
+    case "CalRGB":
+      return { channels: 3, lookup: null };
+    case "CalGray":
+      return { channels: 1, lookup: null };
+    case "Indexed":
+    case "I": {
+      const base = imageSpace(r, v[1], null);
+      const table = r.get(v[3]);
+      if (!base || base.lookup || !(table instanceof Uint8Array)) return null;
+      return { channels: base.channels, lookup: { hival: num(r.get(v[2])), table } };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Whether a filter's name is the JPEG one. */
+const isJpeg = (name: string | undefined): boolean => name === "DCTDecode" || name === "DCT";
+
+const PNG_SIGNATURE = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
+
+/** zlib data (RFC 1950) of `data`, by the browser's or Node's deflate stream. */
+async function zlib(data: Uint8Array): Promise<Uint8Array> {
+  const cs = new CompressionStream("deflate");
+  const writer = cs.writable.getWriter();
+  writer.write(data as BufferSource).catch(() => undefined);
+  writer.close().catch(() => undefined);
+  const reader = cs.readable.getReader();
+  const parts: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+  }
+  return concatBytes(parts);
+}
+
+/** A PNG of `px`, RGBA pixels `width` by `height`; its alpha channel is written only when `alpha` is set. */
+async function pngOf(px: Uint8Array, width: number, height: number, alpha: boolean): Promise<Uint8Array> {
+  const ch = alpha ? 4 : 3;
+  const row = width * ch + 1;
+  // each row starts with its filter type, 0 for none
+  const raw = new Uint8Array(row * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const from = (y * width + x) * 4;
+      const to = y * row + 1 + x * ch;
+      for (let k = 0; k < ch; k++) raw[to + k] = px[from + k];
+    }
+  }
+  const ihdr = new Uint8Array(13);
+  setU32be(ihdr, 0, width);
+  setU32be(ihdr, 4, height);
+  // 8 bits a channel; colour type 6 (RGBA) or 2 (RGB); no interlace
+  ihdr[8] = 8;
+  ihdr[9] = alpha ? 6 : 2;
+  const chunk = (type: string, body: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(12 + body.length);
+    setU32be(out, 0, body.length);
+    for (let k = 0; k < 4; k++) out[4 + k] = type.charCodeAt(k);
+    out.set(body, 8);
+    setU32be(out, 8 + body.length, crc32(out.subarray(4, 8 + body.length)));
+    return out;
+  };
+  return concatBytes([PNG_SIGNATURE, chunk("IHDR", ihdr), chunk("IDAT", await zlib(raw)), chunk("IEND", new Uint8Array())]);
+}
+
 // ---- drawing a page ------------------------------------------------------------------------
 
 /** [a b c d e f]: x' = a·x + c·y + e, y' = b·x + d·y + f */
@@ -917,6 +1055,7 @@ interface Run {
 class Painter {
   readonly paths: PdfPath[] = [];
   readonly texts: PdfText[] = [];
+  readonly pictures: PdfPicture[] = [];
   readonly skipped: Record<string, number> = {};
   private readonly fonts = new Map<Dict, Promise<Font>>();
   private run: Run | null = null;
@@ -934,6 +1073,143 @@ class Painter {
       this.fonts.set(d, f);
     }
     return f;
+  }
+
+  /**
+   * An Image XObject painted under `ctm`, kept as a picture when its edges run along the page's
+   * axes and it is in a format read here. A mirrored picture's pixels are turned to match, except a
+   * JPEG's, which can't be, so it is left out.
+   */
+  private async picture(s: Stream, ctm: M6, res: Dict | null): Promise<void> {
+    const r = this.r;
+    const [a, b, c, d] = ctm;
+    if (Math.abs(b) > 1e-6 || Math.abs(c) > 1e-6) {
+      this.skip("turned pictures");
+      return;
+    }
+    // a picture with no width or height on the page has nothing to show
+    if (Math.abs(a) < 1e-9 || Math.abs(d) < 1e-9) return;
+    if (this.pictures.length >= MAX_PICTURES) {
+      this.skip("over the limit");
+      return;
+    }
+    const width = num(r.get(s.dict.get("Width")));
+    const height = num(r.get(s.dict.get("Height")));
+    if (!(width >= 1 && height >= 1)) {
+      this.skip("unreadable streams");
+      return;
+    }
+    if (width * height > MAX_PICTURE_PIXELS) {
+      this.skip("pictures too large");
+      return;
+    }
+    const jpeg = isJpeg(r.filtersOf(s).at(-1));
+    const flipX = a < 0;
+    const flipY = d < 0;
+    if (jpeg && (flipX || flipY)) {
+      this.skip("flipped pictures");
+      return;
+    }
+    const bpc = num(r.get(s.dict.get("BitsPerComponent")), 8);
+    const space = imageSpace(r, s.dict.get("ColorSpace"), res);
+    // the samples are taken as they are, so the Decode array must be the default one
+    const dec = r.get(s.dict.get("Decode"));
+    const top = space?.lookup ? (1 << bpc) - 1 : 1;
+    const plain = !Array.isArray(dec) || dec.every((v, i) => num(r.get(v)) === (i % 2 ? top : 0));
+    const mask = r.get(s.dict.get("Mask")) !== null || r.get(s.dict.get("ImageMask")) === true;
+    const comps = space ? (space.lookup ? 1 : space.channels) : 0;
+    const bitsOk = jpeg ? bpc === 8 && !space?.lookup : comps === 1 ? [1, 2, 4, 8].includes(bpc) : bpc === 8;
+    if (!space || mask || !plain || !bitsOk) {
+      this.skip("pictures in other formats");
+      return;
+    }
+    // the box it fills: the unit square's corners (0, 0) and (1, 1) on the page
+    const p = apply(ctm, 0, 0);
+    const q = apply(ctm, 1, 1);
+    const box = { x0: Math.min(p.x, q.x), y0: Math.min(p.y, q.y), x1: Math.max(p.x, q.x), y1: Math.max(p.y, q.y) };
+    let data: Uint8Array;
+    try {
+      data = await r.decode(s);
+    } catch (err) {
+      this.skip(err instanceof UnsupportedFilter ? "pictures in other formats" : "unreadable streams");
+      return;
+    }
+    let alpha: Plane | null = null;
+    const sm = r.get(s.dict.get("SMask"));
+    if (sm instanceof Stream) {
+      alpha = await this.gray(sm);
+      if (!alpha) {
+        this.skip("pictures in other formats");
+        return;
+      }
+    }
+    if (jpeg) {
+      if (data[0] !== 0xff || data[1] !== 0xd8) {
+        this.skip("unreadable streams");
+        return;
+      }
+      this.pictures.push({ ...box, mime: "image/jpeg", bytes: data, width, height, alpha: alpha ?? undefined, over: this.paths.length });
+      return;
+    }
+    const rowBytes = Math.ceil((width * comps * bpc) / 8);
+    if (data.length < rowBytes * height) {
+      this.skip("unreadable streams");
+      return;
+    }
+    const sample = (row: number, i: number): number => {
+      if (bpc === 8) return data[row * rowBytes + i];
+      const bit = i * bpc;
+      return (data[row * rowBytes + (bit >> 3)] >> (8 - bpc - (bit & 7))) & ((1 << bpc) - 1);
+    };
+    // the colour of each gray level or palette index, as three bytes
+    const levels = 1 << bpc;
+    const lut = new Uint8Array(levels * 3);
+    for (let v = 0; v < levels; v++) {
+      const at = space.lookup ? Math.min(v, space.lookup.hival) * space.channels : 0;
+      for (let k = 0; k < 3; k++) {
+        lut[v * 3 + k] = space.lookup ? (space.lookup.table[at + (space.channels === 3 ? k : 0)] ?? 0) : Math.round((v * 255) / (levels - 1));
+      }
+    }
+    // RGBA pixels, top row first: a mirrored picture reads its rows and columns backwards
+    const px = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      const row = flipY ? height - 1 - y : y;
+      for (let x = 0; x < width; x++) {
+        const col = flipX ? width - 1 - x : x;
+        const o = (y * width + x) * 4;
+        if (comps === 3) {
+          px[o] = sample(row, col * 3);
+          px[o + 1] = sample(row, col * 3 + 1);
+          px[o + 2] = sample(row, col * 3 + 2);
+        } else {
+          const v = sample(row, col) * 3;
+          px[o] = lut[v];
+          px[o + 1] = lut[v + 1];
+          px[o + 2] = lut[v + 2];
+        }
+        if (alpha) {
+          const ax = Math.min(alpha.width - 1, Math.floor(((col + 0.5) * alpha.width) / width));
+          const ay = Math.min(alpha.height - 1, Math.floor(((row + 0.5) * alpha.height) / height));
+          px[o + 3] = alpha.bytes[ay * alpha.width + ax];
+        } else px[o + 3] = 255;
+      }
+    }
+    this.pictures.push({ ...box, mime: "image/png", bytes: await pngOf(px, width, height, alpha !== null), width, height, over: this.paths.length });
+  }
+
+  /** An 8-bit gray image's pixels, such as a soft mask; null when they can't be read. */
+  private async gray(s: Stream): Promise<Plane | null> {
+    const r = this.r;
+    const width = num(r.get(s.dict.get("Width")));
+    const height = num(r.get(s.dict.get("Height")));
+    if (!(width >= 1 && height >= 1) || width * height > MAX_PICTURE_PIXELS) return null;
+    if (num(r.get(s.dict.get("BitsPerComponent")), 8) !== 8 || isJpeg(r.filtersOf(s).at(-1))) return null;
+    try {
+      const bytes = await r.decode(s);
+      return bytes.length >= width * height ? { width, height, bytes: bytes.subarray(0, width * height) } : null;
+    } catch {
+      return null;
+    }
   }
 
   private colorSpace(o: Obj, res: Dict | null): ColorSpace {
@@ -1325,7 +1601,7 @@ class Painter {
             if (!(x instanceof Stream)) break;
             const sub = nameOf(r.get(x.dict.get("Subtype")));
             if (sub === "Image") {
-              this.skip("pictures");
+              await this.picture(x, st.ctm, res).catch(() => this.skip("unreadable streams"));
               break;
             }
             if (sub !== "Form" || depth >= MAX_FORM_DEPTH) break;
@@ -1355,7 +1631,7 @@ class Painter {
             i += 3;
             while (i < b.length - 1 && !(b[i] === 69 && b[i + 1] === 73 && SPACE[b[i - 1]] && (i + 2 >= b.length || SPACE[b[i + 2]]))) i++;
             lex.pos = i + 2;
-            this.skip("pictures");
+            this.skip("inline pictures");
             break;
           }
           default:
@@ -1488,9 +1764,10 @@ export async function openPdf(bytes: Uint8Array): Promise<PdfFile> {
       };
       const paths = painter.paths.filter((q) => q.subpaths.some((s) => on(s.points)));
       const texts = painter.texts.filter((t) => on([t.at]));
-      const off = painter.paths.length - paths.length + painter.texts.length - texts.length;
+      const pictures = painter.pictures.filter((p) => on([{ x: p.x0, y: p.y0 }, { x: p.x1, y: p.y1 }]));
+      const off = painter.paths.length - paths.length + painter.texts.length - texts.length + painter.pictures.length - pictures.length;
       if (off > 0) painter.skip("off the page", off);
-      return { width, height, paths, texts, skipped: painter.skipped };
+      return { width, height, paths, texts, pictures, skipped: painter.skipped };
     },
   };
 }

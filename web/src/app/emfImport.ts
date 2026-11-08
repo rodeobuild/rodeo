@@ -50,6 +50,6 @@ export async function importMetafile(file: File, scene: Scene, view: View): Prom
   const choice = await askPage(1, layerScale(), "Import Metafile", "The picture is placed at its size at this scale, centred in the view, as a group. Pictures, pattern fills and clipping are left out.");
   if (!choice) return;
   await nextPaint();
-  place(page, choice, file.name, "Import Metafile", scene, view);
+  await place(page, choice, file.name, "Import Metafile", scene, view);
   fileIn(file, file.name);
 }

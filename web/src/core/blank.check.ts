@@ -2,12 +2,14 @@
 //   npx tsx src/core/blank.check.ts
 // For each unit system the drawing opens with one design layer, class None and no objects, in
 // its units. Every object kind (and a mesh) is added and reads back with its geometry, named meshes keep
-// their names in 3D exports, two objects group,
-// and the file saves and reopens with the same objects. Layers, classes and units can be added
-// and changed. A model with symbols comes in from a file as definitions placed many times and goes
-// out to 3DM, Collada and FBX the same way. Nothing is drawn.
+// their names in 3D exports, two objects group, and a PNG and a JPEG picture are added and read back
+// with their bounds, bytes and pixel sizes, and the file saves and reopens with the same objects. Layers,
+// classes and units can be added and changed. A model with symbols comes in from a file as definitions
+// placed many times and goes out to 3DM, Collada and FBX the same way. Nothing is drawn.
 
+import { deflateSync } from "node:zlib";
 import rhino3dm from "rhino3dm";
+import { concat, crc32, setU32be, u32 } from "./bytes.ts";
 import { exportCollada } from "../export/collada.ts";
 import { exportFbx } from "../export/fbx.ts";
 import { export3dm } from "../export/rhino.ts";
@@ -20,6 +22,7 @@ import { checkSymbolTrip, LEGS, MIRRORED, SYMBOL_MODEL, TURNED } from "../import
 import { builtinTemplates } from "./builtins.ts";
 import { blankDrawing } from "./blank.ts";
 import { openVwx } from "./index.ts";
+import { Model } from "./model.ts";
 import { unitsName } from "./settings.ts";
 import type { MeshModel, MeshNode, NewShape } from "./types.ts";
 
@@ -66,6 +69,55 @@ function meshModelOf(session: ReturnType<typeof openVwx>, file: MeshFile): MeshM
   return { symbols: (file.tree?.symbols ?? []).map((x) => ({ name: x.name, content: node(x.content) })), top: node(file.tree?.top ?? { parts: [], groups: [], instances: [] }) };
 }
 
+/** A PNG of width by height pixels, rgb one triple per pixel row by row: its signature, IHDR, IDAT and IEND chunks. */
+function pngOf(width: number, height: number, rgb: readonly number[]): Uint8Array {
+  const chunk = (type: string, data: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(12 + data.length);
+    setU32be(out, 0, data.length);
+    out.set([...type].map((c) => c.charCodeAt(0)), 4);
+    out.set(data, 8);
+    setU32be(out, 8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  const head = new Uint8Array(13);
+  setU32be(head, 0, width);
+  setU32be(head, 4, height);
+  head.set([8, 2, 0, 0, 0], 8); // 8-bit RGB, deflate, filter method 0, no interlace
+  // each row is a filter type byte (0, none) and its pixels
+  const row = 1 + 3 * width;
+  const raw = new Uint8Array(height * row);
+  for (let y = 0; y < height; y++) raw.set(rgb.slice(3 * width * y, 3 * width * (y + 1)), y * row + 1);
+  return concat([Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a), chunk("IHDR", head), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array(0))]);
+}
+
+/** A 2 by 2 PNG: red and green, then blue and white. */
+const PNG_2X2 = pngOf(2, 2, [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]);
+
+/** A 2 by 2 JPEG, a JFIF file as cjpeg writes one at quality 75, made for this check (no sample picture). */
+const JPEG_2X2 = Uint8Array.from([
+  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
+  0x00, 0x01, 0x00, 0x00, 0xff, 0xdb, 0x00, 0x43, 0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
+  0x07, 0x07, 0x07, 0x09, 0x09, 0x08, 0x0a, 0x0c, 0x14, 0x0d, 0x0c, 0x0b, 0x0b, 0x0c, 0x19, 0x12,
+  0x13, 0x0f, 0x14, 0x1d, 0x1a, 0x1f, 0x1e, 0x1d, 0x1a, 0x1c, 0x1c, 0x20, 0x24, 0x2e, 0x27, 0x20,
+  0x22, 0x2c, 0x23, 0x1c, 0x1c, 0x28, 0x37, 0x29, 0x2c, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1f, 0x27,
+  0x39, 0x3d, 0x38, 0x32, 0x3c, 0x2e, 0x33, 0x34, 0x32, 0xff, 0xdb, 0x00, 0x43, 0x01, 0x09, 0x09,
+  0x09, 0x0c, 0x0b, 0x0c, 0x18, 0x0d, 0x0d, 0x18, 0x32, 0x21, 0x1c, 0x21, 0x32, 0x32, 0x32, 0x32,
+  0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32,
+  0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32,
+  0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0xff, 0xc0,
+  0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x02, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11,
+  0x01, 0xff, 0xc4, 0x00, 0x15, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0xff, 0xc4, 0x00, 0x1c, 0x10, 0x00, 0x02, 0x02,
+  0x03, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00,
+  0x03, 0x04, 0x05, 0x06, 0x11, 0x21, 0xff, 0xc4, 0x00, 0x14, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0xff, 0xc4, 0x00, 0x1b,
+  0x11, 0x00, 0x01, 0x04, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x01, 0x02, 0x33, 0x71, 0x03, 0x04, 0xb1, 0xff, 0xda, 0x00, 0x0c, 0x03, 0x01, 0x00,
+  0x02, 0x11, 0x03, 0x11, 0x00, 0x3f, 0x00, 0xac, 0x71, 0xfa, 0xbd, 0x7d, 0xdc, 0x4e, 0x86, 0xdb,
+  0x70, 0x71, 0x5e, 0xc7, 0xd7, 0x63, 0xb3, 0x3b, 0x52, 0xa4, 0xb1, 0x35, 0xaf, 0xa4, 0x9f, 0x3e,
+  0x98, 0x88, 0x87, 0xb3, 0x4a, 0xeb, 0x50, 0xae, 0xc4, 0xcf, 0xb5, 0xe9, 0xff, 0xd9,
+]);
+
 for (const units of ["mm", "ftin"] as const) {
   const { name, scale } = UNITS[units];
   const label = units === "mm" ? "millimetres" : "feet and inches";
@@ -84,6 +136,7 @@ for (const units of ["mm", "ftin"] as const) {
   check(layer.scale === scale, `${label}: scale 1:${scale}`);
   check(s.doc.classes().some((c) => c.name === "None"), `${label}: class None`);
   check(s.doc.objects(layer.id).length === 0, `${label}: no objects`);
+  check(s.canAdd("image"), `${label}: can add pictures with no picture to copy`);
 
   const ids = s.addObjects(layer.id, SHAPES);
   check(ids.length === SHAPES.length, `${label}: ${SHAPES.length} objects added`);
@@ -134,6 +187,33 @@ for (const units of ["mm", "ftin"] as const) {
     const objs = modelOf(n.doc, new Set([layer.id])).layers.flatMap((l) => l.objects).filter((o) => o.groups?.[0]?.id === outer);
     const path = (o: ModelObject): string => [...(o.groups ?? []).map((g) => g.name), o.name].join("/");
     check(objs.map(path).join() === "Kitchen/Sink,Kitchen/Cooking/Sink 2,Kitchen/Cooking/mesh", `${label}: grouped meshes export by their own names in their groups (${objs.map(path)})`);
+  }
+
+  // a PNG and a JPEG picture: each reads back with its bounds, bytes, type and pixel size, and they save and reopen
+  {
+    const n = openVwx(blankDrawing(units), `blank-${units}-pictures.vwx`);
+    const pictureLayer = n.doc.layers()[0];
+    const [png, jpeg] = n.addObjects(pictureLayer.id, [
+      { kind: "image", x0: 0, y0: 0, x1: 50, y1: 40, bytes: PNG_2X2, mime: "image/png", width: 2, height: 2 },
+      { kind: "image", x0: 60, y0: 0, x1: 120, y1: 40, bytes: JPEG_2X2, mime: "image/jpeg", width: 2, height: 2 },
+    ]);
+    // a picture's bytes are its stream, which may end with one pad byte; its pixel size is in its record
+    const pictureOk = (session: typeof n, id: string, bytes: Uint8Array, mime: string, box: readonly number[]): boolean => {
+      const o = session.doc.object(id);
+      const b = o?.shape?.bbox;
+      const img = o?.shape?.image ?? new Uint8Array(0);
+      const rec = new Model(session.doc.toBytes(), "picture.vwx").recs.find((r) => r.type === 14 && r.guid === id);
+      return (
+        o?.kind === "image" &&
+        !!b && near(b.x0, box[0]) && near(b.y0, box[1]) && near(b.x1, box[2]) && near(b.y1, box[3]) &&
+        o.shape?.imageMime === mime &&
+        img.length >= bytes.length && img.length <= bytes.length + 1 && bytes.every((v, k) => img[k] === v) &&
+        !!rec && u32(rec.data, 0x128) === 2 && u32(rec.data, 0x12c) === 2
+      );
+    };
+    check(pictureOk(n, png, PNG_2X2, "image/png", [0, 0, 50, 40]) && pictureOk(n, jpeg, JPEG_2X2, "image/jpeg", [60, 0, 120, 40]), `${label}: a PNG and a JPEG picture read back with their bounds, bytes, type and pixel size`);
+    const back = openVwx(n.doc.toBytes(), `blank-${units}-pictures-saved.vwx`);
+    check(pictureOk(back, png, PNG_2X2, "image/png", [0, 0, 50, 40]) && pictureOk(back, jpeg, JPEG_2X2, "image/jpeg", [60, 0, 120, 40]), `${label}: the pictures save and reopen with their bytes`);
   }
 
   // symbols through the drawing: a file's Chair placed twice comes in as one definition placed twice, and each format writes it so
@@ -266,8 +346,8 @@ for (const units of ["mm", "ftin"] as const) {
 
 const tpls = builtinTemplates();
 check(
-  [2, 3, 13, 5, 21, 6, 10, 11].every((t) => tpls.has(t) && tpls.get(t)!.recs[0][0x19] === t),
-  "built-in templates for line, rect, roundrect, polygon, polyline, arc, text and group",
+  [2, 3, 13, 5, 21, 6, 10, 11, 14].every((t) => tpls.has(t) && tpls.get(t)!.recs[0][0x19] === t),
+  "built-in templates for line, rect, roundrect, polygon, polyline, arc, text, group and image",
 );
 const shell = tpls.get(11)!;
 check(shell.recs.length === 2 && shell.parent[1] === 0 && shell.recs[1][0x19] === 0, "group template: group with its terminator");

@@ -69,7 +69,7 @@ Drawings export as DXF (R12, in the document's units) and SVG, and with **Export
 
 ### Import Image File(s)… and Paste as Bitmap
 
-**File › Import › Import Image File(s)…** places one picture or several on the active layer at 72 dpi. It takes PNG and JPEG, and GIF, WebP and BMP come in as PNG. Pictures dropped on an open drawing come in the same way.
+**File › Import › Import Image File(s)…** places one picture or several on the active layer at 72 dpi. It takes PNG and JPEG, and GIF, WebP and BMP come in as PNG. Pictures dropped on an open drawing come in the same way. A new blank drawing takes pictures too.
 
 The **Image Import Options** dialog asks once for all the pictures:
 
@@ -91,9 +91,11 @@ The PDF import brings in one page's line work and fills as lines and polygons (h
 
 The page comes in at its paper size at a chosen scale (the layer's by default), as one group and one undo step.
 
+Its pictures come in as image objects where they lie on the page, over or beneath the line work as the page paints them, with the text on top: a JPEG as it is, other pictures as PNG, and a JPEG with a soft mask (transparency) composited into a PNG. A picture whose edges lie along the page's axes is placed; the summary counts the ones left out. This works in a new blank drawing too.
+
 Form XObjects are followed. The reader (`web/src/import/pdf.ts`, no dependencies) finds objects by scanning, so damaged cross-reference tables don't matter.
 
-**Limits:** pictures, shadings and clipping are left out and counted, and encrypted files are refused.
+**Limits:** turned pictures, pictures in other formats (CMYK, JPEG 2000, stencil masks), inline pictures, shadings and clipping are left out and counted, and encrypted files are refused.
 
 ### Import Metafile…
 

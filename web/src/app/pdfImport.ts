@@ -2,15 +2,17 @@
 // Vectorworks' Import PDF gives once its page is ungrouped. The page's line work and fills become
 // lines and polygons (holes and all) in the drawing's nearest colours at their line weights, and
 // its text becomes text objects, grouped and centred in the view at the page's paper size at the
-// chosen scale, in one undo step. The reading is in import/pdf.ts; pictures, shadings and
-// clipping are left out, as the summary says. File > Import > Import Metafile… (emfImport.ts) places
-// what it reads the same way.
+// chosen scale, in one undo step. Its pictures come in as image objects beneath the line work, and a
+// JPEG with transparency is composited here. The reading is in import/pdf.ts; the pictures it can't
+// place, shadings and clipping are left out, as the summary says. File > Import > Import Metafile…
+// (emfImport.ts) places what it reads the same way.
 
 import type { Attributes, NewShape, Pt } from "../core/index.ts";
-import { MAX_NESTED_SUBPATHS, openPdf, type PdfColor, type PdfFile, type PdfPage } from "../import/pdf.ts";
+import { MAX_NESTED_SUBPATHS, openPdf, type PdfColor, type PdfFile, type PdfPage, type PdfPicture } from "../import/pdf.ts";
 import { attempt, setEditGroup, zoomToSelection } from "./commands.ts";
 import { fileIn } from "./ext.ts";
 import { h, nextPaint } from "./dom.ts";
+import type { Picture } from "./images.ts";
 import { showDialog } from "./menubar.ts";
 import type { Scene } from "./scene.ts";
 import { layerInfo, store } from "./state.ts";
@@ -75,7 +77,7 @@ export async function importPdf(file: File, scene: Scene, view: View, answer?: P
   const scale = layerScale();
   const choice = answer
     ? answered(answer, pdf.pages, scale)
-    : await askPage(pdf.pages, scale, "Import PDF", "The page is placed at its paper size at this scale, centred in the view, as a group. Pictures, shadings and clipping are left out.");
+    : await askPage(pdf.pages, scale, "Import PDF", "The page is placed at its paper size at this scale, centred in the view, as a group, with its pictures. Shadings and clipping are left out.");
   if (!choice) return;
   let page: PdfPage;
   try {
@@ -86,7 +88,7 @@ export async function importPdf(file: File, scene: Scene, view: View, answer?: P
     fileIn(file, file.name, `page ${choice.page + 1}: ${errorMessage(err)}`);
     return;
   }
-  place(page, choice, `page ${choice.page + 1} of ${file.name}`, "Import PDF", scene, view);
+  await place(page, choice, `page ${choice.page + 1} of ${file.name}`, "Import PDF", scene, view);
   fileIn(file, file.name);
 }
 
@@ -259,7 +261,7 @@ export function fillShapes(rings: Pt[][]): { points: Pt[]; holes: boolean }[] {
  * Places `page` on the active layer as `choice` says, grouped, in one undo step named `command`;
  * `source` names what was read in the summary ("page 2 of plan.pdf").
  */
-export function place(page: PdfPage, choice: PdfChoice, source: string, command: string, scene: Scene, view: View): void {
+export async function place(page: PdfPage, choice: PdfChoice, source: string, command: string, scene: Scene, view: View): Promise<void> {
   const layerId = store.activeLayerId;
   const session = store.session;
   if (!layerId || !session) return;
@@ -268,17 +270,25 @@ export function place(page: PdfPage, choice: PdfChoice, source: string, command:
   const oy = view.cy - (page.height * k) / 2;
   const world = (p: Pt): Pt => ({ x: ox + p.x * k, y: oy + p.y * k });
   const colorOf = colorMatcher();
+  const placed = choice.lines && session.canAdd("image") ? await pictureShapes(page.pictures, world) : [];
   const shapes: NewShape[] = [];
-  const attrs: Partial<Attributes>[] = [];
-  const add = (shape: NewShape, a: Partial<Attributes>): void => {
+  const attrs: (Partial<Attributes> | undefined)[] = [];
+  const add = (shape: NewShape, a: Partial<Attributes> | undefined): void => {
     shapes.push(shape);
     attrs.push(a);
+  };
+  // each picture goes in where the page paints it among the line work, so a white band painted
+  // before a logo stays beneath it; text goes on top of both
+  let nextPicture = 0;
+  const picturesTo = (over: number): void => {
+    for (; nextPicture < placed.length && placed[nextPicture].over <= over; nextPicture++) add(placed[nextPicture].shape, undefined);
   };
   const noPen: Partial<Attributes> = { lineStyle: 0 };
   const noFill: Partial<Attributes> = { fillPattern: 0 };
 
   if (choice.lines) {
-    for (const path of page.paths) {
+    for (const [i, path] of page.paths.entries()) {
+      picturesTo(i);
       const pen: Partial<Attributes> = path.stroke
         ? { lineStyle: 2, lineWeight: Math.max(MIN_WEIGHT, Math.round(path.width * MILS_PER_POINT)), penFore: colorOf(path.stroke), penOpacity: 100 }
         : noPen;
@@ -301,6 +311,7 @@ export function place(page: PdfPage, choice: PdfChoice, source: string, command:
       for (const p of polys) add({ kind: "polygon", points: p.points, closed: true }, holed ? { ...noPen, ...fill } : { ...pen, ...fill });
       if (holed) strokes();
     }
+    picturesTo(Infinity);
   }
   if (choice.text && session.canAdd("text")) {
     for (const t of page.texts) {
@@ -325,7 +336,10 @@ export function place(page: PdfPage, choice: PdfChoice, source: string, command:
     }
   }
 
-  const left = Object.entries(page.skipped).filter(([, n]) => n > 0);
+  // pictures not placed: none of them when only text comes in, or the drawing has no image to copy settings from
+  const skipped: Record<string, number> = { ...page.skipped };
+  if (page.pictures.length > placed.length) skipped.pictures = page.pictures.length - placed.length;
+  const left = Object.entries(skipped).filter(([, n]) => n > 0);
   const leftOut = left.length ? `; left out ${left.map(([kind, n]) => `${n} ${kind}`).join(", ")}` : "";
   if (shapes.length === 0) {
     toast(`Nothing to import in ${source}${leftOut}.`, "info");
@@ -344,5 +358,72 @@ export function place(page: PdfPage, choice: PdfChoice, source: string, command:
   if (!r) return;
   setEditGroup(null, [r.value]);
   zoomToSelection(scene, view);
-  toast(`Imported ${source}: ${shapes.length} ${shapes.length === 1 ? "object" : "objects"}${leftOut}.`, "info");
+  const objects = shapes.length - placed.length;
+  const made = [
+    objects > 0 ? `${objects} ${objects === 1 ? "object" : "objects"}` : "",
+    placed.length > 0 ? `${placed.length} ${placed.length === 1 ? "picture" : "pictures"}` : "",
+  ].filter((s) => s !== "");
+  toast(`Imported ${source}: ${made.join(" and ")}${leftOut}.`, "info");
+}
+
+/**
+ * The page's pictures as image shapes at their places (`world` maps page points to the drawing), in
+ * paint order, each with the number of paths painted before it. A picture the browser can't make
+ * is left out, so there may be fewer shapes than pictures.
+ */
+async function pictureShapes(pictures: readonly PdfPicture[], world: (p: Pt) => Pt): Promise<{ shape: NewShape; over: number }[]> {
+  const out: { shape: NewShape; over: number }[] = [];
+  for (const p of pictures) {
+    try {
+      const picture = await pictureOf(p);
+      const a = world({ x: p.x0, y: p.y0 });
+      const b = world({ x: p.x1, y: p.y1 });
+      const shape: NewShape = {
+        kind: "image",
+        x0: Math.min(a.x, b.x),
+        y0: Math.min(a.y, b.y),
+        x1: Math.max(a.x, b.x),
+        y1: Math.max(a.y, b.y),
+        bytes: picture.bytes,
+        mime: picture.mime,
+        width: picture.width,
+        height: picture.height,
+      };
+      out.push({ shape, over: p.over });
+    } catch {
+      // left out, and counted by place
+    }
+  }
+  return out;
+}
+
+/** A page picture as the drawing keeps it: a PNG or a JPEG as it is, or a JPEG with transparency composited here as a PNG. */
+async function pictureOf(p: PdfPicture): Promise<Picture> {
+  if (!p.alpha) return { bytes: p.bytes, mime: p.mime, width: p.width, height: p.height };
+  const bitmap = await createImageBitmap(new Blob([new Uint8Array(p.bytes)], { type: "image/jpeg" }), { imageOrientation: "none" });
+  try {
+    const { width, height } = bitmap;
+    const { width: aw, height: ah, bytes: alpha } = p.alpha;
+    // the transparency as the alpha channel of a mask the size of the mask
+    const mask = new OffscreenCanvas(aw, ah);
+    const maskPixels = new Uint8ClampedArray(aw * ah * 4);
+    for (let i = 0; i < alpha.length; i++) maskPixels[i * 4 + 3] = alpha[i];
+    context(mask).putImageData(new ImageData(maskPixels, aw, ah), 0, 0);
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = context(canvas);
+    ctx.drawImage(bitmap, 0, 0);
+    // destination-in keeps the picture where the mask is opaque, scaling the mask to the picture
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.drawImage(mask, 0, 0, width, height);
+    const png = await canvas.convertToBlob({ type: "image/png" });
+    return { bytes: new Uint8Array(await png.arrayBuffer()), mime: "image/png", width, height };
+  } finally {
+    bitmap.close();
+  }
+}
+
+function context(c: OffscreenCanvas): OffscreenCanvasRenderingContext2D {
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("the browser has no 2D canvas");
+  return ctx;
 }

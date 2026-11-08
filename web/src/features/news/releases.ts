@@ -22,6 +22,15 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-09T12:06:00Z",
+    "pdf-pictures",
+    "Pictures in PDFs come in",
+    `Import PDF brings in a page's pictures, so a floor plan saved as a picture inside a PDF no longer comes in empty.
+- Each picture is placed where it lies on the page, beneath the line work and text.
+- A new blank drawing can take pictures too: Import Image and Import PDF used to refuse in one.`,
+    "sheet",
+  ),
+  release(
     "2026-11-09T12:05:00Z",
     "revit-handrails",
     "Revit railings keep their handrails",

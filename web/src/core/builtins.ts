@@ -20,6 +20,7 @@ const ARC = 6;
 const TEXT = 10;
 const GROUP = 11;
 const ROUNDED_RECT = 13;
+const IMAGE = 14;
 const POLYLINE = 21;
 
 /** A subtree captured as bytes plus parent links (index into `recs`, -1 = root). */
@@ -108,6 +109,44 @@ export function symbolDefinitionTemplate(): Template {
 /** A symbol instance, placed by writePlacement and named by its definition's index at +0x8e. */
 function symbolInstance(): Template {
   return { recs: [plainAttributes(record(SYMBOL_INSTANCE, 280))], parent: [-1] };
+}
+
+/** Where a picture's stream starts: its header and QuickTime description come before it (FORMAT.md §4, 14). */
+const PICTURE_HEAD = 0x190;
+
+/**
+ * A picture with no stream yet, which encodeImage fills in with its bounds, top-left corner, size,
+ * pixel size, codec and bytes. The rest is what the samples' 32-bit pictures share: the identity
+ * rotation at +0x8c and a 32-bit QuickTime description (one frame, 72 dpi, no colour table). Where
+ * they differ it takes the commonest value, or the one that goes with its attributes. Whether
+ * Vectorworks opens a picture from it is not confirmed.
+ */
+function picture(): Template {
+  const d = plainAttributes(record(IMAGE, PICTURE_HEAD));
+  // no pen, so the picture shows as its image alone: most of the samples' pictures have none
+  writeAttrs(d, { lineStyle: 0, lineWeight: 0 });
+  // flags: 0x40 at +0x1f as on almost every record (FORMAT.md §2); 0x11 at +0x2f, the commonest
+  // value, since no sample picture has 0 there
+  d[0x2f] = 0x11;
+  [1, 0, 0, 0, 1, 0, 0, 0, 1].forEach((v, i) => setF64(d, 0x8c + 8 * i, v));
+  // 1 in every picture at +0xfc; at +0x106, 1 in the 2025 and 2026 files and 0 in older ones, so 1
+  // for this version; at +0x123, 1 on the pictures with no pen and 0 on most of those with one
+  d[0xfc] = 1;
+  d[0x106] = 1;
+  d[0x123] = 1;
+  // 0x56 bytes of QuickTime description (u32 at +0x13a), 32-bit with no colour table; 72 dpi in 16.16
+  // is the commonest resolution, and the vendor is "appl" stored back to front
+  setU32(d, 0x130, 32);
+  setU32(d, 0x13a, 0x56);
+  d.set([1, 0, 1, 0], 0x14a);
+  d.set([0x6c, 0x70, 0x70, 0x61], 0x14e);
+  setU32(d, 0x156, 0x200);
+  setU32(d, 0x15e, 72 << 16);
+  setU32(d, 0x162, 72 << 16);
+  setU16(d, 0x16a, 1);
+  setU16(d, 0x18c, 32);
+  setU16(d, 0x18e, 0xffff);
+  return { recs: [d], parent: [-1] };
 }
 
 const RECORD_FORMAT = 47;
@@ -498,6 +537,7 @@ export function builtinTemplates(): Map<number, Template> {
     [POLYLINE, shape(POLYLINE, 0x90)],
     [ARC, shape(ARC, 0xd2)],
     [TEXT, text()],
+    [IMAGE, picture()],
     [GROUP, group()],
     [SYMBOL_INSTANCE, symbolInstance()],
   ]);

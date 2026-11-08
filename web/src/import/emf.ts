@@ -937,5 +937,5 @@ export function readEmf(bytes: Uint8Array): PdfPage {
   }
   // a picture drawn only in EMF+ records (no GDI fallback) shows nothing here
   if (p.plus > 0 && p.paths.length === 0 && p.texts.length === 0) p.skip("EMF+ drawing", p.plus);
-  return { width: widthMm * PT_PER_MM, height: heightMm * PT_PER_MM, paths: p.paths, texts: p.texts, skipped: p.skipped };
+  return { width: widthMm * PT_PER_MM, height: heightMm * PT_PER_MM, paths: p.paths, texts: p.texts, pictures: [], skipped: p.skipped };
 }
