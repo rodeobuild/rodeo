@@ -6,12 +6,15 @@
 // with EditSession.applyRemote as collaboration does. A step spanning most of the drawing must be
 // kept as the runs it changed, and random changes far apart must rebuild from their runs. It also
 // checks that a saved drawing reopens to the bytes it was saved as, which continuing a history
-// relies on.
+// relies on, and that a replay in the same page leaves the open drawing's records where that
+// drawing has them, so an edit made after scrubbing changes what it names.
 //
 // Run: cd web && npx tsx src/features/timelapse/check.ts ../samples/sample.vwx
 
 import { readFileSync } from "node:fs";
+import { blankDrawing } from "../../core/blank.ts";
 import { openVwx, type EditSession, type NewShape, type Pt } from "../../core/index.ts";
+import type { Model } from "../../core/model.ts";
 import { applyOp, historyOp, runsOf, sha256Hex, type HistoryOp } from "./history.ts";
 import { Replayer } from "./replay.ts";
 
@@ -150,6 +153,43 @@ const saved = end.bytes;
 const reopened = openVwx(saved, "check.vwx").doc.toBytes();
 expect("saved bytes reopen to themselves", same(reopened, saved));
 expect("saved hash matches the reopened drawing's", (await sha256Hex(saved)) === (await sha256Hex(reopened)));
+
+// The history keeps the live drawing's own records (never copied), and the timeline replays them
+// into a second document in the same page. That document must not take over the live one's
+// records: an edit after scrubbing has to find each record where the live drawing has it.
+{
+  const live = openVwx(blankDrawing("mm"), "live.vwx");
+  const begin = live.doc.toBytes();
+  const steps: HistoryOp[] = [];
+  const stop = live.onStep((op) => steps.push(historyOp(op, Date.now())));
+  const first = live.doc.layers()[0].id;
+  const second = live.createLayer("Second", "design", 50);
+  const [a] = live.addObjects(second, [rect(0, 0)]);
+  // these go in before a's records, so a sits further down the live list than in the replay at its step
+  live.addObjects(first, [rect(1000, 0), rect(2000, 0)]);
+  stop();
+  const recorded = live.doc.toBytes();
+  const scrubbed = new Replayer(begin, steps, "live.vwx");
+  scrubbed.seek(steps.length - 1);
+  const recs = (live.doc as Model).recs;
+  expect(
+    "a replay in the same page leaves the live drawing's records where it put them",
+    recs.every((r, i) => r.index === i),
+    `${recs.filter((r, i) => r.index !== i).length} of ${recs.length} moved`,
+  );
+  // the same move on a drawing that never shared its records
+  const alone = openVwx(live.doc.toBytes(), "live.vwx");
+  alone.moveObjects([a], 1000, 0);
+  let moved = "";
+  try {
+    live.moveObjects([a], 1000, 0);
+  } catch (e) {
+    moved = (e as Error).message;
+  }
+  expect("an edit after scrubbing changes the object it names", !moved && same(live.doc.toBytes(), alone.doc.toBytes()), moved);
+  scrubbed.seek(steps.length);
+  expect("the replay still rebuilds the recorded drawing after the live edit", same(scrubbed.doc.toBytes(), recorded));
+}
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

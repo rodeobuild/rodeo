@@ -304,18 +304,10 @@ function inSolid(r: Rec): boolean {
 
 // ---- per-buffer caches ----------------------------------------------------
 
-const recCache = new WeakMap<Uint8Array, Rec>();
+// Caches here hold what a record's bytes say. Where a record sits (its Rec: index, parent and
+// children) belongs to one Model: see Model.recByData.
 const guidCache = new WeakMap<Uint8Array, string>();
 const shapeCache = new WeakMap<Uint8Array, Shape | null>();
-
-export function recOf(d: Uint8Array): Rec {
-  let r = recCache.get(d);
-  if (!r) {
-    r = new Rec(d);
-    recCache.set(d, r);
-  }
-  return r;
-}
 
 export function guidOf(r: Rec): string {
   let g = guidCache.get(r.data);
@@ -850,6 +842,13 @@ export class Model implements VwxDocument {
   datas: Uint8Array[];
   recs: Rec[] = [];
   roots: Rec[] = [];
+  /**
+   * This drawing's Rec for each record's bytes, kept across rebuilds. Not shared with other
+   * Models: the bytes are (a timelapse replays the live drawing's own records into a second Model
+   * in the same page), but rebuild writes where each Rec sits in this drawing's tree, and a shared
+   * Rec would leave the live drawing reading and editing at the other drawing's positions.
+   */
+  private recByData = new WeakMap<Uint8Array, Rec>();
   layerRecs: Rec[] = [];
   names = new Map<number, string>();
   private lineTypeList: LineType[] | null = null;
@@ -920,7 +919,7 @@ export class Model implements VwxDocument {
     this.meta = { createdWith: c.createdWith, savedWith: c.savedWith, build: c.build, units: c.units };
     if ("raw" in c) {
       const recs = splitRecords(c.raw);
-      for (const r of recs) recCache.set(r.data, r);
+      for (const r of recs) this.recByData.set(r.data, r);
       this.datas = recs.map((r) => r.data);
     } else {
       this.datas = c.records;
@@ -931,7 +930,15 @@ export class Model implements VwxDocument {
   /** Re-derive the tree and indices after `datas` changed. */
   rebuild(): void {
     const before = this.recs;
-    this.recs = this.datas.map(recOf);
+    const byData = this.recByData;
+    this.recs = this.datas.map((d) => {
+      let r = byData.get(d);
+      if (!r) {
+        r = new Rec(d);
+        byData.set(d, r);
+      }
+      return r;
+    });
     // made while the old records still hang as they did
     const change = new RecChange(before, this.recs);
     this.roots = buildTree(this.recs);

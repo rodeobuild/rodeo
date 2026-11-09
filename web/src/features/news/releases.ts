@@ -22,6 +22,14 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-09T12:10:00Z",
+    "timelapse-scrub-edits",
+    "Editing after scrubbing the timelapse",
+    `Scrubbing through a drawing's timelapse no longer trips up the edit that follows.
+- The timelapse rebuilds past states from the drawing's own records, and it could leave the open drawing looking for those records where the replay had put them. The next edit could then fail with an error or change the wrong object. Each drawing now keeps track of its own records.`,
+    "records",
+  ),
+  release(
     "2026-11-09T12:09:00Z",
     "edits-keep-reads",
     "Big drawings keep up with each edit",

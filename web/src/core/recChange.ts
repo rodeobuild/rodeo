@@ -1,6 +1,6 @@
 // What an edit changed in a drawing's records, so the model can keep what it read from the rest.
-// Records are immutable once in the list, and the same bytes give back the same Rec, so the
-// changed records are the window between the common prefix and suffix of the lists before and
+// Records are immutable once in the list, and the same bytes give back the same Rec in a drawing
+// (Model.recByData), so the changed records are the window between the common prefix and suffix of the lists before and
 // after the edit. A move on a drawing of a few hundred thousand objects changes a handful.
 
 import type { Rec } from "./records.ts";
@@ -33,14 +33,14 @@ export class RecChange {
     }
     if (before.length === 0 || eb - s + (ea - s) > MOST * Math.max(before.length, after.length)) return;
     const was = before.slice(s, eb);
-    // the same bytes give the same Rec in every drawing, so a record another drawing shares (a
-    // timelapse replay's) can have been hung in that drawing's tree since: then all changed
+    // each drawing hangs its own Recs, so an old record is where `before` has it; should one not
+    // be, what held it can't be read from it: then all changed
     if (!this.hold(was, before)) return;
     this.fresh = after.slice(s, ea);
     this.changed = [...was, ...this.fresh];
   }
 
-  /** Adds `recs` and what holds them in the tree of `list` as it is now; false when one hangs in another tree. */
+  /** Adds `recs` and what holds them in the tree of `list` as it is now; false when one is not where `list` has it. */
   private hold(recs: readonly Rec[], list: readonly Rec[]): boolean {
     // each tree is walked on its own: a record kept across the edit can have another parent after it
     const seen = new Set<Rec>();

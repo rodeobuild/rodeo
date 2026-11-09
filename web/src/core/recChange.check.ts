@@ -174,17 +174,21 @@ step("redo all", () => {
 });
 step("move after redoing", () => s.moveObjects([some(a, 2)], 2, 2), a);
 
-// another drawing holding the same records (a timelapse replay's) hangs them in its own tree:
-// what held a changed record can't be read from it, so everything counts as changed
+// another drawing holding the same records (a timelapse replay's) hangs Recs of its own
+// (Model.recByData): this drawing's stay where it has them, and what an edit changed is found
 const model = doc as Model;
 const before = [...model.recs];
 const twin = new Model(doc.toBytes(), "twin.vwx");
 twin.datas = [model.datas[0], ...model.datas];
 twin.rebuild();
+check(twin.recs[1] !== model.recs[0] && model.recs.every((r, i) => r.index === i), "a drawing sharing the records hangs its own Recs, not this one's");
 const after = before.filter((_, i) => i !== before.length >> 1);
-check(new RecChange(before, after).reached() === null, "records hung in another drawing's tree: everything counts as changed");
-model.rebuild();
-check(new RecChange(model.recs, after).reached()?.size !== undefined, "hung back in its own: what changed is found");
+check(new RecChange(before, after).reached()?.size !== undefined, "with the records shared: what changed is found");
+// a changed record that isn't where its list has it: what held it can't be read, so everything counts as changed
+const gone = before[before.length >> 1];
+gone.index++;
+check(new RecChange(before, after).reached() === null, "a record hung elsewhere: everything counts as changed");
+gone.index--;
 
 console.log(failures ? `${failures} failed` : "all passed");
 process.exit(failures ? 1 : 0);
