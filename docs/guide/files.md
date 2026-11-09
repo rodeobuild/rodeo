@@ -12,6 +12,8 @@ Files saved by Vectorworks 2018 or later open as they are. A file saved by Vecto
 
 **File › Open Recent** lists the drawings opened or saved that way (the browser keeps their file handles, not the drawings). **File › Revert** reopens the saved file.
 
+If opening or saving stops partway, try the command again. A failed save keeps the previous file unchanged and your edits unsaved; keep the drawing open until a save succeeds.
+
 ### Save a Copy As… and Save All
 
 **File › Save a Copy As…** writes the drawing as it stands to a new file, while the window goes on working on its own.
