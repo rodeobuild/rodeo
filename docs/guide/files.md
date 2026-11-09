@@ -37,6 +37,7 @@ If the restore is refused because there is no room on the owner's plan, or the s
 ### Editing together
 
 A cloud upload started outside the live session is refused if live edits arrive while it uploads. Reopen the cloud drawing to see those edits before saving again.
+If a shared edit cannot be applied, collaboration stops and asks you to keep a copy of your work and reopen the cloud drawing.
 
 A cloud drawing shared with editors is edited live: everyone's changes, and their agents', show as they are made. Changes to different things all stand, wherever they are in the drawing, so an agent can build while you move things elsewhere. Two people or agents adding classes, symbols or names at the same moment both keep theirs. A class both add under one name becomes one class holding what each put in it; a name both give to different things gets "(2)" on the later one.
 
