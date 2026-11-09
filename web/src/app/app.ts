@@ -18,7 +18,7 @@ import { Palettes } from "./dock.ts";
 import { byId, nextPaint, nextTask } from "./dom.ts";
 import { chooseSaveTarget, downloadBlob, installFileDrop, pickFile } from "./fileio.ts";
 import { inflater } from "./inflate.ts";
-import { documentBlob, documentBytes, holdOptions, writeToFile } from "./writeOut.ts";
+import { documentBlob, documentBytes, holdOptions, saveSnapshot, writeToFile } from "./writeOut.ts";
 import { floating3d, mountFloatingPanes, redrawFloating, type PlanAt } from "./floatingPanes.ts";
 import { createSymbolDialog, duplicateArrayDialog } from "./arrayDialog.ts";
 import { installAutosave } from "./autosave.ts";
@@ -2762,8 +2762,9 @@ export class App {
         }
         void rememberRecent(target.handle);
       } else {
-        downloadBlob(suggested, await documentBlob(session));
-        if (store.session === session) session.markSaved();
+        await saveSnapshot(session, async () => downloadBlob(suggested, await documentBlob(session)), () => {
+          if (store.session === session) session.markSaved();
+        });
       }
       store.emit("session", "file");
     } catch (err) {
