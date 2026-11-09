@@ -353,6 +353,37 @@ export function bboxOfPoints(pts: Pt[]): BBox | null {
 }
 
 /**
+ * The box round what an arc draws: its end points and each axis end its sweep passes. A full turn
+ * (or one with no sweep given) is its whole ellipse. An arc record's own box, which the file
+ * keeps, is always the whole ellipse's, however little of it the arc draws; this is the box to
+ * fit, cull and select by. Null when the shape is not an arc with a centre and radii.
+ */
+export function arcBounds(s: Shape): BBox | null {
+  const c = s.center;
+  if (s.kind !== "arc" || !c || s.rx === undefined) return null;
+  const rx = s.rx;
+  const ry = s.ry ?? rx;
+  const sweep = s.sweepAngle ?? 360;
+  const start = s.startAngle ?? 0;
+  if (!(Math.abs(sweep) < 360) || !Number.isFinite(start)) return { x0: c.x - rx, y0: c.y - ry, x1: c.x + rx, y1: c.y + ry };
+  // from the low end of the sweep, turned into [0°, 360°) so the axis ends can be counted off
+  const from = sweep < 0 ? start + sweep : start;
+  const lo = ((from % 360) + 360) % 360;
+  const hi = lo + Math.abs(sweep);
+  const at = (deg: number): Pt => ({ x: c.x + rx * Math.cos((deg * Math.PI) / 180), y: c.y + ry * Math.sin((deg * Math.PI) / 180) });
+  const pts = [at(lo), at(hi)];
+  // the axis ends exactly, not as cos 90° comes out
+  const ends: readonly Pt[] = [
+    { x: c.x + rx, y: c.y },
+    { x: c.x, y: c.y + ry },
+    { x: c.x - rx, y: c.y },
+    { x: c.x, y: c.y - ry },
+  ];
+  for (let k = Math.ceil(lo / 90); k * 90 <= hi; k++) pts.push(ends[k % 4]);
+  return bboxOfPoints(pts);
+}
+
+/**
  * Rectangle frame (type 3): bottom-left origin (y, x) at +0x8c, unit x axis
  * stored (sin, cos) at +0x9c / +0xa4, width +0xac, height +0xb4. The bbox at
  * +0x68 is the axis-aligned bounds of the turned rectangle.

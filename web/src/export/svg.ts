@@ -2,7 +2,7 @@
 // so every y is negated. Geometry stays in world millimetres, whatever the document's units.
 
 import { drawsPen } from "../core/attrs.ts";
-import { textBaselines } from "../core/geometry.ts";
+import { arcBounds, textBaselines } from "../core/geometry.ts";
 import { markerPaths } from "../core/markers.ts";
 import { composeAffine } from "../core/encode.ts";
 import { mapShape, withContainers } from "../core/model.ts";
@@ -69,18 +69,13 @@ export function arcPoint(c: Pt, rx: number, ry: number, deg: number): Pt {
   return { x: c.x + rx * Math.cos(a), y: c.y + ry * Math.sin(a) };
 }
 
-/** Bounds of a shape in document coordinates, or null when it has no geometry. */
+/** Bounds of a shape in document coordinates, or null when it has no geometry. An arc's are round the part it draws, not its whole ellipse. */
 export function shapeBounds(s: Shape): BBox | null {
+  // a whole circle or ellipse keeps the box its record has
+  const arc = s.kind === "arc" && (!s.bbox || Math.abs(s.sweepAngle ?? 360) < 360) ? arcBounds(s) : null;
+  if (arc) return arc;
   if (s.bbox) return s.bbox;
-  const pts: Pt[] = [...s.points];
-  if (s.kind === "arc" && s.center && s.rx !== undefined && s.ry !== undefined) {
-    const a0 = s.startAngle ?? 0;
-    const sweep = s.sweepAngle ?? 0;
-    for (let i = 0; i <= ARC_SAMPLES; i++) {
-      pts.push(arcPoint(s.center, Math.abs(s.rx), Math.abs(s.ry), a0 + (sweep * i) / ARC_SAMPLES));
-    }
-  }
-  return unionBounds(pts.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })));
+  return unionBounds(s.points.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })));
 }
 
 /** Bounds of what a shape shows: its bounds cropped to the viewport box it sits in, or null when nothing shows. */

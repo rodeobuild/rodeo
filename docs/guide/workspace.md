@@ -209,7 +209,7 @@ Undo/redo works for every edit, pan/zoom, fit and zoom to selection. Its buttons
 
 ### Fitting the view
 
-- **View › Fit to Objects** (<kbd>⌘6</kbd>) fits the selection, or everything when nothing is selected, in the plan or the 3D view.
+- **View › Fit to Objects** (<kbd>⌘6</kbd>) fits the selection, or everything when nothing is selected, in the plan or the 3D view. An arc counts by the part it draws, so a long shallow arc doesn't widen the fit to its whole circle.
 - **View › Fit to Page Area** fits a sheet's page in the window.
 - **Normal Scale** shows the 2D plan as large as it prints at the active layer's scale.
 

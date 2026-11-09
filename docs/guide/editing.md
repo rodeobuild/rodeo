@@ -10,6 +10,8 @@ Click any object on a visible layer to select it (its layer becomes active), or 
 
 Select with a box: drag it rightwards for what is inside, leftwards for what it touches. You can also select with a polygon clicked point by point or a freehand lasso (the Selection tool's Marquee modes): what is inside, or with Option what it touches.
 
+An arc counts by the part it draws, not its whole circle or ellipse: a box round a shallow arc selects it, and its selection handles sit round the arc.
+
 ### Select Similar
 
 **Select Similar** (Edit menu, and a Basic tool) selects the objects like one, matching on the attributes ticked in Select Similar Preferences (the tool's preferences):

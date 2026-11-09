@@ -1,7 +1,7 @@
 // Per-shape derived data: Path2D in world coordinates, bounds, grip handles
 // and snap points. Built once per shape object and cached by scene.ts.
 
-import type { BBox, NewShape, Pt, Shape, VertexKind } from "../core/index.ts";
+import { arcBounds, type BBox, type NewShape, type Pt, type Shape, type VertexKind } from "../core/index.ts";
 import { bboxOfPoints, degToRad, dist, ellipsePoints } from "./geom.ts";
 
 export interface Geom {
@@ -41,14 +41,14 @@ export function fillsShape(shape: Shape): boolean {
   return isClosedShape(shape) || ((shape.kind === "polygon" || shape.kind === "polyline") && shape.points.length > 2);
 }
 
+/**
+ * The box round what a shape draws, which fitting, culling, picking and selecting go by. An arc's
+ * is round the part it draws: its record's own box (shape.bbox) is its whole ellipse's.
+ */
 export function shapeBBox(shape: Shape): BBox | null {
+  if (shape.kind === "arc" && !isFullArc(shape)) return arcBounds(shape) ?? shape.bbox;
   if (shape.bbox) return shape.bbox;
-  if (shape.kind === "arc") {
-    const r = arcRadii(shape);
-    const c = shape.center;
-    if (!r || !c) return null;
-    return { x0: c.x - r.rx, y0: c.y - r.ry, x1: c.x + r.rx, y1: c.y + r.ry };
-  }
+  if (shape.kind === "arc") return arcBounds(shape);
   return bboxOfPoints(shape.points);
 }
 
