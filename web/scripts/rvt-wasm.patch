@@ -166,7 +166,7 @@ index f405fc8f..aa6f2161 100644
                      });
                  }
 diff --git a/src/ifc/saved_meshes.rs b/src/ifc/saved_meshes.rs
-index 03d4f314..da8c8a0e 100644
+index 03d4f314..117f790e 100644
 --- a/src/ifc/saved_meshes.rs
 +++ b/src/ifc/saved_meshes.rs
 @@ -28,10 +28,12 @@
@@ -277,7 +277,7 @@ index 03d4f314..da8c8a0e 100644
 +    // decode with the round-5 rules; its pass-one counts are kept aside.
 +    let mut retry_ids = BTreeSet::new();
 +    let mut retry: BTreeMap<u64, SavedMeshReport> = BTreeMap::new();
-+    let mut refused: BTreeMap<u64, RefusedRailing> = BTreeMap::new();
++    let mut railings = RailPass::default();
      crate::native_saved_scene::extract_in_batches_with_control(
          rf,
          &options,
@@ -288,7 +288,7 @@ index 03d4f314..da8c8a0e 100644
              let Some(indices) = by_id.get(&element.identity.element_id) else {
                  return Ok(());
              };
-@@ -184,69 +236,670 @@ pub fn attach_scoped_with_control(
+@@ -184,69 +236,743 @@ pub fn attach_scoped_with_control(
              let [index] = indices.as_slice() else {
                  return Ok(());
              };
@@ -309,7 +309,16 @@ index 03d4f314..da8c8a0e 100644
 -            if partial {
 -                report.partial += 1;
 -                return Ok(());
--            }
++            let id = element.identity.element_id;
++            let turned = turned_ids.contains(&id);
++            let mut own = SavedMeshReport::default();
++            admit_element(&element, *index, model, turned, &mut own, curves, &mut railings)?;
++            if own.replaced > 0 || !round5_candidate(&element.meshes.diagnostics, turned) {
++                absorb(&mut report, &own);
++            } else {
++                retry_ids.insert(id);
++                retry.insert(id, own);
+             }
 -            let IfcEntity::BuildingElement {
 -                location_feet: Some(origin),
 -                rotation_radians,
@@ -319,52 +328,9 @@ index 03d4f314..da8c8a0e 100644
 -            } = &mut model.entities[*index]
 -            else {
 -                return Ok(());
--            };
--            let (sin, cos) = (-rotation_radians.unwrap_or(0.0)).sin_cos();
--            let mut vertices = Vec::new();
--            let mut triangles = Vec::new();
--            for primitive in primitives {
--                let base = vertices.len() as u32;
--                vertices.extend(primitive.vertices.iter().map(|p| {
--                    let (dx, dy) = (p[0] - origin[0], p[1] - origin[1]);
--                    [dx * cos - dy * sin, dx * sin + dy * cos, p[2] - origin[2]]
--                }));
--                triangles.extend(
--                    primitive
--                        .triangles
--                        .iter()
--                        .filter(|t| t.iter().all(|&v| (v as usize) < primitive.vertices.len()))
--                        .map(|t| BrepTriangle(base + t[0], base + t[1], base + t[2])),
--                );
--            }
--            if triangles.is_empty() {
--                return Ok(());
--            }
--            report.replaced += 1;
--            report.triangles += triangles.len();
--            *solid_shape = Some(SolidShape::TriangulatedFaceSet {
--                vertices_feet: vertices,
--                triangles,
--            });
--            for property in &mut set.properties {
--                if property.name == "BodySource" {
--                    property.value = PropertyValue::Text(SAVED_MESH_BODY_SOURCE.into());
--                } else if property.name == SPACE_OUTLINE_SOURCE_PROPERTY {
--                    property.value = PropertyValue::Text(SPACE_OUTLINE_SAVED_MESH.into());
--                }
-+            let id = element.identity.element_id;
-+            let turned = turned_ids.contains(&id);
-+            let mut own = SavedMeshReport::default();
-+            admit_element(&element, *index, model, turned, &mut own, curves, &mut refused)?;
-+            if own.replaced > 0 || !round5_candidate(&element.meshes.diagnostics, turned) {
-+                absorb(&mut report, &own);
-+            } else {
-+                retry_ids.insert(id);
-+                retry.insert(id, own);
-             }
-             Ok(())
-         },
-     )?;
++            Ok(())
++        },
++    )?;
 +    // Pass two: only the candidates, decoded with the round-5 rules on. Each
 +    // is kept only if it passes every gate of the admission above; otherwise
 +    // its pass-one counts stand and its box stays.
@@ -391,11 +357,11 @@ index 03d4f314..da8c8a0e 100644
 +                };
 +                let turned = turned_ids.contains(&id);
 +                let mut own = SavedMeshReport::default();
-+                admit_element(&element, *index, model, turned, &mut own, curves, &mut refused)?;
++                admit_element(&element, *index, model, turned, &mut own, curves, &mut railings)?;
 +                if own.replaced > 0 {
 +                    absorb(&mut report, &own);
 +                    retry.remove(&id);
-+                    refused.remove(&id);
++                    railings.refused.remove(&id);
 +                } else if band_candidate(&element.meshes.diagnostics) {
 +                    band_ids.insert(id);
 +                }
@@ -413,7 +379,23 @@ index 03d4f314..da8c8a0e 100644
 +            let band_options = crate::research::native_document::Options {
 +                selected_ids: band_ids,
 +                ..options.clone()
-+            };
+             };
+-            let (sin, cos) = (-rotation_radians.unwrap_or(0.0)).sin_cos();
+-            let mut vertices = Vec::new();
+-            let mut triangles = Vec::new();
+-            for primitive in primitives {
+-                let base = vertices.len() as u32;
+-                vertices.extend(primitive.vertices.iter().map(|p| {
+-                    let (dx, dy) = (p[0] - origin[0], p[1] - origin[1]);
+-                    [dx * cos - dy * sin, dx * sin + dy * cos, p[2] - origin[2]]
+-                }));
+-                triangles.extend(
+-                    primitive
+-                        .triangles
+-                        .iter()
+-                        .filter(|t| t.iter().all(|&v| (v as usize) < primitive.vertices.len()))
+-                        .map(|t| BrepTriangle(base + t[0], base + t[1], base + t[2])),
+-                );
 +            crate::research::native_parametric_surface::NEW_RULES
 +                .store(true, std::sync::atomic::Ordering::Relaxed);
 +            crate::research::native_parametric_surface::BAND_RULES
@@ -433,11 +415,11 @@ index 03d4f314..da8c8a0e 100644
 +                    };
 +                    let turned = turned_ids.contains(&id);
 +                    let mut own = SavedMeshReport::default();
-+                    admit_element(&element, *index, model, turned, &mut own, curves, &mut refused)?;
++                    admit_element(&element, *index, model, turned, &mut own, curves, &mut railings)?;
 +                    if own.replaced > 0 {
 +                        absorb(&mut report, &own);
 +                        retry.remove(&id);
-+                        refused.remove(&id);
++                        railings.refused.remove(&id);
 +                    }
 +                    Ok(())
 +                },
@@ -452,22 +434,44 @@ index 03d4f314..da8c8a0e 100644
 +            absorb(&mut report, own);
 +        }
 +    }
-+    // Pass four: a railing refused only for not filling its record box, with
-+    // the continuous rails its own records sweep added to its mesh (Revit
-+    // keeps a top rail as a profile and the path it follows, with no faces).
-+    // Kept only where the whole then fills the box, or ends at the height its
-+    // records give its highest rail; nothing admitted above changes.
-+    if !refused.is_empty() {
-+        let ids: BTreeSet<u64> = refused.keys().copied().collect();
++    // Pass four: the continuous rails a railing's own records sweep (Revit
++    // keeps a top rail or handrail as a profile and the path it follows, with
++    // no faces), added to its mesh. A railing refused only for not filling its
++    // record box is kept where the whole then fills the box, or ends at the
++    // height its records give its highest rail. A railing drawn above gets
++    // its rails where every one of them is swept and the whole still lies in
++    // its box; nothing else drawn above changes.
++    if !(railings.refused.is_empty() && railings.admitted.is_empty()) {
++        let ids: BTreeSet<u64> =
++            railings.refused.keys().chain(railings.admitted.keys()).copied().collect();
 +        let rails = crate::research::native_rails::railing_rails(rf, &ids)?;
-+        for (id, railing) in refused {
++        for (id, railing) in railings.refused {
 +            if let Some(found) = rails.get(&id) {
 +                admit_railing(railing, found, model, &mut report);
-+            }
+             }
+-            if triangles.is_empty() {
+-                return Ok(());
++        }
++        for (id, index) in railings.admitted {
++            if let Some(found) = rails.get(&id) {
++                add_rails(index, found, model, &mut report);
+             }
+-            report.replaced += 1;
+-            report.triangles += triangles.len();
+-            *solid_shape = Some(SolidShape::TriangulatedFaceSet {
 +        }
 +    }
-     Ok(report)
- }
++    Ok(report)
++}
++
++/// The railings passes one to three leave to pass four, by element id.
++#[derive(Default)]
++struct RailPass {
++    /// Refused by the railing rule alone (RE-303).
++    refused: BTreeMap<u64, RefusedRailing>,
++    /// Drawn from their saved mesh: the entity each one draws.
++    admitted: BTreeMap<u64, usize>,
++}
 +
 +/// A railing's mesh, in its element's frame, that the railing rule refused
 +/// (RE-303), and the entity it would draw.
@@ -505,15 +509,7 @@ index 03d4f314..da8c8a0e 100644
 +        mut triangles,
 +        ..
 +    } = railing;
-+    let (sin, cos) = (-rotation_radians.unwrap_or(0.0)).sin_cos();
-+    for (points, faces) in sweeps {
-+        let base = vertices.len() as u32;
-+        vertices.extend(points.iter().map(|p| {
-+            let (dx, dy) = (p[0] - origin[0], p[1] - origin[1]);
-+            [dx * cos - dy * sin, dx * sin + dy * cos, p[2] - origin[2]]
-+        }));
-+        triangles.extend(faces.iter().map(|t| BrepTriangle(base + t[0], base + t[1], base + t[2])));
-+    }
++    append_rails(&mut vertices, &mut triangles, sweeps, *origin, *rotation_radians);
 +    let top = rails.top.map(|z| z - origin[2]);
 +    if !(railing_mesh_fills_box(&vertices, extrusion.as_ref())
 +        || reaches_railing_top(&vertices, extrusion.as_ref(), top))
@@ -531,6 +527,72 @@ index 03d4f314..da8c8a0e 100644
 +        if property.name == "BodySource" {
 +            property.value = PropertyValue::Text(SAVED_MESH_BODY_SOURCE.into());
 +        }
++    }
++}
++
++/// Pass four's rails for a railing passes one to three drew from its saved
++/// mesh. Revit 2013 and later draw a railing's top rail and handrails as
++/// elements of their own with no faces, so a railing whose balusters and
++/// posts fill its record box comes in without them. They are added where
++/// every one of its continuous rails is swept and the whole still lies in
++/// its record box and reaches each side of it ([`railing_mesh_fills_box`]).
++fn add_rails(
++    index: usize,
++    rails: &crate::research::native_rails::RailingRails,
++    model: &mut IfcModel,
++    report: &mut SavedMeshReport,
++) {
++    let Some(sweeps) = rails.sweeps.as_ref().filter(|s| !s.is_empty()) else {
++        return;
++    };
++    let IfcEntity::BuildingElement {
++        location_feet: Some(origin),
++        rotation_radians,
++        extrusion,
++        solid_shape:
++            Some(SolidShape::TriangulatedFaceSet {
+                 vertices_feet: vertices,
+                 triangles,
+-            });
+-            for property in &mut set.properties {
+-                if property.name == "BodySource" {
+-                    property.value = PropertyValue::Text(SAVED_MESH_BODY_SOURCE.into());
+-                } else if property.name == SPACE_OUTLINE_SOURCE_PROPERTY {
+-                    property.value = PropertyValue::Text(SPACE_OUTLINE_SAVED_MESH.into());
+-                }
++            }),
++        ..
++    } = &mut model.entities[index]
++    else {
++        return;
++    };
++    let (kept_vertices, kept_triangles) = (vertices.len(), triangles.len());
++    append_rails(vertices, triangles, sweeps, *origin, *rotation_radians);
++    if !railing_mesh_fills_box(vertices, extrusion.as_ref()) {
++        vertices.truncate(kept_vertices);
++        triangles.truncate(kept_triangles);
++        return;
++    }
++    report.triangles += triangles.len() - kept_triangles;
++}
++
++/// Swept rails, in world feet, added to a mesh in the frame of an element
++/// placed at `origin` and turned by `rotation` about the vertical.
++fn append_rails(
++    vertices: &mut Vec<[f64; 3]>,
++    triangles: &mut Vec<BrepTriangle>,
++    sweeps: &[crate::research::native_rails::RailMesh],
++    origin: [f64; 3],
++    rotation: Option<f64>,
++) {
++    let (sin, cos) = (-rotation.unwrap_or(0.0)).sin_cos();
++    for (points, faces) in sweeps {
++        let base = vertices.len() as u32;
++        vertices.extend(points.iter().map(|p| {
++            let (dx, dy) = (p[0] - origin[0], p[1] - origin[1]);
++            [dx * cos - dy * sin, dx * sin + dy * cos, p[2] - origin[2]]
++        }));
++        triangles.extend(faces.iter().map(|t| BrepTriangle(base + t[0], base + t[1], base + t[2])));
 +    }
 +}
 +
@@ -592,7 +654,7 @@ index 03d4f314..da8c8a0e 100644
 +    turned: bool,
 +    report: &mut SavedMeshReport,
 +    curves: &dyn Fn(f64) -> Option<CurveReading>,
-+    refused: &mut BTreeMap<u64, RefusedRailing>,
++    railings: &mut RailPass,
 +) -> anyhow::Result<()> {
 +    let primitives = &element.meshes.primitives;
 +    if primitives.is_empty() {
@@ -730,7 +792,9 @@ index 03d4f314..da8c8a0e 100644
 +        // kept for the rail pass (pass four), which can add the rails the
 +        // railing's own records sweep
 +        if !partial {
-+            refused.insert(element.identity.element_id, RefusedRailing { index, vertices, triangles });
++            railings
++                .refused
++                .insert(element.identity.element_id, RefusedRailing { index, vertices, triangles });
 +        }
 +        report.partial += 1;
 +        return Ok(());
@@ -749,6 +813,9 @@ index 03d4f314..da8c8a0e 100644
 +            return Ok(());
 +        }
 +        report.partial_admitted += 1;
++    }
++    if ifc_type.as_str() == "IFCRAILING" {
++        railings.admitted.insert(element.identity.element_id, index);
 +    }
 +    report.replaced += 1;
 +    report.triangles += triangles.len();
@@ -846,14 +913,18 @@ index 03d4f314..da8c8a0e 100644
 +                0 => true,
 +                1 => meshes.excluded_visibility_branches > 0,
 +                _ => false,
-+            }
+             }
+-            Ok(())
+-        },
+-    )?;
+-    Ok(report)
 +            && !crosses_box(vertices, triangles, extrusion);
 +    }
 +    let [axis] = short.as_slice() else {
 +        return false;
 +    };
 +    completed(*axis) && !has_giant_triangle(vertices, triangles, extrusion)
-+}
+ }
 +
 +/// Whether the body's vertices (in the element's frame, the record box
 +/// centred on x and y, from z = 0 to its height) lie within the box to 0.5 ft
@@ -4205,10 +4276,10 @@ index 00000000..05397249
 +
 diff --git a/src/research/native_rails.rs b/src/research/native_rails.rs
 new file mode 100644
-index 00000000..3bf61b3f
+index 00000000..dcfb8332
 --- /dev/null
 +++ b/src/research/native_rails.rs
-@@ -0,0 +1,589 @@
+@@ -0,0 +1,806 @@
 +//! A railing's continuous rails, swept from their native records, and the
 +//! height its highest part reaches.
 +//!
@@ -4218,14 +4289,29 @@ index 00000000..3bf61b3f
 +//! (`m_profileData.m_profileFamSymId`, else its type's `m_profileId`; the
 +//! family's `m_arrProfileLoops`) and the path it follows
 +//! (`Path3dRailPathProvider.m_path3dId`, a `Path3d` whose `CurveLoop` holds
-+//! `GLine`s and `GArc`s in world feet). The profile's top edge lies on the
-+//! path: on the sample projects its loop runs from y = 0 down, and the path
-+//! runs along the top of the railing's record box.
++//! `GLine`s and `GArc`s in world feet). A profile's loop may also hold
++//! `GEllipse`s, whose `m_xLen` and `m_yLen` are its semi-axes (Revit's record
++//! box over a railing with an elliptical rail ends that far from its path).
++//! On the sample projects a profile's loop runs from y = 0 down, or is
++//! centred on y = 0, and a top rail's path runs along the top of its
++//! railing's record box.
++//!
++//! The path is the rail's own: its extensions and its type's offset are in it
++//! already (on the sample projects a handrail type's offset puts its path
++//! that far from its railing's other rails, and Revit's record box ends at
++//! the path plus the profile). Its corners are not rounded in it: where the
++//! type joins rails with fillets (`m_defaultContinuousRailJoinType` 1 and its
++//! `m_filletRadius`), each corner here becomes an arc of that radius tangent
++//! to both segments, in their plane.
 +//!
 +//! The rails here are swept with the profile in each segment's normal plane,
 +//! its y along world up there, mitred where segments meet and capped flat at
-+//! the ends. Only rails these records place exactly are swept: no profile
-+//! offset, turn or flip, no type offset, extension or fillet, and a profile
++//! the ends. An upright segment (a return, or an extension down to the floor)
++//! has no up of its own: there the profile's x stays across the run, as
++//! Revit's record boxes show, which says nothing of which way its y points,
++//! so only a profile centred on the path, the same turned half round, is
++//! swept along one. Only rails these records place exactly are swept: no
++//! profile offset, turn or flip, no joins set rail by rail, and a profile
 +//! that is its own mirror image across its y axis (which side Revit lays a
 +//! profile's x on is not confirmed).
 +
@@ -4324,8 +4410,8 @@ index 00000000..3bf61b3f
 +}
 +
 +/// The points of one curve from its start to its end: a `GLine`'s two ends,
-+/// a `GArc` sampled finely enough to stay within [`ARC_CHORD_FEET`] of it.
-+/// `None` for any other curve.
++/// a `GArc` or `GEllipse` sampled finely enough to stay within
++/// [`ARC_CHORD_FEET`] of it. `None` for any other curve.
 +fn curve_points(curve: &GraphObject) -> Option<Vec<[f64; 3]>> {
 +    let params = curve.fields.get("m_endParams")?.as_array()?;
 +    let [t0, t1] = params.as_slice() else {
@@ -4354,14 +4440,32 @@ index 00000000..3bf61b3f
 +            if radius <= 0.0 {
 +                return None;
 +            }
-+            let step = (2.0 * (1.0 - (ARC_CHORD_FEET / radius).min(1.0)).acos())
-+                .min(std::f64::consts::PI / 24.0);
-+            let count = ((t1 - t0).abs() / step).ceil().clamp(1.0, 512.0) as usize;
++            let count = arc_steps(radius, t1 - t0);
 +            Some(
 +                (0..=count)
 +                    .map(|k| {
 +                        let t = t0 + (t1 - t0) * k as f64 / count as f64;
 +                        [0, 1, 2].map(|i| centre[i] + radius * (t.cos() * x[i] + t.sin() * y[i]))
++                    })
++                    .collect(),
++            )
++        }
++        "GEllipse" => {
++            let centre = point(&curve.fields, "m_center")?;
++            let x = point(&curve.fields, "m_xVec")?;
++            let y = point(&curve.fields, "m_yVec")?;
++            let (a, b) = (number(&curve.fields, "m_xLen")?, number(&curve.fields, "m_yLen")?);
++            if a <= 0.0 || b <= 0.0 {
++                return None;
++            }
++            // no chord of an ellipse strays further than one of a circle of
++            // its larger semi-axis sampled at the same parameter steps
++            let count = arc_steps(a.max(b), t1 - t0);
++            Some(
++                (0..=count)
++                    .map(|k| {
++                        let t = t0 + (t1 - t0) * k as f64 / count as f64;
++                        [0, 1, 2].map(|i| centre[i] + a * t.cos() * x[i] + b * t.sin() * y[i])
 +                    })
 +                    .collect(),
 +            )
@@ -4372,6 +4476,14 @@ index 00000000..3bf61b3f
 +
 +fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
 +    (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f64>().sqrt()
++}
++
++/// How many chords keep an arc of `radius` through `angle` radians within
++/// [`ARC_CHORD_FEET`] of it.
++fn arc_steps(radius: f64, angle: f64) -> usize {
++    let step = (2.0 * (1.0 - (ARC_CHORD_FEET / radius).min(1.0)).acos())
++        .min(std::f64::consts::PI / 24.0);
++    (angle.abs() / step).ceil().clamp(1.0, 512.0) as usize
 +}
 +
 +/// The curves of the `CurveLoop` at `loop_value` (a pointer from object
@@ -4441,6 +4553,69 @@ index 00000000..3bf61b3f
 +    })
 +}
 +
++/// Whether `outline` is the same turned half round about the path, to 1e-4 ft.
++fn centred(outline: &[[f64; 2]]) -> bool {
++    outline.iter().all(|p| {
++        outline
++            .iter()
++            .any(|q| (q[0] + p[0]).abs() <= 1e-4 && (q[1] + p[1]).abs() <= 1e-4)
++    })
++}
++
++/// `path` with each corner rounded by an arc of `radius` tangent to the two
++/// segments that meet there, in their plane, sampled within
++/// [`ARC_CHORD_FEET`]. `None` where a segment is too short for the arcs at
++/// its two ends.
++fn filleted(path: &[[f64; 3]], radius: f64) -> Option<Vec<[f64; 3]>> {
++    let n = path.len();
++    if radius <= 0.0 || n < 3 {
++        return Some(path.to_vec());
++    }
++    let directions: Vec<[f64; 3]> = (0..n - 1)
++        .map(|j| unit(sub(path[j + 1], path[j])))
++        .collect::<Option<_>>()?;
++    // the turn at each inner corner and how far its arc reaches along each
++    // segment from it
++    let turns: Vec<f64> = (1..n - 1)
++        .map(|j| dot(directions[j - 1], directions[j]).clamp(-1.0, 1.0).acos())
++        .collect();
++    let reach: Vec<f64> = turns
++        .iter()
++        .map(|&turn| if turn < 1e-6 { 0.0 } else { radius * (turn / 2.0).tan() })
++        .collect();
++    for j in 0..n - 1 {
++        let at_start = if j > 0 { reach[j - 1] } else { 0.0 };
++        let at_end = if j + 2 < n { reach[j] } else { 0.0 };
++        let used = at_start + at_end;
++        if !used.is_finite() || used > distance(path[j], path[j + 1]) + 1e-9 {
++            return None;
++        }
++    }
++    let mut out = vec![path[0]];
++    for j in 1..n - 1 {
++        let (turn, d) = (turns[j - 1], reach[j - 1]);
++        if d == 0.0 {
++            out.push(path[j]);
++            continue;
++        }
++        let (a, b) = (directions[j - 1], directions[j]);
++        let start = [0, 1, 2].map(|k| path[j][k] - a[k] * d);
++        let end = [0, 1, 2].map(|k| path[j][k] + b[k] * d);
++        // the centre lies on the corner's bisector, inside it
++        let inward = unit(sub(b, a))?;
++        let centre = [0, 1, 2].map(|k| path[j][k] + inward[k] * radius / (turn / 2.0).cos());
++        let (from, to) = (sub(start, centre), sub(end, centre));
++        let count = arc_steps(radius, turn);
++        out.extend((0..=count).map(|k| {
++            let s = k as f64 / count as f64;
++            let (p, q) = (((1.0 - s) * turn).sin() / turn.sin(), (s * turn).sin() / turn.sin());
++            [0, 1, 2].map(|i| centre[i] + p * from[i] + q * to[i])
++        }));
++    }
++    out.push(path[n - 1]);
++    Some(out)
++}
++
 +fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 +    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 +}
@@ -4462,13 +4637,19 @@ index 00000000..3bf61b3f
 +    (length > 1e-9).then(|| a.map(|c| c / length))
 +}
 +
-+/// `outline` swept along `path`: in each segment's normal plane, its y along
-+/// world up there and its x to the right looking along the path, mitred
-+/// where segments meet and capped flat at both ends. `None` for a path with
-+/// an upright segment or one that turns back on itself, and for an outline
-+/// that does not cut into triangles.
-+pub fn sweep(path: &[[f64; 3]], outline: &[[f64; 2]]) -> Option<RailMesh> {
++/// `outline` swept along `path`, its corners first rounded to `fillet` feet
++/// where that is above zero ([`filleted`]): in each segment's normal plane,
++/// its y along world up there and its x to the right looking along the
++/// path, mitred where segments meet and capped flat at both ends. Along an
++/// upright segment its x stays across the run, as on the segments either
++/// side, which must run in one upright plane with it; only an outline
++/// centred on the path ([`centred`]) is swept along one. `None` for a path
++/// that turns back on itself or has any other upright segment, and for an
++/// outline that does not cut into triangles.
++pub fn sweep(path: &[[f64; 3]], outline: &[[f64; 2]], fillet: f64) -> Option<RailMesh> {
 +    let mut path: Vec<[f64; 3]> = path.to_vec();
++    path.dedup_by(|b, a| distance(*a, *b) <= 1e-6);
++    let mut path = filleted(&path, fillet)?;
 +    path.dedup_by(|b, a| distance(*a, *b) <= 1e-6);
 +    let n = path.len();
 +    if n < 2 {
@@ -4495,18 +4676,54 @@ index 00000000..3bf61b3f
 +        .map(|j| unit(sub(path[j + 1], path[j])))
 +        .collect::<Option<_>>()?;
 +    let up = [0.0, 0.0, 1.0];
-+    let frames: Vec<([f64; 3], [f64; 3])> = tangents
++    // an upright segment has no up of its own
++    let own: Vec<Option<([f64; 3], [f64; 3])>> = tangents
 +        .iter()
 +        .map(|&t| {
 +            let flat = sub(up, t.map(|c| c * dot(up, t)));
-+            // an upright segment has no up of its own
 +            if dot(flat, flat) < 1e-6 {
 +                return None;
 +            }
 +            let y = unit(flat)?;
 +            Some((cross3(t, y), y))
 +        })
-+        .collect::<Option<_>>()?;
++        .collect();
++    let mut frames: Vec<([f64; 3], [f64; 3])> = Vec::with_capacity(n - 1);
++    for (j, frame) in own.iter().enumerate() {
++        if let Some(frame) = frame {
++            frames.push(*frame);
++            continue;
++        }
++        if !centred(outline) {
++            return None;
++        }
++        // across the run, as on the nearest segments either side that have
++        // an up, which must agree
++        let before = own[..j].iter().rev().flatten().next().map(|f| f.0);
++        let after = own[j + 1..].iter().flatten().next().map(|f| f.0);
++        let x = match (before, after) {
++            (Some(a), Some(b)) if dot(a, b).abs() >= 1.0 - 1e-6 => a,
++            (Some(a), None) | (None, Some(a)) => a,
++            _ => return None,
++        };
++        frames.push((x, cross3(x, tangents[j])));
++    }
++    // Each segment's frame is the one before it mirrored in the plane of
++    // their joint, so the section is the same either side of the mitre. Where
++    // it comes out turned half round instead (round an upright return), it
++    // is turned to match, which only an outline centred on the path allows.
++    for j in 1..n - 1 {
++        let normal = unit([0, 1, 2].map(|k| tangents[j - 1][k] + tangents[j][k]))?;
++        let x = frames[j - 1].0;
++        let mirrored = sub(x, normal.map(|c| 2.0 * dot(x, normal) * c));
++        if dot(mirrored, frames[j].0) < 0.0 {
++            if !centred(outline) {
++                return None;
++            }
++            let (x, y) = frames[j];
++            frames[j] = (x.map(|c| -c), y.map(|c| -c));
++        }
++    }
 +    let place = |p: [f64; 3], (x, y): ([f64; 3], [f64; 3]), u: f64, v: f64| {
 +        [0, 1, 2].map(|k| p[k] + x[k] * u + y[k] * v)
 +    };
@@ -4592,6 +4809,15 @@ index 00000000..3bf61b3f
 +    if !(zero("m_angle") && zero("m_xOffset") && zero("m_yOffset"))
 +        || data.get("m_flippedX")?.as_bool()?
 +    {
++        return None;
++    }
++    // joins set rail by rail, rather than by its type, are not read
++    if first(graph, "ContinuousRailJoinInfoCell").is_some_and(|(_, cell)| {
++        cell.fields
++            .get("m_joinInfoItems")
++            .and_then(Value::as_array)
++            .is_none_or(|items| !items.is_empty())
++    }) {
 +        return None;
 +    }
 +    let (_, provider) = first(graph, "Path3dRailPathProvider")?;
@@ -4711,14 +4937,13 @@ index 00000000..3bf61b3f
 +    third.extend(graphs(rf, &type_profiles)?);
 +    let swept = |rail: &Rail| -> Option<RailMesh> {
 +        let type_fields = &third.get(&rail.rail_type?)?.objects.first()?.fields;
-+        let zero = |name: &str| number(type_fields, name).is_none_or(|x| x == 0.0);
-+        if !(zero("m_offset")
-+            && zero("m_startExtensionLength")
-+            && zero("m_endExtensionLength")
-+            && zero("m_filletRadius"))
-+        {
-+            return None;
-+        }
++        // the type's offset and extensions are in the path already; its
++        // joins are mitred (0) or filleted (1) to its fillet radius
++        let fillet = match type_fields.get("m_defaultContinuousRailJoinType")?.as_i64()? {
++            0 => 0.0,
++            1 => number(type_fields, "m_filletRadius").filter(|r| *r >= 0.0)?,
++            _ => return None,
++        };
 +        let profile = rail
 +            .profile
 +            .filter(|id| *id > 0)
@@ -4737,7 +4962,7 @@ index 00000000..3bf61b3f
 +        if !open {
 +            return None;
 +        }
-+        sweep(&points, &outline)
++        sweep(&points, &outline, fillet)
 +    };
 +    Ok(found
 +        .into_iter()
@@ -4768,7 +4993,7 @@ index 00000000..3bf61b3f
 +        let s = 1.0 / 6.0;
 +        let outline = [[s / 2.0, 0.0], [s / 2.0, -s], [-s / 2.0, -s], [-s / 2.0, 0.0]];
 +        let path = [[0.0, 0.0, 0.0], [0.0, 3.0, 1.5], [0.0, 6.0, 1.5]];
-+        let (vertices, triangles) = sweep(&path, &outline).expect("swept");
++        let (vertices, triangles) = sweep(&path, &outline, 0.0).expect("swept");
 +        assert_eq!(triangles.len(), 2 * 4 * 2 + 2 * 2);
 +        // the top edge runs along the path and the rail hangs below it
 +        let top = vertices.iter().map(|v| v[2]).fold(f64::NEG_INFINITY, f64::max);
@@ -4793,9 +5018,72 @@ index 00000000..3bf61b3f
 +    #[test]
 +    fn refuses_an_upright_path_and_a_lopsided_profile() {
 +        let outline = [[0.1, 0.0], [0.1, -0.1], [-0.1, -0.1], [-0.1, 0.0]];
-+        assert!(sweep(&[[0.0, 0.0, 0.0], [0.0, 0.0, 3.0]], &outline).is_none());
++        assert!(sweep(&[[0.0, 0.0, 0.0], [0.0, 0.0, 3.0]], &outline, 0.0).is_none());
 +        assert!(!mirror_symmetric(&[[0.1, 0.0], [0.1, -0.1], [-0.2, -0.1], [-0.2, 0.0]]));
 +        assert!(mirror_symmetric(&outline));
++        // hanging below its path, a profile along an upright return could
++        // face either way, so it is not swept
++        let return_path = [[0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 2.0], [0.0, 0.0, 2.0]];
++        assert!(sweep(&return_path, &outline, 0.0).is_none());
++    }
++
++    /// Every edge of the mesh bounds two triangles once coincident vertices
++    /// are merged.
++    fn watertight((vertices, triangles): &RailMesh) -> bool {
++        let key = |v: [f64; 3]| v.map(|c| (c * 1e6).round() as i64);
++        let mut edges = std::collections::HashMap::new();
++        for t in triangles {
++            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
++                let (a, b) = (key(vertices[a as usize]), key(vertices[b as usize]));
++                *edges.entry(if a < b { (a, b) } else { (b, a) }).or_insert(0) += 1;
++            }
++        }
++        edges.values().all(|&n| n == 2)
++    }
++
++    #[test]
++    fn rounds_corners_with_tangent_arcs_of_the_fillet_radius() {
++        let path = [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 2.0, 0.0]];
++        let r = 1.0 / 6.0;
++        let round = filleted(&path, r).expect("filleted");
++        // the arc leaves the first segment and meets the second where it is
++        // tangent to them, r from the corner at a right angle
++        assert!(round.iter().any(|p| distance(*p, [2.0 - r, 0.0, 0.0]) < 1e-12));
++        assert!(round.iter().any(|p| distance(*p, [2.0, r, 0.0]) < 1e-12));
++        let centre = [2.0 - r, r, 0.0];
++        let arc: Vec<_> = round[1..round.len() - 1].to_vec();
++        assert!(arc.len() > 3);
++        assert!(arc.iter().all(|p| (distance(*p, centre) - r).abs() < 1e-12));
++        // too short a segment between two corners for both arcs
++        assert!(filleted(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.2, 0.0], [2.0, 0.2, 0.0]], r).is_none());
++        // a straight run is left alone
++        assert_eq!(filleted(&[[0.0; 3], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]], r).unwrap().len(), 3);
++        let outline = [[0.05, 0.0], [0.05, -0.1], [-0.05, -0.1], [-0.05, 0.0]];
++        assert!(watertight(&sweep(&path, &outline, r).expect("swept")));
++    }
++
++    #[test]
++    fn sweeps_a_centred_profile_round_an_upright_return() {
++        // an ellipse's points, centred on a path that runs out,
++        // rises, and comes back over itself
++        let outline: Vec<[f64; 2]> = (0..32)
++            .map(|k| {
++                let t = k as f64 * std::f64::consts::PI / 16.0;
++                [0.1 * t.cos(), 0.08 * t.sin()]
++            })
++            .collect();
++        assert!(centred(&outline));
++        let path = [[0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 2.0], [0.0, 0.0, 2.0]];
++        let mesh = sweep(&path, &outline, 0.2).expect("swept");
++        assert!(watertight(&mesh));
++        // across the run the rail is the profile's x wide; along the
++        // upright, its y
++        let (lo, hi) = mesh.0.iter().fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), v| {
++            ([0, 1, 2].map(|k| lo[k].min(v[k])), [0, 1, 2].map(|k| hi[k].max(v[k])))
++        });
++        assert!((hi[0] - 0.1).abs() < 1e-3 && (lo[0] + 0.1).abs() < 1e-3);
++        assert!((hi[1] - (1.0 + 0.08)).abs() < 1e-3);
++        assert!((hi[2] - (2.0 + 0.08)).abs() < 1e-3 && (lo[2] - (1.0 - 0.08)).abs() < 1e-3);
 +    }
 +}
 diff --git a/src/research/native_saved_mesh.rs b/src/research/native_saved_mesh.rs

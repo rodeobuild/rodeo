@@ -22,6 +22,15 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-09T12:05:00Z",
+    "revit-handrails",
+    "Revit railings keep their handrails",
+    `Railings from Revit come in with their top rails and handrails in many more cases.
+- Railings whose posts, balusters or panels were drawn without the rail along their top now have it: Rodeo sweeps each rail from Revit's records and adds it.
+- Handrails whose type rounds their corners come in rounded, and round and oval rails that turn down at their ends follow their returns, so more stair railings that were see-through boxes are drawn whole.`,
+    "furniture",
+  ),
+  release(
     "2026-11-09T12:04:00Z",
     "dwg-big-drawings",
     "Big DWG drawings come in, and fast",

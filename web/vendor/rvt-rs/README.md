@@ -25,13 +25,17 @@ model's levels, elements, geometry and parameters with it, in the import's worke
   point end read as its apex, islands meshed beside the outline, and constraints recovered by
   cavity retriangulation; on that pass a boundary chord too coarse for the tolerance is split at one point on the shared edge in both faces, and a curved edge may sit up to 1e-4 ft off the plane beside it; it also reads Hermite surfaces (bicubic patches), meshed inside their trim loops, and joins model-space trim loops within 1e-3 ft. The retry also takes a trim edge the triangulation can't recover, splits a shared edge against a flat neighbour (the plane's outline takes the same point), and reads a turned element's lines in its own frame, where they may complete any axis of its box (one short axis may stay open for parts Revit hides, and a strip lying along one axis, such as a moulding, doesn't count as spanning the box). A curved shell the retry still refuses for open edges is decoded a third time with its ruled faces gridded in bands along their twist, rows never closer than the display tolerance, and only each face's boundary vertices joined in the rim test. The retry is kept only where the element then passes every check. An element with
   up to four faces (at most a tenth) that did not decode is drawn from the rest where they fill its
-  box on every axis with no triangle spanning it; railings excepted. A railing whose mesh doesn't
-  fill its box is tried once more with its top rail and handrails, which Revit keeps as a profile
-  and a path with no faces, swept from their own records (the profile family's loop along the
-  path, mitred where it bends and capped at its ends; only rails placed exactly, with profiles
-  symmetric about their y axis), and kept where the whole fills its box or ends at the top its
-  records give it (the top of its path plus its type's highest rail).
+  box on every axis with no triangle spanning it; railings excepted. A railing's top rail and handrails, which Revit keeps as a profile and a
+  path with no faces, are swept from their own records: the profile family's loop (lines, arcs or
+  ellipses) along the path, which already holds the rail's extensions and offset; mitred where it
+  bends, or rounded to the type's fillet radius where its type joins rails with fillets; capped at
+  its ends; along an upright return or floor extension, only a profile centred on the path. Only
+  rails placed exactly are swept, with profiles symmetric about their y axis and no joins set rail
+  by rail. A railing drawn from its saved mesh gets its rails where all of them sweep and the whole
+  stays in its box. A railing whose mesh doesn't fill its box is tried once more with them, and
+  kept where the whole fills its box or ends at the top its records give it (the top of its path
+  plus its type's highest rail).
 - Built with rustc 1.97.1 and wasm-bindgen 0.2.118 (`--target web --out-name rvt`).
-- `rvt_bg.wasm` sha256 `35057d38fe266d33dbbdc47e89c21e49a80da1008f0750b9bfeef27e065048a1`.
+- `rvt_bg.wasm` sha256 `8e060b3e476d7c25a7ab8220e44094a6c85e37f3100e1e4631ff51fe9de4cdbc`.
 
 Rebuild with `scripts/rvt-wasm.sh [tag]`. These files are generated: don't edit them.
