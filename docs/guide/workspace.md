@@ -130,7 +130,7 @@ Inside Object Info, Attributes and Visualization, a click on a section's heading
 
 **Window › Agents** opens the Agents tab beside Navigation. Ask in plain words for anything in the drawing: the agent reads, looks at and changes it while you watch, and hands parts of big jobs to helper agents. Sign in to use it; where the server sells AI credit, it needs some.
 
-Available credit excludes reservations for running agent requests and cloud renders. Each reservation is counted once and released when its request finishes.
+While an agent's request or a cloud render runs, some of your credit is set aside for it, and when it ends you are charged what it cost.
 
 The chat follows the newest message as it streams. Scroll up to read back and it stays where you put it; the round arrow at its foot brings you back to the latest. While the agent thinks, its Thinking line shows what it is on: click it to read the whole of it.
 

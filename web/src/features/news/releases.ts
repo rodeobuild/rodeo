@@ -22,6 +22,20 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-09T12:08:00Z",
+    "safer-saving",
+    "Safer saving, restoring and recovery",
+    `Seven fixes contributed by BIM4GIB, so work isn't lost when something goes wrong.
+- A save that stops partway leaves the file as it was, rather than writing an empty drawing.
+- Every open drawing with unsaved changes, in background tabs too, keeps its own copy in the browser for after a crash, and copies no one recovers are cleared after seven days.
+- Changes made while Save downloads a copy stay unsaved, so the next save includes them.
+- Restoring an older cloud version that can't be saved keeps the live session's changes, and everyone reloads only once it has saved.
+- If someone else's change can't be applied in a shared drawing, editing together stops with a message, rather than the copies drifting apart.
+- Credit set aside for a cloud render is no longer held again by each agent request, which could leave credit looking used up.
+- A file cut short is refused with a clear message.`,
+    "cloud",
+  ),
+  release(
     "2026-11-09T12:07:00Z",
     "plants-grid-arcs",
     "Plants drawn whole, a faster Visibility Grid, and arcs that fit",

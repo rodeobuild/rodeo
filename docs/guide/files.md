@@ -6,19 +6,15 @@ This page covers opening and saving drawings, autosave, working with several dra
 
 ### Open, Save and Open Recent
 
-A drawing whose settings extend beyond its available bytes is refused when opening.
-
 Open a `.vwx` file with **Open** or by dropping it on the window. **Open** also opens DWG files and Revit and Archicad projects as new drawings, as described in [Importing, exporting and printing](import-export.md). **Save** writes back to the same file where the browser allows it (Chrome/Edge File System Access API); otherwise it downloads a copy.
 
-Files saved by Vectorworks 2018 or later open as they are. A file saved by Vectorworks 2013 opens converted to the current format, its 2D only: lines, shapes, text, symbols, plug-in objects as drawn, layers, sheets and classes. Its 3D objects, images, worksheets, textures and plug-ins' data come in empty or are left out, and **Save** asks where to write, so the 2013 file stays as it was. Files from Vectorworks 2014 to 2017 are untested, and older ones are refused with the year they were saved in.
+Files saved by Vectorworks 2018 or later open as they are. A file saved by Vectorworks 2013 opens converted to the current format, its 2D only: lines, shapes, text, symbols, plug-in objects as drawn, layers, sheets and classes. Its 3D objects, images, worksheets, textures and plug-ins' data come in empty or are left out, and **Save** asks where to write, so the 2013 file stays as it was. Files from Vectorworks 2014 to 2017 are untested, and older ones are refused with the year they were saved in. A file cut short, such as one only partly downloaded, is refused with a message saying so.
 
 **File › Open Recent** lists the drawings opened or saved that way (the browser keeps their file handles, not the drawings). **File › Revert** reopens the saved file.
 
-If opening or saving stops partway, try the command again. A failed save keeps the previous file unchanged and your edits unsaved; keep the drawing open until a save succeeds.
+If opening or saving stops partway, try the command again. A save that fails leaves the file as it was and your changes unsaved, so keep the drawing open until a save goes through. When **Save** downloads a copy, changes you make while it is being written stay unsaved, and the next save includes them.
 
 ### Save a Copy As… and Save All
-
-Local edits, undo and redo made while a download is being prepared remain unsaved; save again to include them. Other people’s live edits do not mark your work unsaved.
 
 **File › Save a Copy As…** writes the drawing as it stands to a new file, while the window goes on working on its own.
 
@@ -26,9 +22,9 @@ Local edits, undo and redo made while a download is being prepared remain unsave
 
 ### Autosave
 
-While a drawing has unsaved changes, its own copy is kept in the browser every 5 minutes (including background drawing tabs), and offered back when Rodeo starts after a crash or a closed tab. **Edit › Preferences…** sets how often, or turns it off.
+While a drawing has unsaved changes, a copy of it is kept in the browser every 5 minutes, one for each open drawing, those in background tabs too. The copies are offered back when Rodeo starts after a crash or a closed tab, and a recovered drawing opens with its changes unsaved: save it to keep them. **Edit › Preferences…** sets how often, or turns it off.
 
-Saving or discarding a drawing removes only its copy. Recovered copies open unsaved. Abandoned copies expire after seven days; save recovered work to keep it. One drawing is copied per timer tick. Active windows are protected where browser locks are available; cleanup always preserves a copy updated after its recovery dialog opened.
+Saving or closing a drawing removes its copy, and a copy no one recovers is deleted after seven days. Another Rodeo window that is still open keeps its own copies.
 
 **Limits:** drawings over 150 MB are not copied, since writing one out takes as much memory again.
 
@@ -42,12 +38,11 @@ If the restore is refused because there is no room on the owner's plan, or the s
 
 ### Editing together
 
-A cloud upload started outside the live session is refused if live edits arrive while it uploads. Reopen the cloud drawing to see those edits before saving again.
-If a shared edit cannot be applied, collaboration stops and asks you to keep a copy of your work and reopen the cloud drawing.
-
 A cloud drawing shared with editors is edited live: everyone's changes, and their agents', show as they are made. Changes to different things all stand, wherever they are in the drawing, so an agent can build while you move things elsewhere. Two people or agents adding classes, symbols or names at the same moment both keep theirs. A class both add under one name becomes one class holding what each put in it; a name both give to different things gets "(2)" on the later one.
 
 Only two changes to the same thing at the same moment clash, such as two renames of one class: the later one is undone, with a message saying so.
+
+Should a change from someone else fail to apply here, editing together stops with a message: keep a copy of your work and reopen the drawing. A file uploaded over a cloud drawing from outside its live session is refused if someone edits it live meanwhile; reopen the drawing to see their changes first.
 
 **Limits:** when a change of yours is made again because someone else's came first, Undo can't take it back, nor what you did before it. A Rodeo page open since before an update stops editing live and asks to be reloaded.
 
