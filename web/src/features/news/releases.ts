@@ -22,6 +22,16 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-09T12:07:00Z",
+    "plants-grid-arcs",
+    "Plants drawn whole, a faster Visibility Grid, and arcs that fit",
+    `Three fixes from work that was finished but not yet out.
+- Image props whose panels take the prop's texture, as many plant symbols do, show the picture once across each panel in 3D, instead of tiled into a grid of tiny copies.
+- The Visibility Grid sets a whole row or column of cells as one edit, so painting it on a big drawing takes a moment rather than minutes.
+- Zoom to fit, selection boxes and what the view draws go by the part of an arc that is drawn, not its whole circle, so a short arc of a huge circle no longer pushes the view far out.`,
+    "grid",
+  ),
+  release(
     "2026-11-09T12:06:00Z",
     "pdf-pictures",
     "Pictures in PDFs come in",

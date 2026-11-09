@@ -1357,7 +1357,11 @@ x along its first edge, y against its normal, z up its face; key 7's axes
 and origin are given in that frame, and the image spans the texture's size
 × scale across and that × the image's height over width up. Every image prop's panel in a private sample (about
 5,000) comes out exactly 0..1 across and up so.
-Objects without their own texture show their container's.
+Objects without their own texture show their container's. An image prop is
+mapped 6, and a panel of it with no texture of its own (30 in The Cube's
+plant symbols, placed thousands of times) shows the image once across and up
+the panel in that same frame, not tiled at the texture's size (25.4 mm for
+most props); the 112 panels with their own mapping come out the same so.
 
 ### 7.2 Worksheets (18) and worksheet images (56)
 

@@ -63,7 +63,10 @@
 // (0: image props) places the image in the polygon's own frame: from its first
 // vertex, x along its first edge, z up its face and y against its normal; key 7
 // gives the image's u and v axes and its origin there, and the image spans the
-// texture's size x the part's scale across, in proportion up (key 6).
+// texture's size x the part's scale across, in proportion up (key 6). An image
+// prop is mapped 6, and a panel of it with no texture of its own shows its
+// image once across and up the panel, in that same frame (not one tile of the
+// texture's size, an inch for most props).
 //
 // Colours: untextured faces show their fill as Top/Plan paints it, with the
 // class's attributes where the object takes them by class: a solid or bitmap
@@ -132,6 +135,7 @@ const PLACE_KEY = 6;
 const AXES_KEY = 7;
 const PLANE_MAPPING = 0;
 const UV_MAPPING = 5;
+const FIT_MAPPING = 6;
 /** "TeMe" key holding u, v per vertex */
 const UV_KEY = 2;
 /** Owners whose body is placed by their own matrix. */
@@ -1590,7 +1594,53 @@ function planeUvs(ctx: Ctx, r: Rec, tris: Float64Array): Float64Array | null {
   const width = res.imageSize * scaleU;
   const height = res.imageSize * scaleV * (res.imagePixels.height / res.imagePixels.width);
   if (!(width > 0) || !(height > 0)) return null;
-  // the polygon's frame: its first vertex, x along its first edge, y against its normal, z up its face
+  const f = polyFrame(r);
+  if (!f) return null;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const out = new Float64Array((tris.length / 3) * 2);
+  for (let i = 0, j = 0; i + 2 < tris.length; i += 3, j += 2) {
+    const q = sub([tris[i], tris[i + 1], tris[i + 2]], f.o);
+    const local: Vec3 = [dot(q, f.x) - axes[9], dot(q, f.y) - axes[10], dot(q, f.z) - axes[11]];
+    const su = dot(local, [axes[0], axes[1], axes[2]]) - offsetU;
+    const sv = dot(local, [axes[3], axes[4], axes[5]]) - offsetV;
+    out[j] = (su * cos + sv * sin) / width;
+    out[j + 1] = (sv * cos - su * sin) / height;
+  }
+  return out;
+}
+
+/** True when a 3D polygon shows its parent's texture mapped to fit (an image prop's panel without a mapping of its own). */
+function fitsParent(doc: Model, parent: Rec, r: Rec): boolean {
+  const ttwr = tdmdRec(parent, "ttwr");
+  return ttwr !== null && tdmdInts(ttwr, MAPPING_KEY)[0] === FIT_MAPPING && textureOf(doc, parent, -1) > 0 && textureOf(doc, r, -1) < 0;
+}
+
+/** Texture coordinates spreading the image once over a 3D polygon's triangles, across and up its own frame; null when it has none. */
+function fitUvs(r: Rec, tris: Float64Array): Float64Array | null {
+  const f = polyFrame(r);
+  if (!f || !tris.length) return null;
+  const out = new Float64Array((tris.length / 3) * 2);
+  for (let i = 0, j = 0; i + 2 < tris.length; i += 3, j += 2) {
+    const q = sub([tris[i], tris[i + 1], tris[i + 2]], f.o);
+    out[j] = dot(q, f.x);
+    out[j + 1] = dot(q, f.z);
+  }
+  for (let k = 0; k < 2; k++) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let j = k; j < out.length; j += 2) {
+      lo = Math.min(lo, out[j]);
+      hi = Math.max(hi, out[j]);
+    }
+    if (!(hi > lo)) return null;
+    for (let j = k; j < out.length; j += 2) out[j] = (out[j] - lo) / (hi - lo);
+  }
+  return out;
+}
+
+/** A 3D polygon's own frame: its first vertex, x along its first edge, y against its normal, z up its face; null when it has none. */
+function polyFrame(r: Rec): { o: Vec3; x: Vec3; y: Vec3; z: Vec3 } | null {
   const d = r.data;
   const n = u16(d, POLY3D_COUNT);
   const p = (i: number): Vec3 => [f64(d, POLY3D_VERTS + 24 * i), f64(d, POLY3D_VERTS + 24 * i + 8), f64(d, POLY3D_VERTS + 24 * i + 16)];
@@ -1609,20 +1659,7 @@ function planeUvs(ctx: Ctx, r: Rec, tris: Float64Array): Float64Array | null {
   }
   const nn = unit([nx, ny, nz]);
   if (!e || !nn) return null;
-  const up = cross(nn, e);
-  const against: Vec3 = [-nn[0], -nn[1], -nn[2]];
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
-  const out = new Float64Array((tris.length / 3) * 2);
-  for (let i = 0, j = 0; i + 2 < tris.length; i += 3, j += 2) {
-    const q = sub([tris[i], tris[i + 1], tris[i + 2]], o);
-    const local: Vec3 = [dot(q, e) - axes[9], dot(q, against) - axes[10], dot(q, up) - axes[11]];
-    const su = dot(local, [axes[0], axes[1], axes[2]]) - offsetU;
-    const sv = dot(local, [axes[3], axes[4], axes[5]]) - offsetV;
-    out[j] = (su * cos + sv * sin) / width;
-    out[j + 1] = (sv * cos - su * sin) / height;
-  }
-  return out;
+  return { o, x: e, y: [-nn[0], -nn[1], -nn[2]], z: cross(nn, e) };
 }
 
 /** The object's own texture: a name index, 0 for "by class", -1 for none, null when it has no texture record. */
@@ -2036,7 +2073,7 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
     }
     if (c.type === POLY3D) {
       const g = poly3dGeometry(c);
-      const uvs = g ? planeUvs(ctx, c, g.triangles) : null;
+      const uvs = g ? planeUvs(ctx, c, g.triangles) ?? (fitsParent(ctx.doc, parent, c) ? fitUvs(c, g.triangles) : null) : null;
       if (g) emit(ctx, uvs ? { ...g, uvs } : g, m, c, top);
       continue;
     }
