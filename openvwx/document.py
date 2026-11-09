@@ -1,6 +1,7 @@
 """High-level document model: layers, classes, geometry, edits, save."""
 
 import struct
+from functools import cached_property
 
 from . import container, geometry, records
 
@@ -18,8 +19,29 @@ CLASS_VIS_OFFSET = 0xB6
 
 
 def _read_str(data, off):
+    if off < 0 or off + 4 > len(data):
+        raise ValueError("truncated layer string")
     n = int.from_bytes(data[off:off + 4], "little")
+    if n % 2 or n > len(data) - off - 4:
+        raise ValueError("invalid layer string length")
     return bytes(data[off + 4:off + 4 + n]).decode("utf-16le"), off + 4 + n
+
+
+def _layer_shift(data):
+    """Find the same per-record kind/name/title layout as the web reader."""
+    for shift in range(0, 65, 2):
+        kind = LAYER_KIND_OFFSET + shift
+        name = LAYER_NAME_OFFSET + shift
+        if name + 8 > len(data) or data[kind] not in (1, 2, 3):
+            continue
+        try:
+            value, end = _read_str(data, name)
+            _read_str(data, end)
+            if value:
+                return shift
+        except (ValueError, UnicodeError):
+            continue
+    return 0  # Match the web reader when no shifted layout is recognized.
 
 
 def _pack_str(s):
@@ -32,6 +54,10 @@ def _set_size(rec):
 
 
 class Layer:
+    @cached_property
+    def _shift(self):
+        return _layer_shift(self.record.data)
+
     def __init__(self, doc, rec):
         self.doc, self.record = doc, rec
 
@@ -41,17 +67,17 @@ class Layer:
 
     @property
     def kind(self):
-        return "sheet" if self.record.data[LAYER_KIND_OFFSET] == 2 else "design"
+        return "sheet" if self.record.data[LAYER_KIND_OFFSET + self._shift] == 2 else "design"
 
     @property
     def name(self):
         """Design layers: the layer name. Sheet layers: the sheet number."""
-        return _read_str(self.record.data, LAYER_NAME_OFFSET)[0]
+        return _read_str(self.record.data, LAYER_NAME_OFFSET + self._shift)[0]
 
     @property
     def title(self):
         """Sheet title (empty for design layers)."""
-        _, off = _read_str(self.record.data, LAYER_NAME_OFFSET)
+        _, off = _read_str(self.record.data, LAYER_NAME_OFFSET + self._shift)
         return _read_str(self.record.data, off)[0]
 
     @property
@@ -186,8 +212,11 @@ class Document:
 
     def rename_layer(self, layer, name=None, title=None):
         rec = layer.record
-        old_name, off = _read_str(rec.data, LAYER_NAME_OFFSET)
+        name_at = LAYER_NAME_OFFSET + layer._shift
+        old_name, off = _read_str(rec.data, name_at)
         old_title, end = _read_str(rec.data, off)
+        if not old_name:
+            raise ValueError("unsupported or truncated layer layout")
         name = old_name if name is None else name
         title = old_title if title is None else title
         if not name:
@@ -196,7 +225,7 @@ class Document:
             self._check_unique(name, layer)
         if layer.kind == "design" and title:
             raise ValueError("design layers have no title")
-        rec.data[LAYER_NAME_OFFSET:end] = _pack_str(name) + _pack_str(title)
+        rec.data[name_at:end] = _pack_str(name) + _pack_str(title)
         _set_size(rec)
 
     def set_layer_visibility(self, layer, visibility):
