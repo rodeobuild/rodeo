@@ -2225,10 +2225,10 @@ export function writeLight(d: Uint8Array, change: LightChange): void {
 
 /**
  * The light objects the design layers place, through their groups, symbols and plug-ins, in the
- * model's frame. A Heliodon's own light is left out: it is the sun.
+ * model's frame, by layer. A Heliodon's own light is left out: it is the sun.
  */
-export function buildLights3d(doc: Model): Light3D[] {
-  const out: Light3D[] = [];
+export function buildLights3d(doc: Model, kept: ReadonlyMap<Rec, Light3D[]> = new Map()): Map<Rec, Light3D[]> {
+  let out: Light3D[] = [];
   // whether a container holds a light anywhere, so symbols placed many times are searched once
   const holds = new Map<Rec, boolean>();
   const lit = (r: Rec, depth: number): boolean => {
@@ -2268,11 +2268,20 @@ export function buildLights3d(doc: Model): Light3D[] {
       } else if (c.children.length && lit(c, depth)) visit(c, m, top, layerId, depth, by, ground);
     }
   };
+  // by design layer; `kept` gives those of layers whose lights are as they were
+  const byLayer = new Map<Rec, Light3D[]>();
   for (const layer of doc.layerRecs) {
     if (layer.data[layerKindAt(layer.data)] !== 1) continue;
+    const had = kept.get(layer);
+    if (had) {
+      byLayer.set(layer, had);
+      continue;
+    }
+    out = [];
     visit(layer, IDENTITY, null, guidOf(layer), 0, "drawing", layerElevationOf(layer));
+    byLayer.set(layer, out);
   }
-  return out;
+  return byLayer;
 }
 
 /**
@@ -2281,7 +2290,8 @@ export function buildLights3d(doc: Model): Light3D[] {
  * past the fixture's body that way, so its own body doesn't stand in the beam.
  */
 function deviceLights(doc: Model, device: Rec, parent: Xf, frame: Xf, lights: readonly Light3D[]): Light3D[] {
-  const rec = doc.records(guidOf(device)).find((r) => r.parametric);
+  // its own records, not those its GUID finds: a device in a symbol isn't indexed, and GUIDs can repeat
+  const rec = doc.recordsOf(device).find((r) => r.parametric);
   if (!rec || !lights.length) return [...lights];
   const d = readDeviceLight(rec.fields);
   const linear = Float64Array.from(frame);

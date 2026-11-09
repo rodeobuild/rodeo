@@ -70,7 +70,8 @@ import { readNameTable } from "./names.ts";
 import { type AddObject, type Index, ObjectIndex } from "./objectIndex.ts";
 import { type FormatDef, RECORD, RECORD_FORMAT, readFormat, readValues, recordFormat } from "./params.ts";
 import { parasolidGeneration } from "./parasolid.ts";
-import { readResources } from "./resources.ts";
+import { RecChange } from "./recChange.ts";
+import { RESOURCE_TYPES, readResources } from "./resources.ts";
 import { isStory, readStory } from "./stories.ts";
 import { HELIODON, readHeliodonSun } from "./sun.ts";
 import { Rec, buildTree, joinRecords, splitRecords } from "./records.ts";
@@ -252,6 +253,10 @@ const MATERIAL_RESOURCE = 19;
 
 /** a design or sheet layer */
 const LAYER = 31;
+/** a resource folder */
+const FOLDER = 92;
+/** a line type (dash style) */
+const LINE_TYPE = 96;
 /** a sheet layer's kind byte (layerKindAt) */
 const SHEET_KIND = 2;
 /** the plug-in (format name of its parameters) Renderworks cameras are */
@@ -865,6 +870,13 @@ export class Model implements VwxDocument {
   /** the Parasolid generation the meshes were built at (parasolidGeneration) */
   private meshesXt = 0;
   private lights: Light3D[] | null = null;
+  /** lights3d() by design layer, kept for the layers an edit didn't reach */
+  private layerLights: Map<Rec, Light3D[]> | null = null;
+  /** the 3D conversion resolution and Parasolid generation the lights were read at */
+  private lightsAt = 0;
+  private lightsXt = 0;
+  /** what layers() reads from a layer's record, by its data */
+  private layerReads = new WeakMap<Uint8Array, { id: string; name: string; title: string; kind: LayerInfo["kind"]; scale: number; visibility: Visibility; rest: Partial<LayerInfo> }>();
   nameTable: Rec | null = null;
   classList: Rec | null = null;
   classRecs = new Map<number, Rec>();
@@ -891,6 +903,14 @@ export class Model implements VwxDocument {
   private formatDefs: Map<number, FormatDef> | null = null;
   /** the font list's names, read when first asked for */
   private fontNames: string[] | null = null;
+  /** symbolDefs(), stories() and recordFormats(), read when first asked for and kept while an edit leaves their records be */
+  private symbolList: SymbolInfo[] | null = null;
+  private storyList: StoryInfo[] | null = null;
+  private formatList: { format: number; name: string }[] | null = null;
+  /** the 3D conversion resolution symbolList was read at (a solid's plan shape follows it) */
+  private symbolsAt = 0;
+  /** the camera plug-ins (cameras()) in record order, found again after an edit only among what it changed */
+  private cameraRecs: Rec[] | null = null;
 
   /** A drawing from its file's bytes, or from its container already read (readContainerStream). */
   constructor(file: Uint8Array | OpenedContainer, fileName: string) {
@@ -910,7 +930,10 @@ export class Model implements VwxDocument {
 
   /** Re-derive the tree and indices after `datas` changed. */
   rebuild(): void {
+    const before = this.recs;
     this.recs = this.datas.map(recOf);
+    // made while the old records still hang as they did
+    const change = new RecChange(before, this.recs);
     this.roots = buildTree(this.recs);
     this.layerRecs = this.roots.filter((r) => r.type === LAYER);
     this.nameTable = this.roots.find((r) => r.type === 55) ?? null;
@@ -929,8 +952,23 @@ export class Model implements VwxDocument {
     this.palette = readPalette(this.roots.find((r) => r.type === 80));
     this.colorTable = readColorTable(this.roots);
     this.colorNames = readColorNames(this.roots);
-    this.lineTypeList = null;
-    this.resourceList = null;
+    // what was read from records the edit left be is kept (a move on a big drawing changes a handful)
+    const names = change.reaches((r) => r.type === 55);
+    const formats = change.changes((r) => r.type === RECORD_FORMAT);
+    if (names || change.changes((r) => r.type === LINE_TYPE)) this.lineTypeList = null;
+    if (names || change.reaches((r) => RESOURCE_TYPES.has(r.type) || r.type === FOLDER)) this.resourceList = null;
+    // a symbol's plan reads its plug-ins' records (a Landmark plant's Poly Display) through their formats
+    if (names || formats || change.reaches((r) => r.type === 16 || r.type === FOLDER)) this.symbolList = null;
+    if (names || change.changes((r) => r.type === LAYER || isStory(r))) this.storyList = null;
+    if (formats) this.formatDefs = null;
+    if (names || formats) this.formatList = null;
+    this.cameraRecs = names || formats ? null : this.camerasAfter(change);
+    // a layer's lights follow what it holds, the symbols it places and the plug-ins it has (a lighting
+    // device's parameters, and its body's 3D faces, which can take in class and resource settings), so
+    // they are kept only through an edit that stayed inside the layers, for the layers it didn't reach
+    const reached = change.reached();
+    if (!reached || names || formats || !change.within((r) => r.type === LAYER)) this.layerLights = null;
+    else for (const l of reached) this.layerLights?.delete(l);
     this.vizs = null;
     this.materials = null;
     this.wallStyles = null;
@@ -942,8 +980,16 @@ export class Model implements VwxDocument {
     this.cachedViewStyles.clear();
     this.planParts = new WeakMap();
     this.planBesides = new WeakMap();
-    this.formatDefs = null;
     this.fontNames = null;
+  }
+
+  /** The camera plug-ins after an edit that left the record formats and names be: those it didn't reach, and any it did. */
+  private camerasAfter(change: RecChange): Rec[] | null {
+    const reached = change.reached();
+    if (!this.cameraRecs || !reached) return null;
+    const out = this.cameraRecs.filter((r) => !reached.has(r));
+    for (const r of reached) if (this.recs[r.index] === r && this.pluginName(r) === CAMERA_PLUGIN) out.push(r);
+    return out.sort((a, b) => a.index - b.index);
   }
 
   // ---- VwxDocument --------------------------------------------------------
@@ -955,20 +1001,36 @@ export class Model implements VwxDocument {
   layers(): LayerInfo[] {
     const idx = this.index();
     return this.layerRecs.map((r) => {
-      const id = guidOf(r);
-      const [name, off] = readStr(r.data, layerNameAt(r.data));
-      const [title] = readStr(r.data, off);
-      const design = r.data[layerKindAt(r.data)] !== 2;
+      let read = this.layerReads.get(r.data);
+      if (!read) {
+        const [name, off] = readStr(r.data, layerNameAt(r.data));
+        const [title] = readStr(r.data, off);
+        const design = r.data[layerKindAt(r.data)] !== 2;
+        read = {
+          id: guidOf(r),
+          name,
+          title,
+          kind: design ? "design" : "sheet",
+          scale: f64(r.data, LAYER_SCALE),
+          visibility: visibility(i16(r.data, LAYER_VIS)),
+          rest: {
+            ...(design ? { elevation: f64(r.data, layerElevationAt(r.data)), story: u16(r.data, LAYER_STORY) } : {}),
+            ...(design ? viewOf(r.data) : pageOf(r.data)),
+          },
+        };
+        this.layerReads.set(r.data, read);
+      }
+      const { id, rest } = read;
       return {
         id,
-        name,
-        title,
-        kind: design ? "design" : "sheet",
-        scale: f64(r.data, LAYER_SCALE),
-        visibility: visibility(i16(r.data, LAYER_VIS)),
+        name: read.name,
+        title: read.title,
+        kind: read.kind,
+        scale: read.scale,
+        visibility: read.visibility,
         objectCount: idx.byLayer.get(id)?.length ?? 0,
-        ...(design ? { elevation: f64(r.data, layerElevationAt(r.data)), story: u16(r.data, LAYER_STORY) } : {}),
-        ...(design ? viewOf(r.data) : pageOf(r.data)),
+        ...rest,
+        ...(rest.view ? { view: { ...rest.view } } : rest.page ? { page: { ...rest.page } } : {}),
       };
     });
   }
@@ -1361,16 +1423,21 @@ export class Model implements VwxDocument {
   // ---- symbol definitions (resources) ---------------------------------------
 
   symbolDefs(): SymbolInfo[] {
-    const out: SymbolInfo[] = [];
-    for (const [index, r] of this.symbols) {
-      let bbox: BBox | null = null;
-      for (const { shape } of this.symbolDrawables(r, IDENTITY, 0)) bbox = unionShapeBox(bbox, shape);
-      const folder = r.parent?.type === 92 ? (this.names.get(r.parent.nameIndex) ?? "") : "";
-      const folders: string[] = [];
-      for (let p = r.parent; p?.type === 92; p = p.parent) folders.unshift(this.names.get(p.nameIndex) ?? "");
-      out.push({ index, name: this.names.get(index) ?? `Symbol ${index}`, folder, folders, bbox });
+    if (this.symbolsAt !== turnStepsGeneration()) this.symbolList = null;
+    this.symbolsAt = turnStepsGeneration();
+    if (!this.symbolList) {
+      const out: SymbolInfo[] = [];
+      for (const [index, r] of this.symbols) {
+        let bbox: BBox | null = null;
+        for (const { shape } of this.symbolDrawables(r, IDENTITY, 0)) bbox = unionShapeBox(bbox, shape);
+        const folder = r.parent?.type === FOLDER ? (this.names.get(r.parent.nameIndex) ?? "") : "";
+        const folders: string[] = [];
+        for (let p = r.parent; p?.type === FOLDER; p = p.parent) folders.unshift(this.names.get(p.nameIndex) ?? "");
+        out.push({ index, name: this.names.get(index) ?? `Symbol ${index}`, folder, folders, bbox });
+      }
+      this.symbolList = out.sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
     }
-    return out.sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
+    return this.symbolList.map((d) => ({ ...d, ...(d.folders ? { folders: [...d.folders] } : {}), bbox: d.bbox && { ...d.bbox } }));
   }
 
   symbolShapes(index: number): Shape[] {
@@ -1820,7 +1887,7 @@ export class Model implements VwxDocument {
   }
 
   /** The records attached to a record: an object's, or a symbol definition's (as placed instances start with them). */
-  private recordsOf(r: Rec): ObjectRecord[] {
+  recordsOf(r: Rec): ObjectRecord[] {
     const out: ObjectRecord[] = [];
     for (const c of r.children) {
       if (c.type !== RECORD) continue;
@@ -1834,8 +1901,8 @@ export class Model implements VwxDocument {
 
   cameras(): CameraInfo[] {
     const out: CameraInfo[] = [];
-    for (const r of this.recs) {
-      if (this.pluginName(r) !== CAMERA_PLUGIN) continue;
+    this.cameraRecs ??= this.recs.filter((r) => this.pluginName(r) === CAMERA_PLUGIN);
+    for (const r of this.cameraRecs) {
       let layer: Rec | null = null;
       let viewport: Rec | null = null;
       for (let p = r.parent; p && !layer; p = p.parent) {
@@ -1872,22 +1939,25 @@ export class Model implements VwxDocument {
   }
 
   stories(): StoryInfo[] {
-    const out: StoryInfo[] = [];
-    for (const r of this.recs) {
-      const story = isStory(r) ? readStory(r.data) : null;
-      const name = this.names.get(r.nameIndex);
-      if (!story || name === undefined) continue;
-      out.push({
-        index: r.nameIndex,
-        name,
-        suffix: story.suffix,
-        elevation: story.elevation,
-        levels: story.levels.map((l) => ({ ...l })),
-        layers: this.layerRecs.filter((l) => l.data[layerKindAt(l.data)] !== 2 && u16(l.data, LAYER_STORY) === r.nameIndex).map(guidOf),
-      });
+    if (!this.storyList) {
+      const out: StoryInfo[] = [];
+      for (const r of this.recs) {
+        const story = isStory(r) ? readStory(r.data) : null;
+        const name = this.names.get(r.nameIndex);
+        if (!story || name === undefined) continue;
+        out.push({
+          index: r.nameIndex,
+          name,
+          suffix: story.suffix,
+          elevation: story.elevation,
+          levels: story.levels.map((l) => ({ ...l })),
+          layers: this.layerRecs.filter((l) => l.data[layerKindAt(l.data)] !== 2 && u16(l.data, LAYER_STORY) === r.nameIndex).map(guidOf),
+        });
+      }
+      // the top story first, as Vectorworks lists them
+      this.storyList = out.sort((a, b) => b.elevation - a.elevation);
     }
-    // the top story first, as Vectorworks lists them
-    return out.sort((a, b) => b.elevation - a.elevation);
+    return this.storyList.map((st) => ({ ...st, levels: st.levels.map((l) => ({ ...l })), layers: [...st.layers] }));
   }
 
   /** The record of the story with name index `index`, or null. */
@@ -1896,12 +1966,15 @@ export class Model implements VwxDocument {
   }
 
   recordFormats(): { format: number; name: string }[] {
-    const out: { format: number; name: string }[] = [];
-    for (const r of this.recs) {
-      if (r.type !== RECORD_FORMAT || !r.nameIndex || this.formatDef(r.nameIndex)?.parametric !== false) continue;
-      out.push({ format: r.nameIndex, name: this.names.get(r.nameIndex) ?? `#${r.nameIndex}` });
+    if (!this.formatList) {
+      const out: { format: number; name: string }[] = [];
+      for (const r of this.recs) {
+        if (r.type !== RECORD_FORMAT || !r.nameIndex || this.formatDef(r.nameIndex)?.parametric !== false) continue;
+        out.push({ format: r.nameIndex, name: this.names.get(r.nameIndex) ?? `#${r.nameIndex}` });
+      }
+      this.formatList = out.sort((a, b) => a.name.localeCompare(b.name));
     }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
+    return this.formatList.map((f) => ({ ...f }));
   }
 
   recordFormatFields(format: number): RecordField[] | null {
@@ -1950,7 +2023,17 @@ export class Model implements VwxDocument {
   }
 
   lights3d(): Light3D[] {
-    this.lights ??= buildLights3d(this);
+    // a lighting device's lens sits past its body's faces, which follow the 3D conversion resolution and Parasolid faces arriving
+    if (this.lightsAt !== turnStepsGeneration() || this.lightsXt !== parasolidGeneration()) {
+      this.lights = null;
+      this.layerLights = null;
+    }
+    this.lightsAt = turnStepsGeneration();
+    this.lightsXt = parasolidGeneration();
+    if (!this.lights) {
+      this.layerLights = buildLights3d(this, this.layerLights ?? undefined);
+      this.lights = [...this.layerLights.values()].flat();
+    }
     return this.lights;
   }
 }

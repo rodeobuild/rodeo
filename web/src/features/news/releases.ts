@@ -22,6 +22,15 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-09T12:09:00Z",
+    "edits-keep-reads",
+    "Big drawings keep up with each edit",
+    `After an edit, the palettes no longer read the whole drawing again for what the edit didn't touch.
+- Symbols, resources, line types, record formats, stories, cameras and each layer's lights are read again only when an edit reaches them. Moving one object in a drawing of 760,000 records updates the palettes in about 25 ms rather than 165, and the moved object shows in about a quarter of a second rather than nearly 0.4.
+- A lighting device made part of a symbol keeps its own colour, brightness and aim in 3D and in renders, where it used to show as a plain lamp, switched off.`,
+    "speed",
+  ),
+  release(
     "2026-11-09T12:08:00Z",
     "safer-saving",
     "Safer saving, restoring and recovery",
