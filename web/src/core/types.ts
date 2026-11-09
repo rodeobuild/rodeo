@@ -1293,6 +1293,11 @@ export interface NewViewport {
 }
 
 /** A viewport's settings, as Object Info shows and edits them. */
+/** How a viewport shows one design layer (`layerId`) or one class (`classIndex`), for setViewportEntries. */
+export type ViewportEntry =
+  | { readonly viewport: string; readonly layerId: string; readonly visibility: Visibility }
+  | { readonly viewport: string; readonly classIndex: number; readonly visibility: Visibility };
+
 export interface ViewportInfo {
   id: string;
   /** the name it is given, "" when it has none */
@@ -1915,6 +1920,12 @@ export interface EditSession {
   setViewportLayer(id: string, layerId: string, v: Visibility): void;
   /** The visibility a viewport gives one class. */
   setViewportClass(id: string, classIndex: number, v: Visibility): void;
+  /**
+   * What setViewportLayer and setViewportClass do, for many viewports and entries at once, as one
+   * change: each viewport's record is rewritten once and the drawing re-read once, however many
+   * entries there are. An entry set twice takes its last value.
+   */
+  setViewportEntries(entries: readonly ViewportEntry[]): void;
   /** rotate / scale / mirror / move objects and everything inside them */
   transformObjects(ids: string[], m: Affine): void;
   /** change stacking order within each object's container */

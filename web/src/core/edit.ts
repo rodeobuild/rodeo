@@ -204,6 +204,7 @@ import type {
   LinearDimensionInfo,
   WallInsertKind,
   WallJoin,
+  ViewportEntry,
   WallTemplate,
 } from "./types.ts";
 import { anyHeld, expandRecords } from "./held.ts";
@@ -5820,29 +5821,46 @@ export class Session implements EditSession {
   }
 
   setViewportLayer(id: string, layerId: string, v: Visibility): void {
-    const layer = this.layer(layerId);
-    if (layer.data[layerKindAt(layer.data)] === 2) throw new Error("a viewport shows design layers, not sheets");
-    this.setViewportEntry(id, "layers", layer.nameIndex, v);
+    this.setViewportEntries([{ viewport: id, layerId, visibility: v }]);
   }
 
   setViewportClass(id: string, classIndex: number, v: Visibility): void {
-    if (!this.doc.classRecs.has(classIndex)) throw new Error(`no class #${classIndex}`);
-    this.setViewportEntry(id, "classes", classIndex, v);
+    this.setViewportEntries([{ viewport: id, classIndex, visibility: v }]);
   }
 
-  /** Set a layer or class entry of a viewport's list, adding it at the end of its part when missing. */
-  private setViewportEntry(id: string, part: "layers" | "classes", name: number, v: Visibility): void {
-    const r = this.viewport(id);
-    const list = viewportListAt(r.data);
+  setViewportEntries(entries: readonly ViewportEntry[]): void {
+    // one plan and one commit for them all, as each commit re-reads the whole drawing
+    const p = this.plan();
+    const viewports = new Map<string, Rec>();
+    for (const e of entries) {
+      let r = viewports.get(e.viewport);
+      if (!r) {
+        r = this.viewport(e.viewport);
+        viewports.set(e.viewport, r);
+      }
+      if ("layerId" in e) {
+        const layer = this.layer(e.layerId);
+        if (layer.data[layerKindAt(layer.data)] === 2) throw new Error("a viewport shows design layers, not sheets");
+        this.setViewportEntry(p, r, "layers", layer.nameIndex, e.visibility);
+      } else {
+        if (!this.doc.classRecs.has(e.classIndex)) throw new Error(`no class #${e.classIndex}`);
+        this.setViewportEntry(p, r, "classes", e.classIndex, e.visibility);
+      }
+    }
+    if (viewports.size) this.commit(p, "objects", [...viewports.keys()]);
+  }
+
+  /** Set a layer or class entry of a viewport's list in `p`, adding it at the end of its part when missing. */
+  private setViewportEntry(p: Plan, r: Rec, part: "layers" | "classes", name: number, v: Visibility): void {
+    const d = p.mut(r.index);
+    const list = viewportListAt(d);
     if (!list) throw new Error("this viewport's layer list can't be read");
     const from = part === "layers" ? 0 : list.layers;
     const to = from + list[part];
-    const p = this.plan();
     for (let i = from; i < to; i++) {
       const o = viewportEntryAt(list.at, i);
-      if (u16(r.data, o + VIEWPORT_ENTRY_NAME) !== name) continue;
-      setI16(p.mut(r.index), o + VIEWPORT_ENTRY_VISIBILITY, visibilityCode(v));
-      this.commit(p, "objects", [id]);
+      if (u16(d, o + VIEWPORT_ENTRY_NAME) !== name) continue;
+      setI16(d, o + VIEWPORT_ENTRY_VISIBILITY, visibilityCode(v));
       return;
     }
     const entry = new Uint8Array(8);
@@ -5850,11 +5868,10 @@ export class Session implements EditSession {
     setI16(entry, VIEWPORT_ENTRY_VISIBILITY, visibilityCode(v));
     setU16(entry, VIEWPORT_ENTRY_FLAGS, 1);
     const o = viewportEntryAt(list.at, to);
-    const d = concat([r.data.subarray(0, o), entry, r.data.subarray(o)]);
-    setU16(d, list.at + (part === "layers" ? 2 : 4), u16(d, list.at + (part === "layers" ? 2 : 4)) + 1);
-    setU64(d, 0, BigInt(d.length));
-    p.set(r.index, d);
-    this.commit(p, "objects", [id]);
+    const out = concat([d.subarray(0, o), entry, d.subarray(o)]);
+    setU16(out, list.at + (part === "layers" ? 2 : 4), u16(out, list.at + (part === "layers" ? 2 : 4)) + 1);
+    setU64(out, 0, BigInt(out.length));
+    p.set(r.index, out);
   }
 
   /**

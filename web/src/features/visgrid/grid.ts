@@ -125,13 +125,15 @@ export function applyCells(session: EditSession, data: GridData, writes: readonl
   for (const w of writes) last.set(`${w.row},${w.col}`, w);
   const todo = [...last.values()].filter((w) => cellAt(data, w.row, w.col).value !== w.value);
   if (todo.length === 0) return 0;
-  session.batch(() => {
-    for (const w of todo) {
+  // one edit for them all: setting them one at a time re-reads the drawing per cell
+  session.setViewportEntries(
+    todo.map((w) => {
       const viewport = data.columns[w.col].id;
       const key = data.rows[w.row].key;
-      if (data.tab === "classes") session.setViewportClass(viewport, key as number, w.value);
-      else session.setViewportLayer(viewport, key as string, w.value);
-    }
-  });
+      return data.tab === "classes"
+        ? { viewport, classIndex: key as number, visibility: w.value }
+        : { viewport, layerId: key as string, visibility: w.value };
+    }),
+  );
   return todo.length;
 }
