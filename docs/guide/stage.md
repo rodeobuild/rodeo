@@ -92,9 +92,11 @@ These tools are in the Rigging tool set.
 
 ### Truss, pipes, rigging points and hoists
 
-- **Straight Truss**: drag a box, triangle or ladder truss in its sections (a short last one red).
-- **Curved Truss**: place a curved one round a point.
-- **Lighting Pipe**: click a pipe's path with its end markers and tick marks.
+- **Straight Truss**: drag a box, triangle or ladder truss in its sections (a short last one red). In 3D it hangs with its underside at its Height (6000 mm by default), its chords, bars and lacing as tubes.
+- **Curved Truss**: place a curved one round a point, in 3D at its Height too.
+- **Lighting Pipe**: click a pipe's path with its end markers and tick marks. In 3D it is a tube its diameter across at its Height.
+- **Truss Junction**: place a 2-way corner, 3-way tee, 4-way cross or 6-way cube block, as wide as the truss, with its chords out along each way.
+- **Base Plate** and **Truss Tower**: a plate on the layer, and a tower of the truss's section standing on it to its Height, with bars and lacing.
 - **Lighting Pipe Ladder**: drag a ladder flat or standing.
 - **House Rigging Point** and **Hoist**: place a rigging point or a hoist with its ID and X/Y label.
 
@@ -142,7 +144,7 @@ The tools here are in the Rigging tool set, and the commands in **Stage › Ligh
 
 With the **Lighting Device** tool, click where one of 22 generic instruments hangs, then where it focuses. Its channel, unit number, colour and purpose are labelled round it; Automatic Numbering counts unit numbers and channels on by their increments.
 
-It shows generic outlines, or any symbol in the drawing (Symbol in Object Info), rather than library symbols. It's a plug-in object that Object Info edits and the Stage menu reads.
+It shows generic outlines in plan, and a generic body in 3D: a yoke and can, or a moving head on its yoke, hung by its yoke from its Height (a pipe's or position's height when you place it on one), turned as its beam is and tilted to its focus. Below 1 m it stands on its yoke instead, as on a floor stand. Either, or any symbol in the drawing (Symbol in Object Info), rather than library symbols. It's a plug-in object that Object Info edits and the Stage menu reads.
 
 ### Convert To Lighting Device and Replace Lighting Devices
 

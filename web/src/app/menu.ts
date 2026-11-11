@@ -147,6 +147,26 @@ function place(el: HTMLElement, box: DOMRect, beside: boolean, wide: boolean): v
   }
 }
 
+/** Labels whose enabled() has thrown, so each is logged once. */
+const enabledThrew = new Set<string>();
+
+/**
+ * Whether a row's command applies now. A row whose enabled() throws (a broken drawing, say) counts as off, and
+ * logs once, so one row cannot break the menu or a shortcut.
+ */
+export function rowEnabled(row: Item): boolean {
+  if (row.enabled === undefined) return true;
+  try {
+    return row.enabled();
+  } catch (err) {
+    if (!enabledThrew.has(row.label)) {
+      enabledThrew.add(row.label);
+      console.warn(`openvwx: enabled() of the menu row "${row.label}" threw; it counts as off`, err);
+    }
+    return false;
+  }
+}
+
 /** A row's button: its check mark or icon, label, shortcut and submenu arrow; the line under it that says why it is off; and the function that re-reads its state. */
 function rowButton(row: Item): { btn: HTMLButtonElement; reason: HTMLElement; update: () => void } {
   const check = h("span", row.icon !== undefined ? { cls: "menu-icon", html: row.icon } : { cls: "menu-check" });
@@ -163,7 +183,7 @@ function rowButton(row: Item): { btn: HTMLButtonElement; reason: HTMLElement; up
   /** the reason on show, in English, so a translated one is not written over again */
   let said: string | null = null;
   const update = (): void => {
-    const off = row.enabled !== undefined && !row.enabled();
+    const off = !rowEnabled(row);
     if (off) btn.setAttribute("aria-disabled", "true");
     else btn.removeAttribute("aria-disabled");
     btn.classList.remove("menu-why-shown");

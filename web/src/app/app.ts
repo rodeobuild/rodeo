@@ -37,6 +37,7 @@ import { showLoading, slowLoading } from "./loading.ts";
 import { exportImageFile } from "./pngExport.ts";
 import { publishDialog } from "./publish.ts";
 import { importImageFiles, importImages, isImageName } from "./imageImport.ts";
+import { headOf, looksLikeVectorworks, notOpenable, pictureKindOf, undecodablePicture } from "./fileKinds.ts";
 import { pasteAsBitmap } from "./images.ts";
 import { PALETTE_ICON } from "./icons.ts";
 import { exportAdvice, importMesh, importMeshFile, meshFormat } from "./meshImport.ts";
@@ -137,7 +138,7 @@ import { CablePathTool, CableTool } from "./tools/cables.ts";
 import { HopOverTool } from "./tools/hopOver.ts";
 import { CountertopTool, FocusPointTool } from "./tools/fixtures.ts";
 import { AlignDistributeTool } from "./tools/alignDistribute.ts";
-import { BridleTool, CurvedTrussTool, HoistOriginTool, HoistTool, LightingPipeTool, MotherGridTool, PipeLadderTool, RiggingLoadTool, RiggingPointTool, StraightTrussTool } from "./tools/rigging.ts";
+import { BasePlateTool, BridleTool, CurvedTrussTool, HoistOriginTool, HoistTool, LightingPipeTool, MotherGridTool, PipeLadderTool, RiggingLoadTool, RiggingPointTool, StraightTrussTool, TrussJunctionTool, TrussTowerTool } from "./tools/rigging.ts";
 import { DimensionTapeTool } from "./tools/dimTape.ts";
 import { HoleNoteTool } from "./tools/holeNote.ts";
 import { ProtractorTool } from "./tools/protractor.ts";
@@ -728,6 +729,9 @@ export class App {
       new IncandescentFixtureTool(env),
       new StraightTrussTool(env),
       new CurvedTrussTool(env),
+      new TrussJunctionTool(env),
+      new BasePlateTool(env),
+      new TrussTowerTool(env),
       new LightingPipeTool(env),
       new PipeLadderTool(env),
       new RiggingPointTool(env),
@@ -1134,6 +1138,7 @@ export class App {
         toggle3d: () => this.toggle3d(),
       },
       menuShortcut: (e) => menuBar.shortcut(e),
+      menuHasShortcut: (e) => menuBar.hasShortcut(e),
     });
     // a right-click on the drawing selects what is under it, as a click does, and opens its menu
     this.canvas.addEventListener("contextmenu", (e) => {
@@ -1413,7 +1418,8 @@ export class App {
       } else if (picked && isRevitModelName(picked.name)) await this.openRevitModel(new Uint8Array(await picked.file.arrayBuffer()), picked.name);
       else if (picked && isRevitName(picked.name)) await showRevitFile(new Uint8Array(await picked.file.arrayBuffer()), picked.name, this.view);
       else if (picked && isArchicadName(picked.name)) await this.openArchicadModel(picked.file, picked.name);
-      else if (picked) tellFileIn(picked.file, picked.name, await this.openDocument(picked.file, picked.name, picked.handle));
+      else if (picked && pictureKindOf(await headOf(picked.file))) await this.openPicture(picked.file, picked.name);
+      else if (picked) await this.openVwxOrRefuse(picked.file, picked.name, picked.handle);
     } catch (err) {
       toast(`Could not open the file: ${errorMessage(err)}`);
     }
@@ -1545,6 +1551,11 @@ export class App {
 
   /** A file dropped on the window: a .dxf, .dwg, .pdf, .emf or 3D model (.obj, .glb, .gltf, .3ds, .stl, .ifc, .usd, .3dm, .stp, .step, .igs, .iges, .sldprt, .ipt, .fcstd, .f3d, .prt, .fbx, .dae, .kmz, .blend, .ply, .skp) is imported into the open drawing (a DWG or model into a new one when none is open), a .csv, .tsv, .dif, .slk or .xlsx as a worksheet, a Revit project opens as a drawing of its model (a family's or template's details are shown), anything else is opened (with its handle, when the browser gave one). */
   private async openFile(file: File, handle: Promise<FileSystemFileHandle | null>, all: readonly File[] = []): Promise<void> {
+    // a picture is known by its bytes, whatever its name says
+    if (pictureKindOf(await headOf(file))) {
+      await this.openPicture(file, file.name);
+      return;
+    }
     // the other files dropped with it may be the external references it needs
     const siblings = all.filter((f) => f !== file);
     if (/\.dxf$/i.test(file.name)) {
@@ -1600,10 +1611,46 @@ export class App {
       return;
     }
     try {
-      tellFileIn(file, file.name, await this.openDocument(file, file.name, await handle));
+      await this.openVwxOrRefuse(file, file.name, await handle);
     } catch (err) {
       toast(`Could not read ${file.name}: ${errorMessage(err)}`);
     }
+  }
+
+  /**
+   * A file with no reader of its own: a Vectorworks drawing (by its header, or a .vwx or .sta name) is
+   * opened; anything else is refused in a line that names what Rodeo opens, not the header error.
+   */
+  private async openVwxOrRefuse(file: Blob, name: string, handle: FileSystemFileHandle | null): Promise<void> {
+    if (!looksLikeVectorworks(await headOf(file)) && !/\.(vwx|sta)$/i.test(name)) {
+      const why = notOpenable(name);
+      toast(why);
+      tellFileIn(file, name, { error: why });
+      return;
+    }
+    tellFileIn(file, name, await this.openDocument(file, name, handle));
+  }
+
+  /**
+   * A picture (JPEG, PNG, GIF, WebP, BMP, TIFF, HEIC) opened with File > Open or dropped: a new drawing
+   * with the picture placed in it, as Import Image File(s) places it (imageImport.ts). A picture the
+   * browser can't decode is said so before a drawing is made.
+   */
+  private async openPicture(file: Blob, name: string): Promise<void> {
+    const kind = pictureKindOf(await headOf(file));
+    try {
+      (await createImageBitmap(file)).close();
+    } catch (err) {
+      const why = undecodablePicture(kind) ?? `Could not read ${name} as a picture: ${errorMessage(err)}`;
+      toast(why);
+      tellFileIn(file, name, { error: why });
+      return;
+    }
+    const before = store.session;
+    await this.newDrawing();
+    if (store.session === before) return;
+    await importImages([file instanceof File ? file : new File([file], name, { type: file.type })], this.view);
+    tellFileIn(file, name, "open");
   }
 
   /**
@@ -2357,6 +2404,7 @@ export class App {
     replacing: OpenDrawing | null,
   ): void {
     if (source?.readOnly) session = readOnlySession(session, () => toast("This drawing is view only"));
+    const before = { shown: this.shown, drawings: [...this.drawings] };
     this.stash();
     const d: OpenDrawing = {
       session,
@@ -2380,15 +2428,56 @@ export class App {
       this.drawings[at] = d;
     }
     else this.drawings.push(d);
-    if (at >= 0 && replacing) {
-      replacing.unlisten();
-      drawingClosed(replacing.ref, d.ref);
-    }
     this.autosave?.track(session, () => ({
       name: store.session === session ? store.fileName : d.name,
       size: store.session === session ? store.fileSize : d.fileSize,
     }));
-    this.present(d);
+    try {
+      this.present(d);
+    } catch (err) {
+      // a drawing that can't be shown is not left attached: the window goes back as it was, and the error goes up
+      this.undoAttach(d, session, replacing, at, before);
+      throw err;
+    }
+    // the drawing it replaced stops listening only now that the new one is in front
+    if (at >= 0 && replacing) {
+      replacing.unlisten();
+      drawingClosed(replacing.ref, d.ref);
+    }
+  }
+
+  /**
+   * Takes back an attach whose present threw: the drawing it replaced comes back in its tab, the
+   * one that was in front before comes back to the front, and the new drawing is gone.
+   */
+  private undoAttach(
+    d: OpenDrawing,
+    session: EditSession,
+    replacing: OpenDrawing | null,
+    at: number,
+    before: { shown: OpenDrawing | null; drawings: OpenDrawing[] },
+  ): void {
+    this.detachSession?.();
+    this.detachSession = null;
+    this.autosave?.forget(session);
+    d.unlisten();
+    this.drawings.splice(0, this.drawings.length, ...before.drawings);
+    if (replacing && at >= 0) {
+      // its listener was never removed; only its autosave was set aside
+      this.autosave?.track(replacing.session, () => ({
+        name: store.session === replacing.session ? store.fileName : replacing.name,
+        size: store.session === replacing.session ? store.fileSize : replacing.fileSize,
+      }));
+    }
+    if (before.shown && this.drawings.includes(before.shown)) {
+      try {
+        this.present(before.shown);
+        return;
+      } catch {
+        // shown again below as an empty window
+      }
+    }
+    this.clearWindow();
   }
 
   /**
@@ -2586,8 +2675,15 @@ export class App {
     }
     this.controller.cancel();
     const next = this.drawings[Math.min(i, this.drawings.length - 1)];
-    if (next) this.present(next);
-    else this.clearWindow();
+    if (next) {
+      try {
+        this.present(next);
+      } catch (err) {
+        // it stays in its tab; the window is left empty rather than showing it half-attached
+        this.clearWindow();
+        toast(`Could not show ${baseName(next.name)}: ${errorMessage(err)}`);
+      }
+    } else this.clearWindow();
   }
 
   /**

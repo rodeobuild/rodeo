@@ -9,6 +9,7 @@
 
 import { size } from "./compressImages.ts";
 import { h } from "./dom.ts";
+import { headOf, pictureKindOf, undecodablePicture } from "./fileKinds.ts";
 import { pictureOf, placeRow, ready, type Picture } from "./images.ts";
 import { showDialog } from "./menubar.ts";
 import { errorMessage, toast } from "./toast.ts";
@@ -154,7 +155,7 @@ export async function importImages(files: readonly File[], view: View): Promise<
     try {
       sources.push(await readSource(file));
     } catch (err) {
-      toast(`Could not read ${file.name}: ${errorMessage(err)}`);
+      toast(undecodablePicture(pictureKindOf(await headOf(file))) ?? `Could not read ${file.name}: ${errorMessage(err)}`);
     }
   }
   if (!sources.length) return;

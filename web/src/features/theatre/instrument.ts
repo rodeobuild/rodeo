@@ -7,10 +7,12 @@ import { attempt } from "../../app/commands.ts";
 import { registerPluginDrivers, type PluginDriver, type PluginWidget } from "../../app/ext.ts";
 import { accessoryNames, lightingDevice, symbolBody } from "../../app/lightingDeviceShapes.ts";
 import { colorMatcher } from "../../app/pdfImport.ts";
+import { lensHeight, scaledBody } from "../../app/lightingDeviceSolids.ts";
 import { store } from "../../app/state.ts";
 import { markerParts } from "../../app/tools/markers.ts";
 import { errorMessage } from "../../app/toast.ts";
 import type { EditSession, Pt, RecordValue } from "../../core/index.ts";
+import { mapSolid } from "../../app/solids3d.ts";
 import { DEFAULT_TYPE, editValues, FIELD, FIXTURE_TYPES, fixtureType, foreignValues, INSTRUMENT, instrumentFields, patchText, readFixtures, type Fixture, type FixtureEdit } from "./fixture.ts";
 import type { LegendField } from "./devices/legendBook.ts";
 import { legendNamed, readLegends } from "./devices/legendData.ts";
@@ -104,6 +106,18 @@ function drawInto(s: EditSession, id: string): void {
     const own = "shape" in part ? part.attrs : undefined;
     const closed = shape.kind === "polygon" || (shape.kind === "polyline" && shape.closed);
     ids.push(s.addObject(obj.layerId, shape, obj.classIndex, own ?? (closed ? solid(paper) : { fillPattern: 0 })));
+  }
+  // its body in 3D as its plan is drawn, unless its symbol is drawn: a yoke and can (or a moving head) hung from its
+  // height as its symbol would be (the top of its yoke there, a pipe's trim when it went on one), or standing on it when
+  // it is low, turned as its beam is, the head tilted to its focus when it is focused. Its layer's elevation is added
+  // back by the plug-in's frame, so it is taken off here.
+  if (!def) {
+    const base = s.doc.layers().find((l) => l.id === obj.layerId)?.elevation ?? 0;
+    const { lens, standing } = lensHeight(glyph, factor, Number(value(FIELD.height)) || 0);
+    const pitch = focused ? Math.atan2(lens - (Number(value(FIELD.focusZ)) || 0), Math.hypot(Number(value(FIELD.focusX)) - at.x, Number(value(FIELD.focusY)) - at.y)) : 0;
+    const body = scaledBody(glyph, factor, aim, pitch, standing).map((f) => mapSolid(f, ([x, y, z]) => [x, y, z + lens - base]));
+    const grey = match({ r: 0.25, g: 0.25, b: 0.28 });
+    ids.push(...s.addMeshes(obj.layerId, body, obj.classIndex, { fillPattern: 1, fillFore: grey, fillBack: grey, fillOpacity: 100 }));
   }
   // drawn in its own frame on its layer, then moved into it
   s.setPluginDrawing(id, ids);

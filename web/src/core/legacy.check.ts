@@ -188,5 +188,29 @@ for (const [name, legacy, records] of [
   );
 }
 
+// 12. zeros after the last record, too few to start another, are no record: the drawing reads as without them
+const narrowRecs = blankRecords.map(narrow);
+const padded = legacyFile(blank, [...narrowRecs, new Uint8Array(4)]);
+let paddedRaw: Uint8Array | null = null;
+try {
+  paddedRaw = readContainer(padded).raw;
+} catch {
+  paddedRaw = null;
+}
+check(paddedRaw !== null && same(paddedRaw, read.raw), "a 2013 body with 4 zero bytes after its last record reads as one without them");
+
+// 13. a body of older records that stops partway says where, rather than giving the Snappy error it fails with next
+const broken = narrowRecs.map((r) => r.slice());
+setU32(broken[2], 0x04, 0x12345678);
+const brokenError = failure(legacyFile(blank, broken));
+check(brokenError.includes("older layout stops at record 2 at +0x") && !brokenError.startsWith("bad chunk"), `a 2013 body broken at its third record says so: ${brokenError}`);
+let brokenStream = "";
+try {
+  await readContainerStream(bytesSource(legacyFile(blank, broken)), { slice: 1 << 10 });
+} catch (err) {
+  brokenStream = err instanceof Error ? err.message : String(err);
+}
+check(brokenStream === brokenError, "the streamed reader gives the same message");
+
 console.log(failures ? `\n${failures} failed` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

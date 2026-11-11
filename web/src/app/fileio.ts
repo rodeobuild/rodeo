@@ -31,6 +31,10 @@ const VWX_TYPES: FilePickerType[] = [
 const TEMPLATE_TYPES: FilePickerType[] = [VWX_TYPES[1], VWX_TYPES[0]];
 
 const DWG_TYPES: FilePickerType[] = [{ description: "AutoCAD drawing", accept: { "application/acad": [".dwg"] } }];
+/** File > Open takes pictures too: each opens as a new drawing with the picture placed (app.ts openPicture). */
+const PICTURE_TYPES: FilePickerType[] = [
+  { description: "Picture", accept: { "image/jpeg": [".jpg", ".jpeg"], "image/png": [".png"], "image/gif": [".gif"], "image/webp": [".webp"], "image/bmp": [".bmp"], "image/tiff": [".tif", ".tiff"], "image/heic": [".heic", ".heif"] } },
+];
 /** File > Open also takes Revit files (revitFile.ts) and Archicad projects (plnImport.ts). */
 const REVIT_TYPES: FilePickerType[] = [
   { description: "Revit project or family", accept: { "application/octet-stream": [".rvt", ".rfa", ".rte", ".rft"] } },
@@ -83,9 +87,9 @@ function pickWithInput(accept: string): Promise<PickedFile | null> {
  */
 export async function pickFile(template = false, revit = false): Promise<PickedFile | null> {
   const open = pickers().showOpenFilePicker?.bind(window);
-  if (!open) return pickWithInput(template ? ".sta,.vwx" : revit ? ".vwx,.sta,.dwg,.rvt,.rfa,.rte,.rft,.pln,.pla,.tpl,.stp,.step,.igs,.iges,.sldprt,.ipt,.fcstd,.f3d,.prt" : ".vwx,.sta,.dwg");
+  if (!open) return pickWithInput(template ? ".sta,.vwx" : revit ? ".vwx,.sta,.dwg,.rvt,.rfa,.rte,.rft,.pln,.pla,.tpl,.stp,.step,.igs,.iges,.sldprt,.ipt,.fcstd,.f3d,.prt,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif" : ".vwx,.sta,.dwg,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif");
   try {
-    const [handle] = await open({ types: template ? TEMPLATE_TYPES : [...VWX_TYPES, ...DWG_TYPES, ...(revit ? [...REVIT_TYPES, ...MODEL_TYPES] : [])], multiple: false });
+    const [handle] = await open({ types: template ? TEMPLATE_TYPES : [...VWX_TYPES, ...DWG_TYPES, ...(revit ? [...REVIT_TYPES, ...MODEL_TYPES] : []), ...PICTURE_TYPES], multiple: false });
     if (!handle) return null;
     const file = await handle.getFile();
     return { name: file.name, file, handle };

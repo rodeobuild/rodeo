@@ -257,7 +257,8 @@ const FIELDS_OLD = 0x0c;
 const FIELDS_NEW = 0x10;
 
 function formatBody(old: Uint8Array): Uint8Array {
-  const n = u16(old, 0);
+  // as many fields as the body holds, whatever its count says
+  const n = Math.min(u16(old, 0), Math.max(0, Math.floor((old.length - FIELDS_OLD) / FIELD_OLD)));
   const out = new Uint8Array(FIELDS_NEW + FIELD_NEW * n);
   setU16(out, 0, n);
   setU16(out, 8, u16(old, 0x30 - OLD)); // 1 for a plug-in's parameters, 0 for a data record

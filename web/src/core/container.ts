@@ -29,7 +29,7 @@
 
 import { concat, readAscii, setU32, setU32be, setU64, u32, u32be, u64 } from "./bytes.ts";
 import { CHECK_SPAN, ChunkTable, chunkSum, FileStream, HOLD_HEAD, HeldEntry, type HeldTable, type HoldPlan, Holder, TOKEN, expansion, heldPart } from "./held.ts";
-import { legacyHeader, legacyRecords, legacyStart, unreadableMessage } from "./legacy.ts";
+import { legacyHeader, type LegacyLayout, legacyRecords, legacyStart, legacyStop, unreadableMessage } from "./legacy.ts";
 import { unitsName } from "./settings.ts";
 import { blockLength, compress, decompress, decompressInto } from "./snappy.ts";
 
@@ -126,7 +126,7 @@ function readHead(data: Uint8Array, size: number): Head {
 export function readContainer(data: Uint8Array): Container {
   const { body, createdWith, savedWith, build } = readHead(data, data.length);
   const layout = legacyStart(data.subarray(body, body + 16));
-  const records = layout ? legacyRecords(layout, data.subarray(body)) : null;
+  const records = olderRecords(layout, data.subarray(body), savedWith);
   if (records) {
     const { header, units } = legacyHeader(data.subarray(0, body));
     return { header, createdWith, savedWith, build, raw: concat(records), chunkCount: 0, units };
@@ -157,18 +157,44 @@ export function readContainer(data: Uint8Array): Container {
       units: findUnits(header),
     };
   } catch (err) {
-    throw unreadable(err, savedWith);
+    throw unreadable(err, savedWith, olderStop(layout, data.subarray(body)));
   }
 }
 
 /**
  * The error for a body that reads as neither legacy records nor Snappy chunks: a file saved before
  * 2013, or in 2014 to 2017, says which year it was saved in; any other error is passed on as it is.
+ * `stop` is where a body that starts as older records (legacy.ts) stops reading as them, which
+ * replaces the Snappy error such a body gives, so a report says where it went wrong.
  */
-function unreadable(err: unknown, savedWith: string): unknown {
+function unreadable(err: unknown, savedWith: string, stop: string | null = null): unknown {
   if (!(err instanceof Error) || err.name === "AbortError") return err;
   const message = unreadableMessage(savedWith);
+  if (stop !== null) return new Error(`${message ?? "Rodeo could not read this file's records"} (its older layout stops at ${stop})`);
   return message === null ? err : new Error(message);
+}
+
+/**
+ * Where a body that is older records (legacy.ts) stops reading as them: null when it doesn't start
+ * as them, or not even its first record reads whole (a Snappy body can pass legacyStart's look at
+ * its first bytes), so that the Snappy error stands.
+ */
+function olderStop(layout: LegacyLayout | null, body: Uint8Array): string | null {
+  const stop = layout ? legacyStop(layout, body) : null;
+  return stop && stop.read > 0 ? stop.why : null;
+}
+
+/**
+ * The records of a body in an older layout (legacy.ts), or null when it isn't one (or stops partway,
+ * when it is read as Snappy chunks after all). One that fails to convert fails with the year it was saved in.
+ */
+function olderRecords(layout: LegacyLayout | null, body: Uint8Array, savedWith: string): Uint8Array[] | null {
+  if (!layout) return null;
+  try {
+    return legacyRecords(layout, body);
+  } catch (err) {
+    throw unreadable(err, savedWith);
+  }
 }
 
 /** A drawing's bytes as it opens, read a slice at a time. */
@@ -295,7 +321,8 @@ export async function readContainerStream(src: ByteSource, options: StreamOption
   const head = readHead(start, size);
   if (head.body > start.length) start = await src.read(0, Math.min(size, head.body));
   const layout = legacyStart(await src.read(head.body, Math.min(size, head.body + 16)));
-  const records = layout ? legacyRecords(layout, await src.read(head.body, size)) : null;
+  const older = layout ? await src.read(head.body, size) : null;
+  const records = older ? olderRecords(layout, older, head.savedWith) : null;
   if (records) {
     const { header, units } = legacyHeader(start.subarray(0, head.body));
     return { header, createdWith: head.createdWith, savedWith: head.savedWith, build: head.build, records, chunkCount: 0, units, held: null };
@@ -303,7 +330,7 @@ export async function readContainerStream(src: ByteSource, options: StreamOption
   try {
     return await readChunks(src, options, start, head);
   } catch (err) {
-    throw unreadable(err, head.savedWith);
+    throw unreadable(err, head.savedWith, older ? olderStop(layout, older) : null);
   }
 }
 

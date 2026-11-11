@@ -29,9 +29,28 @@ export interface ArchicadDrawing {
 export type ArchicadRequest = { file: Blob; name: string };
 export type ArchicadReply = { type: "progress"; step: string } | { type: "done"; drawing: ArchicadDrawing } | { type: "error"; message: string };
 
+/**
+ * The Archicad version an older file (before 17, which has no "ROF FDB " signature) names in its first
+ * bytes, as "Archicad 15" does, or null when it names none from 4 to 16.
+ */
+export function olderArchicadVersion(head: Uint8Array): number | null {
+  let text = "";
+  for (let i = 0; i < head.length; i++) text += head[i] >= 32 && head[i] < 127 ? String.fromCharCode(head[i]) : " ";
+  const m = /archicad\s*v?(\d{1,2})\b/i.exec(text);
+  const version = m ? Number(m[1]) : NaN;
+  return Number.isInteger(version) && version >= 4 && version < 17 ? version : null;
+}
+
 /** The drawing of the Archicad file `fileName` of `size` bytes, read by `read`; `progress` hears each step. */
 export async function archicadDrawing(read: ReadRange, size: number, fileName: string, progress?: (step: string) => void): Promise<ArchicadDrawing> {
-  if (!isRof(await read(0, 8))) throw new Error("it isn't an Archicad 17 or later file");
+  if (!isRof(await read(0, 8))) {
+    const version = olderArchicadVersion(await read(0, 0x10000));
+    throw new Error(
+      version === null
+        ? "it isn't an Archicad 17 or later file"
+        : `This file was saved by Archicad ${version}. Rodeo reads Archicad 17 and later: open it in Archicad 17 or later and save it there, or save it as IFC and open that.`,
+    );
+  }
   let shown = -1;
   const r = await readArchicad(
     read,

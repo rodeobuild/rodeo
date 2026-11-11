@@ -571,13 +571,22 @@ export function extensionContextRows(under: string | null): Row[] {
   return contextRows.flatMap((rows) => [...rows(under)]);
 }
 
+/** The error messages already logged by drawExtensionOverlays: an overlay that fails every frame logs once per message. */
+const overlayErrorsLogged = new Set<string>();
+
 export function drawExtensionOverlays(p: Painter): void {
   for (const draw of overlays) {
     p.ctx.save();
     try {
       draw(p);
     } catch (err) {
-      console.error("openvwx: overlay failed", err);
+      const key = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      if (!overlayErrorsLogged.has(key)) {
+        overlayErrorsLogged.add(key);
+        console.error("openvwx: overlay failed", err);
+        // with its stack, which the console line in a report's trail leaves out (reports.ts imports this module)
+        void import("./reports.ts").then((r) => r.reportFailure("overlay", err)).catch(() => {});
+      }
     }
     p.ctx.restore();
   }

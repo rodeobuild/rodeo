@@ -1,8 +1,9 @@
-// Window-level keyboard shortcuts. Ignored while typing in a field. Tool and
-// drawing keys go to the controller first so an in-progress gesture can
-// consume Enter, Backspace and Escape. ⌘ (Ctrl) combinations run the menu
-// command whose key they are, as the menus show it and Menu Shortcuts… sets it
-// (menubar.ts, menuKeys.ts).
+// Window-level keyboard shortcuts. Plain keys are ignored while typing in a
+// field. Tool and drawing keys go to the controller first so an in-progress
+// gesture can consume Enter, Backspace and Escape. ⌘ (Ctrl) combinations run the
+// menu command whose key they are, as the menus show it and Menu Shortcuts…
+// sets it (menubar.ts, menuKeys.ts), also while a field has focus: a field keeps
+// its own editing keys (see fieldCombination).
 
 import { store } from "./state.ts";
 import { toolForKey } from "./toolKeys.ts";
@@ -25,12 +26,43 @@ export interface ShortcutDeps {
   readonly actions: ShortcutActions;
   /** runs the menu command a ⌘ combination is the key of; false when it is none's */
   readonly menuShortcut: (e: KeyboardEvent) => boolean;
+  /** whether a menu command has the key combination of `e` (it may be off now) */
+  readonly menuHasShortcut: (e: KeyboardEvent) => boolean;
 }
 
 function isTextEntry(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 }
+
+/** Input types that take typed text (the others are buttons, boxes and sliders). */
+const TEXT_TYPES = new Set(["text", "search", "number", "email", "url", "tel", "password", "date", "time", "datetime-local", "month", "week"]);
+
+/** A field the user types text into: a text box, a text area or rich text. */
+function isTextField(target: EventTarget | null): target is HTMLElement {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target.tagName === "TEXTAREA") return true;
+  return target.tagName === "INPUT" && TEXT_TYPES.has((target as HTMLInputElement).type);
+}
+
+/** The text a text field holds. */
+function textOf(el: HTMLElement): string {
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : (el.textContent ?? "");
+}
+
+/** The text each text field held when it got focus or was last committed. */
+const committedText = new WeakMap<HTMLElement, string>();
+
+/** Whether a text field holds an edit that is not yet committed. */
+function hasUncommittedEdit(el: HTMLElement): boolean {
+  const was = committedText.get(el);
+  return was !== undefined && was !== textOf(el);
+}
+
+/** ⌘/Ctrl keys a text field keeps for itself: select all, copy, paste and cut. */
+const FIELD_KEYS = new Set(["a", "c", "v", "x"]);
+/** Undo and redo: a text field keeps them while it holds an uncommitted edit. */
+const UNDO_KEYS = new Set(["z", "y"]);
 
 const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 
@@ -111,9 +143,43 @@ function isControl(t: EventTarget | null): boolean {
   return t instanceof Element && t.closest("button, select, summary, [role=button], [role=option]") !== null;
 }
 
+/**
+ * A ⌘ or Ctrl combination pressed while a field has focus. A text field keeps select all, copy, paste and cut,
+ * and undo or redo while it holds an edit not yet committed (its own editing undoes that edit). Any other
+ * combination that is a menu shortcut first commits the field, so its change applies and the command sees it,
+ * then runs as it does with the drawing focused. Other combinations are left to the field as they are.
+ */
+function fieldCombination(e: KeyboardEvent, deps: ShortcutDeps): void {
+  const target = e.target as HTMLElement;
+  // a field that took the key itself (Menu Shortcuts… records one), a dialog, rich text being typed and a text
+  // area (a chat box, a note) keep every combination, as before
+  if (e.defaultPrevented || target.isContentEditable || target.tagName === "TEXTAREA") return;
+  if (target.closest("[role=dialog], [aria-modal=true]")) return;
+  // the physical key, so a Cyrillic or Greek layout's Ctrl+Z is still Z
+  const key = e.code.startsWith("Key") ? e.code.slice(3).toLowerCase() : keyOf(e);
+  const text = isTextField(target);
+  if (text && FIELD_KEYS.has(key)) return;
+  if (text && UNDO_KEYS.has(key) && hasUncommittedEdit(target)) return;
+  const menu = deps.menuHasShortcut(e);
+  if (!menu && !UNDO_KEYS.has(key)) return;
+  if (text && menu && !UNDO_KEYS.has(key)) target.blur(); // the change event commits the edit
+  if (handleModified(e, deps)) e.preventDefault();
+}
+
 export function installShortcuts(deps: ShortcutDeps): void {
+  // a field's edit is the change from the text it held when it got focus or was last committed
+  window.addEventListener("focusin", (e) => {
+    if (isTextField(e.target)) committedText.set(e.target, textOf(e.target));
+  });
+  window.addEventListener("change", (e) => {
+    if (isTextField(e.target)) committedText.set(e.target, textOf(e.target));
+  });
+
   window.addEventListener("keydown", (e) => {
-    if (isTextEntry(e.target)) return;
+    if (isTextEntry(e.target)) {
+      if (e.metaKey || e.ctrlKey) fieldCombination(e, deps);
+      return;
+    }
     if (!ARROW_KEYS.has(e.key)) flushNudge();
 
     if (e.code === "Space") {

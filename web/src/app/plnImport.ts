@@ -4,6 +4,7 @@
 // project is. The summary says what came in, what was approximated and what was left out.
 
 import type { ArchicadDrawing, ArchicadReply, ArchicadRequest } from "./archicadImport.ts";
+import { readerMessage } from "./readerFailure.ts";
 
 /** True for a file named as an Archicad project, archive or template. */
 export function isArchicadName(name: string): boolean {
@@ -23,11 +24,11 @@ export function archicadModelDrawing(file: Blob, name: string, progress?: (step:
       if (m.type === "progress") return progress?.(m.step);
       worker.terminate();
       if (m.type === "done") resolve(m.drawing);
-      else reject(new Error(m.message));
+      else reject(new Error(readerMessage("Archicad", m.message)));
     };
     worker.onerror = (e) => {
       worker.terminate();
-      reject(new Error(e.message || "the Archicad reader stopped"));
+      reject(new Error(readerMessage("Archicad", e.message)));
     };
     worker.postMessage({ file, name } satisfies ArchicadRequest);
   });

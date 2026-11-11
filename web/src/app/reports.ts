@@ -11,6 +11,7 @@
 import { serverConfig } from "../platform/api.ts";
 import type { ErrorReportKind, NewErrorReport, ReportValue } from "../platform/protocol.ts";
 import { documentSource } from "./ext.ts";
+import { describeRejection } from "./rejection.ts";
 import { store } from "./state.ts";
 import { onToast } from "./toast.ts";
 
@@ -52,7 +53,7 @@ export function note(text: string): void {
  */
 export function reportFailure(area: string, err: unknown, details: ReportDetails = {}): void {
   const e = err instanceof Error ? err : null;
-  send("failure", area, e ? e.message || e.name : String(err), e?.stack, details);
+  send("failure", area, e ? e.message || e.name : describeRejection(err), e?.stack, details);
 }
 
 /** Where the editor runs and what happened just before, for a bug report the user sends (features/feedback). */
@@ -91,7 +92,7 @@ function install(): void {
   window.addEventListener("unhandledrejection", (event) => {
     const reason: unknown = event.reason;
     const err = reason instanceof Error ? reason : null;
-    const message = err ? err.message || err.name : typeof reason === "string" ? reason : safeString(reason);
+    const message = describeRejection(reason);
     if (ignored(message, reason)) return;
     send("crash", "promise", message, err?.stack, {});
   });

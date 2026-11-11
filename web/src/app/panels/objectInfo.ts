@@ -63,6 +63,7 @@ import { markerList, markerText, mils, sameMarker, thicknessList } from "../opti
 import { closeColorPicker, colorSwatch } from "./colorPicker.ts";
 import { groupByFolder, symbolDefsOf } from "./resources.ts";
 import { foldAll, foldingSection } from "./sections.ts";
+import { keepFocus, noteTabKey } from "./keepFocus.ts";
 
 const MIXED = "— mixed —";
 /** select value for "From template"; "" is reserved for MIXED */
@@ -90,22 +91,27 @@ export function mountObjectInfo(root: HTMLElement): void {
       { id: "render", label: "Render", title: "Textures", icon: TAB_ICON.render, body: render },
     ]),
   );
-  const paint = (): void => {
-    closeColorPicker();
-    const c = content();
-    shape.replaceChildren(c.shape);
-    data.replaceChildren(c.data);
-    render.replaceChildren(c.render);
-  };
+  const paint = (): void =>
+    keepFocus(root, () => {
+      closeColorPicker();
+      const c = content();
+      shape.replaceChildren(c.shape);
+      data.replaceChildren(c.data);
+      render.replaceChildren(c.render);
+    });
+  // a Tab press that commits a field moves on from it, even though the commit repaints the panel
+  root.addEventListener("keydown", noteTabKey);
   store.on(["session", "selection", "class", "layer", "attrs"], paint);
   paint();
 }
 
 export function mountAttributes(root: HTMLElement): void {
-  const paint = (): void => {
-    closeColorPicker();
-    root.replaceChildren(attributesContent());
-  };
+  const paint = (): void =>
+    keepFocus(root, () => {
+      closeColorPicker();
+      root.replaceChildren(attributesContent());
+    });
+  root.addEventListener("keydown", noteTabKey);
   store.on(["session", "selection", "attrs"], paint);
   paint();
 }

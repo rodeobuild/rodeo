@@ -113,13 +113,13 @@ import {
   layerElevationOf,
   layerKindAt,
   layerNameAt,
+  layerTexts,
   layerPageAt,
   CAMERA_PLUGIN,
   MATERIAL_AT,
   MATERIAL_TYPES,
   objectChildren,
   objectWalk,
-  readStr,
   shapeOf,
   subtreeEnd,
   upsideDownText,
@@ -1482,9 +1482,12 @@ export class Session implements EditSession {
     const layers = this.doc.layerRecs;
     if (!layers.length) throw new Error("document has no layer to copy settings from");
     const want = kind === "sheet" ? 2 : 1;
+    // a layer whose record doesn't read is no template to copy from
+    const sound = layers.filter((l) => layerTexts(l.data).end !== null);
+    if (!sound.length) throw new Error("no layer in this drawing reads cleanly to copy settings from");
     const tpl =
-      [...layers].filter((l) => l.data[layerKindAt(l.data)] === want).sort((a, b) => a.children.length - b.children.length)[0] ??
-      layers[0];
+      [...sound].filter((l) => l.data[layerKindAt(l.data)] === want).sort((a, b) => a.children.length - b.children.length)[0] ??
+      sound[0];
     // the layer, its aux records and its terminator; no objects
     const k = auxCount(tpl);
     const keep = new Set(tpl.children.slice(0, k));
@@ -1495,8 +1498,8 @@ export class Session implements EditSession {
     const recs = this.instantiate(t, tpl.owner);
     let d = recs[0];
     const at = layerNameAt(d);
-    const [, off] = readStr(d, at);
-    const [, end] = readStr(d, off);
+    const { end } = layerTexts(d);
+    if (end === null) throw new Error("the layer to copy settings from has a damaged record");
     const kindAt = layerKindAt(d);
     d = concat([d.subarray(0, at), packStr(name), packStr(""), d.subarray(end)]);
     setU64(d, 0, BigInt(d.length));
@@ -1520,6 +1523,7 @@ export class Session implements EditSession {
   duplicateLayer(layerId: string, name: string): string {
     this.checkName(name);
     const src = this.layer(layerId);
+    if (layerTexts(src.data).end === null) throw new Error("this layer's record is damaged, so it can't be copied");
     return this.batch(() => {
       // the layer with its aux records and terminator, as createLayer copies one, then its objects pasted
       const k = auxCount(src);
@@ -1530,9 +1534,9 @@ export class Session implements EditSession {
       const recs = this.instantiate(templateOf(src, (r, depth) => depth === 1 && !keep.has(r)), src.owner);
       let d = recs[0];
       const at = layerNameAt(d);
-      const [, off] = readStr(d, at);
-      const [title, end] = readStr(d, off);
-      d = concat([d.subarray(0, at), packStr(name), packStr(title), d.subarray(end)]);
+      const texts = layerTexts(d);
+      if (texts.end === null) throw new Error("this layer's record is damaged, so it can't be copied");
+      d = concat([d.subarray(0, at), packStr(name), packStr(texts.title), d.subarray(texts.end)]);
       setU64(d, 0, BigInt(d.length));
       setU16(d, 0x1a, this.freshName());
       // a story's levels each name one layer: the copy is on none, at the elevation it had (which is absolute)
@@ -1577,8 +1581,8 @@ export class Session implements EditSession {
   /** A layer record with its name, and a sheet layer's title (kept when undefined); null when neither changes. */
   private layerRenamed(l: Rec, name: string, title?: string): Uint8Array | null {
     const at = layerNameAt(l.data);
-    const [oldName, off] = readStr(l.data, at);
-    const [oldTitle, end] = readStr(l.data, off);
+    const { name: oldName, title: oldTitle, end } = layerTexts(l.data);
+    if (oldName === null || end === null) throw new Error("this layer's name can't be read, so it can't be changed");
     const t = title ?? oldTitle;
     if (!name.trim()) throw new Error("name cannot be empty");
     if (l.data[layerKindAt(l.data)] !== 2 && t) throw new Error("design layers have no title");

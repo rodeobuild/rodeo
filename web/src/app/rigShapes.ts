@@ -68,12 +68,21 @@ export interface CurvedTruss extends TrussSection {
 }
 
 /** Why a truss's section can't be drawn, or null: the configuration rules Vectorworks gives. */
-function sectionProblem(t: TrussSection): string | null {
+export function sectionProblem(t: TrussSection): string | null {
   if (!(t.chord > 0)) return "Set a Chord Width over 0.";
   if (!(t.width > 3 * t.chord)) return "The truss must be wider than three chord widths.";
   if (t.ladderBar > t.chord || t.lacing > t.chord) return "The ladder bars and lacing can't be thicker than the chords.";
   if (t.folding && t.lacing > 0) return "A folding truss can't have top lacing: set the Top Lacing Diameter to 0.";
   return null;
+}
+
+/**
+ * The stations across a section `length` long where its ladder bars and lacing meet: its end bars
+ * stand in half a chord, and the bays between them are as near `spacing` as divides it evenly.
+ */
+export function bayStations(length: number, chord: number, spacing: number): number[] {
+  const bays = Math.max(1, Math.round((length - chord) / spacing));
+  return Array.from({ length: bays + 1 }, (_, i) => chord / 2 + ((length - chord) * i) / bays);
 }
 
 /**
@@ -90,8 +99,8 @@ function section(into: { outlines: Pt[][]; lines: Pt[][] }, t: TrussSection, len
   const chord = (y: number): Pt[] => [...along(y - c / 2), ...along(y + c / 2).reverse()];
   into.outlines.push(chord(-yc), chord(yc));
   if (t.profile === "triangle") into.outlines.push(chord(0));
-  const bays = Math.max(1, Math.round((length - c) / spacing));
-  const xs = Array.from({ length: bays + 1 }, (_, i) => c / 2 + ((length - c) * i) / bays);
+  const xs = bayStations(length, c, spacing);
+  const bays = xs.length - 1;
   if (t.ladderBar > 0) for (const x of xs) into.lines.push([frame(x, -yi), frame(x, yi)]);
   if (t.lacing <= 0) return;
   for (let i = 0; i < bays; i++) {
@@ -545,5 +554,72 @@ export function distributedLoad(path: readonly Pt[], label: readonly string[], t
   const x = steep ? mid.x + Math.sign(n.x) * textSize * 0.6 : mid.x;
   const justify = steep ? (n.x < 0 ? "right" : "left") : "centre";
   lines.forEach((text, k) => d.texts.push({ at: at(x, top - pitch * k), text: text.trim(), height: textSize, justify }));
+  return d;
+}
+
+/** A junction's kind: how many ways its chords run out of its block (corner 2, tee 3, cross 4, cube 6). */
+export type JunctionKind = "corner" | "tee" | "cross" | "cube";
+/** Each kind's arms: the unit directions its chords run, in x, y and z (z up). */
+export const JUNCTION_ARMS: Readonly<Record<JunctionKind, readonly (readonly [number, number, number])[]>> = {
+  corner: [[1, 0, 0], [0, 1, 0]],
+  tee: [[1, 0, 0], [-1, 0, 0], [0, 1, 0]],
+  cross: [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]],
+  cube: [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]],
+};
+
+/** Why a junction block, base plate or tower can't be drawn, or null. A block is as wide as its truss. */
+export function junctionProblem(width: number, chord: number): string | null {
+  if (!(chord > 0)) return "Set a Chord Width over 0.";
+  if (!(width > 2 * chord)) return "The junction must be wider than two chord widths.";
+  return null;
+}
+
+/**
+ * A junction block at the origin, as wide as the truss (`width`) with its chords (`chord`) running
+ * out along each of its kind's arms, one arm's length (a width) from its block: a square block and
+ * the two lines of each arm in plan, a vertical arm (a cube's) as a circle of its chords.
+ */
+export function junction(kind: JunctionKind, width: number, chord: number): MarkerDrawing | string {
+  const problem = junctionProblem(width, chord);
+  if (problem) return problem;
+  const h = width / 2;
+  const yc = h - chord / 2;
+  const d = empty();
+  d.outlines.push([at(-h, -h), at(h, -h), at(h, h), at(-h, h)]);
+  for (const arm of JUNCTION_ARMS[kind]) {
+    if (arm[2] !== 0) {
+      if (arm[2] > 0) d.circles.push({ center: at(0, 0), radius: yc });
+      continue;
+    }
+    // across the arm: the chords' two lines, from the block's face out an arm's length
+    const u = arm[0] !== 0 ? at(0, 1) : at(1, 0);
+    for (const o of [-yc, yc]) d.lines.push([at(u.x * o + arm[0] * h, u.y * o + arm[1] * h), at(u.x * o + arm[0] * (h + width), u.y * o + arm[1] * (h + width))]);
+  }
+  return d;
+}
+
+/** A base plate, `size` square, at the origin: its outline and a cross on it. */
+export function basePlate(size: number): MarkerDrawing | string {
+  if (!(size > 0)) return "Set the plate's Size over 0.";
+  const h = size / 2;
+  const d = empty();
+  d.outlines.push([at(-h, -h), at(h, -h), at(h, h), at(-h, h)]);
+  d.lines.push([at(-h, -h), at(h, h)], [at(h, -h), at(-h, h)]);
+  return d;
+}
+
+/**
+ * A tower of truss section `t` standing at the origin: its four chords seen from above, each a
+ * square the chord's width, within the tower's outline; its footprint in plan.
+ */
+export function tower(t: TrussSection): MarkerDrawing | string {
+  const problem = sectionProblem(t) ?? junctionProblem(t.width, t.chord);
+  if (problem) return problem;
+  const h = t.width / 2;
+  const yc = h - t.chord / 2;
+  const c = t.chord / 2;
+  const d = empty();
+  d.outlines.push([at(-h, -h), at(h, -h), at(h, h), at(-h, h)]);
+  for (const [x, y] of [[-yc, -yc], [yc, -yc], [yc, yc], [-yc, yc]]) d.outlines.push([at(x - c, y - c), at(x + c, y - c), at(x + c, y + c), at(x - c, y + c)]);
   return d;
 }

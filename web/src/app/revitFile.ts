@@ -9,6 +9,7 @@ import type { RevitDrawing, RevitReply, RevitRequest } from "./revitImport.ts";
 import { h } from "./dom.ts";
 import { placePng } from "./images.ts";
 import { showDialog } from "./menubar.ts";
+import { readerMessage } from "./readerFailure.ts";
 import { store } from "./state.ts";
 import { errorMessage, toast } from "./toast.ts";
 import type { View } from "./view.ts";
@@ -40,12 +41,12 @@ export function revitModelDrawing(
         if (detail) return;
       } else if (m.type === "detail") {
         if (m.drawing) detail?.(m.drawing, m.count);
-      } else reject(new Error(m.message));
+      } else reject(new Error(readerMessage("Revit", m.message)));
       worker.terminate();
     };
     worker.onerror = (e) => {
       worker.terminate();
-      reject(new Error(e.message || "the Revit reader stopped"));
+      reject(new Error(readerMessage("Revit", e.message)));
     };
     // a copy goes, so the caller keeps its bytes
     worker.postMessage({ bytes, name } satisfies RevitRequest);
@@ -86,7 +87,7 @@ export async function showRevitFile(bytes: Uint8Array, name: string, view: View)
   try {
     f = readRevit(bytes, name);
   } catch (err) {
-    toast(`Could not read ${name}: ${errorMessage(err)}`);
+    toast(`Could not read ${name}: ${readerMessage("Revit", errorMessage(err))}`);
     return;
   }
   const isFamily = f.kind === "family" || f.kind === "family template";

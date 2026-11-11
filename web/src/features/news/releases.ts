@@ -22,6 +22,31 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-11T12:30:00Z",
+    "feedback-fixes",
+    "Keys in fields, textures on stands, files that wouldn't open",
+    `Fixes from your reports and feedback.
+- Shortcuts with ⌘ or Ctrl work while a field in Object Info or the Attributes palette has focus: ⌘Z undoes the last change, ⌘D duplicates, and so on. A field keeps select all, copy, cut and paste, and its own undo while you are still typing in it.
+- Tab and Shift+Tab move from field to field in Object Info, also after a change draws the panel again.
+- Textures placed by a box on extrudes (an exhibition stand's logo panels and banners) show their pictures the right way round, and truss lacing made of round tubes shows in 3D.
+- Opening a picture (JPEG, PNG, GIF, WebP, BMP) from File › Open places it in a new drawing, also on iPad and iPhone; a HEIC picture says to save it as JPEG or PNG.
+- A drawing whose layer can't be read still opens, with that layer named "Layer n", and a drawing that fails to open leaves the one you had open as it was.
+- A file from an older Vectorworks that stops reading says where it stopped or which year it was saved in, not "bad chunk". Archicad files older than 17 name their version.
+- When a reader stops on a Revit, Archicad or other file, the message says so and asks for the file in a bug report.`,
+    "filecheck",
+  ),
+  release(
+    "2026-11-11T12:20:00Z",
+    "rigging-3d",
+    "Trusses, pipes and rigging stand in 3D",
+    `Straight Truss, Curved Truss and Lighting Pipe now draw in 3D as well as in plan, hung at a Height above the layer (6000 mm by default).
+- A truss's chords, bars and lacing are tubes in the same sections as its plan, and a pipe is a tube its diameter across. Each goes into a group with its plan, so Top/Plan looks as it did.
+- Truss Junction places a 2-way corner, 3-way tee, 4-way cross or 6-way cube block, as wide as the truss, with its chords out along each way.
+- Base Plate places a plate on the layer, and Truss Tower a tower of the truss's section standing on one to a Height.
+- A Rodeo Instrument shows a body in 3D: a yoke and can, or a moving head on its yoke, hung by its yoke from its Height (a pipe's, when placed on one), turned as its beam is and tilted to its focus. Below 1 m it stands on its yoke.`,
+    "solids",
+  ),
+  release(
     "2026-11-09T12:10:00Z",
     "timelapse-scrub-edits",
     "Editing after scrubbing the timelapse",

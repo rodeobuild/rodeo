@@ -9,7 +9,7 @@ import type { Pt } from "../core/index.ts";
 import type { ModelFormat } from "../export/model3d.ts";
 import type { MeshImportFormat } from "./meshImport.ts";
 import { h } from "./dom.ts";
-import { IS_MAC, menuButton, openContextMenu, setFallbackWhy, shortcutText, type Item, type Row } from "./menu.ts";
+import { IS_MAC, menuButton, openContextMenu, rowEnabled, setFallbackWhy, shortcutText, type Item, type Row } from "./menu.ts";
 import { NO_DRAWING, STEP, need, whyIn, whyNot } from "./menuReasons.ts";
 import { combinationOf, registerMenus, rowForKeys, withMenuKeys } from "./menuKeys.ts";
 import { arrangeMenus, registerMenuLayout } from "./menuLayout.ts";
@@ -424,13 +424,13 @@ function commandAt(path: readonly string[]): Item | null {
 /** Whether the command at `path` is there and applies now. */
 function canRunAt(path: readonly string[] | undefined): boolean {
   const row = path ? commandAt(path) : null;
-  return !!row && (row.enabled?.() ?? true);
+  return !!row && rowEnabled(row);
 }
 
 /** Runs the command at `path` again, when it applies now. */
 function runAt(path: readonly string[] | undefined): void {
   const row = path ? commandAt(path) : null;
-  if (row?.run && (row.enabled?.() ?? true)) row.run();
+  if (row?.run && rowEnabled(row)) row.run();
 }
 
 /** Runs the command at a menu path ("Tools › Quick Search…") when it is there and applies now; false when it isn't there. */
@@ -1711,6 +1711,8 @@ export interface MenuBar {
   drawing(x: number, y: number, under: string | null, behind?: ForceSelectable | null, coincident?: readonly string[], pick?: VertexPick): void;
   /** Runs the command a ⌘ combination is the key of (when it applies); false when it is no command's. */
   shortcut(e: KeyboardEvent): boolean;
+  /** whether a menu command has this key combination (it may be off now) */
+  hasShortcut(e: KeyboardEvent): boolean;
 }
 
 /** The row labelled `label` in the menu titled `title`, or in one of its submenus. */
@@ -1981,12 +1983,16 @@ export function mountMenuBar(button: HTMLButtonElement, deps: MenuDeps): MenuBar
     drawing(x, y, under, behind = null, coincident = [], pick): void {
       openContextMenu(drawingRows(keyedMenus(), deps.scene, under, behind, coincident, pick, (id) => deps.palettes.show(id)), x, y);
     },
+    hasShortcut(e): boolean {
+      const keys = combinationOf(e);
+      return !!keys && rowForKeys(keyedMenus().flatMap((def) => def.rows), keys) !== null;
+    },
     shortcut(e): boolean {
       const keys = combinationOf(e);
       const row = keys ? rowForKeys(keyedMenus().flatMap((def) => def.rows), keys) : null;
       if (!row) return false;
       // a key whose command does not apply now is still taken, so the browser's (Save Page, Print) does not run
-      if (row.enabled?.() ?? true) row.run?.();
+      if (rowEnabled(row)) row.run?.();
       return true;
     },
   };

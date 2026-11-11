@@ -86,16 +86,45 @@ export function legacyRecords(layout: LegacyLayout, body: Uint8Array): Uint8Arra
   return layout === "narrow" ? narrowRecords(body) : wideRecords(body);
 }
 
-function narrowRecords(body: Uint8Array): Uint8Array[] | null {
-  const recs: Uint8Array[] = [];
-  for (let p = 0; p < body.length; ) {
-    if (p + 8 > body.length) return null;
+/**
+ * Where a body of `layout` records stops reading, or null when it reads to its end: its records'
+ * sizes must land exactly on the end, but for zeros after the last one, too few to start another.
+ * `read` is how many whole records came before the stop.
+ */
+export function legacyStop(layout: LegacyLayout, body: Uint8Array): { readonly read: number; readonly why: string } | null {
+  const head = layout === "narrow" ? NARROW_HEAD : WIDE_HEAD;
+  let n = 0;
+  for (let p = 0; p < body.length; n++) {
+    const left = body.length - p;
+    if (left < head && body.subarray(p).every((b) => b === 0)) return null;
+    if (left < 8) return { read: n, why: `record ${n} at +0x${p.toString(16)}: ${left} bytes left` };
     const size = u32(body, p);
-    if (size < NARROW_HEAD || p + size > body.length || !markOk(u32(body, p + 4))) return null;
+    const mark = u32(body, p + 4);
+    const markFits = layout === "narrow" ? markOk(mark) : mark === 0;
+    if (size < head || p + size > body.length || !markFits) {
+      return { read: n, why: `record ${n} at +0x${p.toString(16)}: size 0x${size.toString(16)}, next 0x${mark.toString(16)}, 0x${left.toString(16)} bytes left` };
+    }
+    p += size;
+  }
+  return null;
+}
+
+/** The records of a body of `layout` records, up to its end or the zeros after its last (legacyStop). */
+function cutRecords(layout: LegacyLayout, body: Uint8Array): Uint8Array[] | null {
+  if (legacyStop(layout, body) !== null) return null;
+  const head = layout === "narrow" ? NARROW_HEAD : WIDE_HEAD;
+  const recs: Uint8Array[] = [];
+  for (let p = 0; body.length - p >= head; ) {
+    const size = u32(body, p);
     recs.push(body.subarray(p, p + size));
     p += size;
   }
-  return convert(recs);
+  return recs;
+}
+
+function narrowRecords(body: Uint8Array): Uint8Array[] | null {
+  const recs = cutRecords("narrow", body);
+  return recs ? convert(recs) : null;
 }
 
 /** Types whose 2013 bodies are read as they are: aux data (tagged dictionaries), the symbol library and its folders (Rodeo reads only their names and what they hold). */
@@ -160,15 +189,7 @@ function convert(recs: Uint8Array[]): Uint8Array[] {
 
 /** A body of u64-sized records with 2018+ headers, uncompressed: its records as they are. */
 function wideRecords(body: Uint8Array): Uint8Array[] | null {
-  const out: Uint8Array[] = [];
-  for (let p = 0; p < body.length; ) {
-    if (p + 8 > body.length) return null;
-    const size = u32(body, p);
-    if (u32(body, p + 4) !== 0 || size < WIDE_HEAD || p + size > body.length) return null;
-    out.push(body.slice(p, p + size));
-    p += size;
-  }
-  return out;
+  return cutRecords("wide", body)?.map((r) => r.slice()) ?? null;
 }
 
 /** A 2013 record's header over `body` (its 2018+ body) as a 2018+ record; `index` is its place in the stream. */

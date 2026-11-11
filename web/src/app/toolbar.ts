@@ -478,6 +478,9 @@ const TOOL_SETS: readonly ToolSet[] = [
     tools: [
       { id: "trussstraight", label: "Straight Truss" },
       { id: "trusscurved", label: "Curved Truss" },
+      { id: "trussjunction", label: "Truss Junction" },
+      { id: "baseplate", label: "Base Plate" },
+      { id: "trusstower", label: "Truss Tower" },
       { id: "lightingpipe", label: "Lighting Pipe" },
       { id: "pipeladder", label: "Lighting Pipe Ladder" },
       { id: "rigpoint", label: "House Rigging Point" },

@@ -151,19 +151,34 @@ function layerTailFits(d: Uint8Array, s: number): boolean {
   return t % 2 === 0 && a + 8 + n + t <= d.length;
 }
 
+/** Whether the kind byte is valid at shift `s` and a name fits there, its title not needed (a damaged record's title). */
+function layerNameFits(d: Uint8Array, s: number): boolean {
+  const kind = d[LAYER_KIND_BASE + s];
+  if (kind < 1 || kind > 3) return false;
+  const a = LAYER_NAME_BASE + s;
+  if (a + 4 > d.length) return false;
+  const n = u32(d, a);
+  return n > 0 && n % 2 === 0 && a + 4 + n <= d.length;
+}
+
 function layerShift(d: Uint8Array): number {
   let s = layerShiftCache.get(d);
   if (s === undefined) {
-    s = 0;
-    for (let k = 0; k <= MAX_LAYER_SHIFT; k += 2) {
-      if (layerTailFits(d, k)) {
-        s = k;
-        break;
-      }
-    }
+    // a record whose name and title fit is read where they fit; one damaged so that none does
+    // keeps the first shift where its name still does, else 0
+    const fit = (ok: (k: number) => boolean): number | undefined => {
+      for (let k = 0; k <= MAX_LAYER_SHIFT; k += 2) if (ok(k)) return k;
+      return undefined;
+    };
+    s = fit((k) => layerTailFits(d, k)) ?? fit((k) => layerNameFits(d, k)) ?? 0;
     layerShiftCache.set(d, s);
   }
   return s;
+}
+
+/** Whether a field of `size` bytes at `off` lies inside `d`. */
+function fits(d: Uint8Array, off: number, size: number): boolean {
+  return off >= 0 && off + size <= d.length;
 }
 
 /** Offset of a layer record's kind byte. */
@@ -814,6 +829,27 @@ export function readStr(d: Uint8Array, off: number): [string, number] {
   return [readUtf16(d, off + 4, n), off + 4 + n];
 }
 
+/** readStr, or null when the string doesn't fit in the record `d`. */
+function fitStr(d: Uint8Array, off: number): [string, number] | null {
+  if (off < 0 || off + 4 > d.length) return null;
+  const n = u32(d, off);
+  if (off + 4 + n > d.length) return null;
+  return [readUtf16(d, off + 4, n), off + 4 + n];
+}
+
+/**
+ * A layer record's name and title, read without going past the record. A name that doesn't fit is
+ * null (the layer is then called "Layer n"); a title that doesn't fit is "". `end` is where the
+ * title ends, null when either doesn't fit (a record that can't be rewritten safely).
+ */
+export function layerTexts(d: Uint8Array): { name: string | null; title: string; end: number | null } {
+  const name = fitStr(d, layerNameAt(d));
+  // a layer is never called "": an empty name is what zeroed bytes read as
+  if (!name || name[0] === "") return { name: null, title: "", end: null };
+  const title = fitStr(d, name[1]);
+  return { name: name[0], title: title?.[0] ?? "", end: title ? title[1] : null };
+}
+
 /** How far a plug-in object is turned, degrees. */
 function turnOf(r: Rec): number {
   const own = r.type === PLUGIN ? readPluginMatrix(r.data) : readInstanceMatrix(r.data);
@@ -875,7 +911,7 @@ export class Model implements VwxDocument {
   private lightsAt = 0;
   private lightsXt = 0;
   /** what layers() reads from a layer's record, by its data */
-  private layerReads = new WeakMap<Uint8Array, { id: string; name: string; title: string; kind: LayerInfo["kind"]; scale: number; visibility: Visibility; rest: Partial<LayerInfo> }>();
+  private layerReads = new WeakMap<Uint8Array, { id: string; name: string | null; title: string; kind: LayerInfo["kind"]; scale: number; visibility: Visibility; rest: Partial<LayerInfo> }>();
   nameTable: Rec | null = null;
   classList: Rec | null = null;
   classRecs = new Map<number, Rec>();
@@ -1007,22 +1043,23 @@ export class Model implements VwxDocument {
 
   layers(): LayerInfo[] {
     const idx = this.index();
-    return this.layerRecs.map((r) => {
+    return this.layerRecs.map((r, i) => {
       let read = this.layerReads.get(r.data);
       if (!read) {
-        const [name, off] = readStr(r.data, layerNameAt(r.data));
-        const [title] = readStr(r.data, off);
-        const design = r.data[layerKindAt(r.data)] !== 2;
+        const d = r.data;
+        const texts = layerTexts(d);
+        const design = d[layerKindAt(d)] !== 2;
+        // a record too short for a field reads it as 0 rather than throwing: one damaged layer doesn't stop the drawing
         read = {
           id: guidOf(r),
-          name,
-          title,
+          name: texts.name,
+          title: texts.title,
           kind: design ? "design" : "sheet",
-          scale: f64(r.data, LAYER_SCALE),
-          visibility: visibility(i16(r.data, LAYER_VIS)),
+          scale: fits(d, LAYER_SCALE, 8) ? f64(d, LAYER_SCALE) : 0,
+          visibility: visibility(fits(d, LAYER_VIS, 2) ? i16(d, LAYER_VIS) : 0),
           rest: {
-            ...(design ? { elevation: f64(r.data, layerElevationAt(r.data)), story: u16(r.data, LAYER_STORY) } : {}),
-            ...(design ? viewOf(r.data) : pageOf(r.data)),
+            ...(design ? { elevation: fits(d, layerElevationAt(d), 8) ? f64(d, layerElevationAt(d)) : 0, story: fits(d, LAYER_STORY, 2) ? u16(d, LAYER_STORY) : 0 } : {}),
+            ...(design ? viewOf(d) : pageOf(d)),
           },
         };
         this.layerReads.set(r.data, read);
@@ -1030,7 +1067,7 @@ export class Model implements VwxDocument {
       const { id, rest } = read;
       return {
         id,
-        name: read.name,
+        name: read.name ?? `Layer ${i + 1}`,
         title: read.title,
         kind: read.kind,
         scale: read.scale,
@@ -1165,7 +1202,8 @@ export class Model implements VwxDocument {
   }
 
   layerName(r: Rec): string {
-    return readStr(r.data, layerNameAt(r.data))[0];
+    const name = layerTexts(r.data).name;
+    return name ?? `Layer ${Math.max(0, this.layerRecs.indexOf(r)) + 1}`;
   }
 
   // ---- object index ---------------------------------------------------------

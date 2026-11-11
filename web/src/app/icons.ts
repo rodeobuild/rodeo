@@ -504,6 +504,12 @@ export const TOOL_ICON: Record<ToolId, string> = {
   commdevice: svg('<path d="M3 21h18"/><path d="M5 4h14l-7 10z"/><path d="M12 14v7"/>'),
   // straight truss: two chords laced corner to corner between end bars
   trussstraight: svg('<path d="M2 8h20M2 16h20M2 8v8M22 8v8"/><path d="M2 16l5-8 5 8 5-8 5 8"/>'),
+  // truss junction: a block with its chords out to each side
+  trussjunction: svg('<rect x="9" y="9" width="6" height="6"/><path d="M9 12H3M15 12h6M12 9V3M12 15v6"/>'),
+  // base plate: a plate with a tower's legs on it
+  baseplate: svg('<path d="M3 18h18v3H3z"/><path d="M8 18l4-14 4 14M9 11h6"/>'),
+  // truss tower: a square tower standing on a plate
+  trusstower: svg('<path d="M9 3v15M15 3v15M9 7h6M9 12h6M9 3l6 4M15 3l-6 4"/><path d="M4 18h16v3H4z"/>'),
   // curved truss: two concentric chords with bars across
   trusscurved: svg('<path d="M3 21a9 9 0 0118 0M7 21a5 5 0 0110 0"/><path d="M5.6 14.6l3.5 2.6M12 12v4M18.4 14.6l-3.5 2.6"/>'),
   // piping run: a conduit turning a corner, with couplings along it

@@ -1,9 +1,9 @@
 // Rigging's Straight Truss, Curved Truss, Lighting Pipe, Lighting Pipe Ladder, House Rigging Point,
 // Hoist, Bridle and Mother Grid (rigShapes.ts). Vectorworks makes rigging objects of them, with
-// 3D, loads and Braceworks calculations; these draw what they show in Top/Plan, as plain 2D
-// objects grouped in the active class. Heights and trims (but a bridle's, which measure its legs),
-// rotations out of plan, weights, materials, cross sections, connections, symbols from libraries,
-// forces and 3D aren't drawn or kept.
+// loads and Braceworks calculations; these draw what they show in Top/Plan, as plain 2D objects
+// grouped in the active class. Straight Truss, Curved Truss and Lighting Pipe also draw 3D at a
+// Height (rigSolids.ts), grouped with their plan as a hybrid. Trims, rotations out of plan, weights,
+// materials, connections, symbols from libraries, forces and Braceworks figures aren't drawn or kept.
 //
 // Straight Truss takes a drag or two clicks along it, Curved Truss a click with its arc's middle
 // up the screen (a press dragged turns it toward the pointer) round the point, Lighting Pipe a
@@ -12,7 +12,8 @@
 // a click, or a press dragged to turn them, centred on the point. Bridle takes a click for its
 // connection and one for each leg (a reversed one its legs first), Mother Grid its two ends and
 // its connection. Rigging Load hangs a point load where it's clicked or lays a distributed load
-// along a clicked path, labelled with its weights.
+// along a clicked path, labelled with its weights. Truss Junction, Base Plate and Truss Tower take
+// a click (a press dragged turns them): a junction block, a plate on the layer, a tower standing on one.
 
 import type { Pt } from "../../core/index.ts";
 import { ANGLE_STEP_DEG, dist, snapAngle } from "../geom.ts";
@@ -20,6 +21,7 @@ import { pathLength } from "../cableShapes.ts";
 import { colorMatcher } from "../pdfImport.ts";
 import {
   alongLine,
+  basePlate,
   bridle,
   BRIDLE_LEGS,
   curvedTruss,
@@ -30,6 +32,9 @@ import {
   formatWeight,
   hoist,
   hoistOrigin,
+  junction,
+  type JunctionKind,
+  tower,
   imperialUnits,
   lightingPipe,
   MAX_RUNGS,
@@ -62,9 +67,13 @@ import { BaseTool, modeForKey, type Painter, type PointerInfo, type ToolModes } 
 import { formatLength } from "../units.ts";
 import { countOn } from "../lightingDeviceShapes.ts";
 import { placedDrawing } from "./circulation.ts";
+import { addHybrid } from "./solidTool.ts";
 import { addPieces, CLICK_PX, layerScale, PlaceTool, preview, TwoPointTool, type Part } from "./detailing.ts";
 import { markerParts } from "./markers.ts";
 import { PathTool } from "./paths.ts";
+import { curvedTrussSolid, pipeSolid, junctionSolid, plateSolid, straightTrussSolid, towerSolid } from "../rigSolids.ts";
+import { placedSolid } from "../solids3d.ts";
+import type { MarkerDrawing } from "../markerShapes.ts";
 
 /** a click puts a curved truss's middle up the screen: its own +y, a quarter turn from its +x */
 const UP = Math.PI / 2;
@@ -128,6 +137,18 @@ function trussParts(plan: TrussPlan, at: Pt, angle: number): Part[] {
   ];
 }
 
+/** Two drawings' pieces together, as one: a tower's plan on its plate's. */
+const joined = (a: MarkerDrawing, b: MarkerDrawing): MarkerDrawing => ({
+  outlines: [...a.outlines, ...b.outlines],
+  lines: [...a.lines, ...b.lines],
+  circles: [...a.circles, ...b.circles],
+  filled: [...a.filled, ...b.filled],
+  texts: [...a.texts, ...b.texts],
+});
+
+/** the default height a truss, pipe or junction hangs its underside at, mm */
+const HANG_MM = 6000;
+
 const sectionFields = (t: TrussSection): PrefField[] => [
   { kind: "choice", key: "profile", label: "Profile", value: t.profile, options: PROFILES },
   { kind: "length", key: "width", label: "Width", value: t.width },
@@ -155,6 +176,7 @@ export class StraightTrussTool extends TwoPointTool {
   readonly cursor = "crosshair";
   protected readonly label = "Straight Truss";
   private t: StraightTruss = { profile: "box", width: 290, chord: 51, ladderBar: 20, lacing: 16, folding: false, highlight: true, interval: 3000, ladderSpacing: 500, direction: false };
+  private height = HANG_MM;
   private problem = "";
 
   async preferences(): Promise<void> {
@@ -166,11 +188,13 @@ export class StraightTrussTool extends TwoPointTool {
         { kind: "length", key: "interval", label: "Connection Interval", value: t.interval },
         { kind: "length", key: "spacing", label: "Ladder Bar Spacing", value: t.ladderSpacing },
         { kind: "check", key: "direction", label: "Show Direction", value: t.direction },
+        { kind: "length", key: "height", label: "Height", value: this.height, zero: true },
       ],
-      `The truss runs from the first point to the second, centred on the line, in sections a Connection Interval long. ${TRUSS_NOTE} Show Direction puts an arrowhead at its middle pointing from start to end.`,
+      `The truss runs from the first point to the second, centred on the line, in sections a Connection Interval long. ${TRUSS_NOTE} Show Direction puts an arrowhead at its middle pointing from start to end. In 3D its underside hangs at the Height above the layer, its chords, bars and lacing drawn as tubes in the same sections; the plan and 3D are grouped together.`,
     );
     if (!v) return;
     this.t = { ...sectionFrom(v), interval: v.num("interval"), ladderSpacing: v.num("spacing"), direction: v.flag("direction") };
+    this.height = v.num("height");
   }
 
   hint(): string {
@@ -189,6 +213,17 @@ export class StraightTrussTool extends TwoPointTool {
   protected refusal(): string {
     return this.problem || (straightTrussProblem(this.t, 1) ?? "Drag a longer truss.");
   }
+
+  /** the plan with its 3D truss at the Height, grouped as a hybrid */
+  protected override add(pieces: readonly (readonly Part[])[], a: Pt, b: Pt): void {
+    const solid = straightTrussSolid(this.t, dist(a, b), this.height);
+    if (typeof solid === "string") {
+      toast(solid, "info");
+      return;
+    }
+    const plan = pieces[0] ?? [];
+    addHybrid(this.label, plan, placedSolid(solid, a, Math.atan2(b.y - a.y, b.x - a.x)));
+  }
 }
 
 export class CurvedTrussTool extends PlaceTool {
@@ -197,6 +232,8 @@ export class CurvedTrussTool extends PlaceTool {
   protected readonly label = "Curved Truss";
   protected readonly clickAngle = UP;
   private t: CurvedTruss = { profile: "box", width: 290, chord: 51, ladderBar: 20, lacing: 16, folding: false, highlight: true, diameter: 6000, totalArc: 180, segmentArc: 45, ladderArc: 7.5 };
+  private height = HANG_MM;
+  private last: { at: Pt; angle: number } | null = null;
 
   async preferences(): Promise<void> {
     const t = this.t;
@@ -208,11 +245,13 @@ export class CurvedTrussTool extends PlaceTool {
         { kind: "number", key: "totalArc", label: "Total Arc", value: t.totalArc, min: 0, max: 360, unit: "°" },
         { kind: "number", key: "segmentArc", label: "Segment Arc", value: t.segmentArc, min: 0, max: 360, unit: "°" },
         { kind: "number", key: "ladderArc", label: "Ladder Spacing Arc", value: t.ladderArc, min: 0, max: 360, unit: "°" },
+        { kind: "length", key: "height", label: "Height", value: this.height, zero: true },
       ],
-      `The arc is centred on the click, its middle up the screen (toward the drag), the Diameter outside to outside, in sections a Segment Arc long. ${TRUSS_NOTE} The Diameter must be more than twice the width.`,
+      `The arc is centred on the click, its middle up the screen (toward the drag), the Diameter outside to outside, in sections a Segment Arc long. ${TRUSS_NOTE} The Diameter must be more than twice the width. In 3D its underside hangs at the Height above the layer, in the same sections as the plan.`,
     );
     if (!v) return;
     this.t = { ...sectionFrom(v), diameter: v.num("diameter"), totalArc: v.num("totalArc"), segmentArc: v.num("segmentArc"), ladderArc: v.num("ladderArc") };
+    this.height = v.num("height");
   }
 
   hint(): string {
@@ -220,6 +259,7 @@ export class CurvedTrussTool extends PlaceTool {
   }
 
   protected shapes(at: Pt, angle: number): Part[] | null {
+    this.last = { at, angle };
     const plan = curvedTruss(this.t);
     return typeof plan === "string" ? null : trussParts(plan, at, angle - UP);
   }
@@ -228,12 +268,25 @@ export class CurvedTrussTool extends PlaceTool {
     const plan = curvedTruss(this.t);
     return typeof plan === "string" ? plan : "The curved truss can't be drawn.";
   }
+
+  /** the plan with its 3D truss at the Height, turned as the plan is */
+  protected override place(parts: readonly Part[]): void {
+    const last = this.last;
+    if (!last) return;
+    const solid = curvedTrussSolid(this.t, this.height);
+    if (typeof solid === "string") {
+      toast(solid, "info");
+      return;
+    }
+    addHybrid(this.label, parts, placedSolid(solid, last.at, last.angle - UP));
+  }
 }
 
 export class LightingPipeTool extends PathTool {
   readonly id = "lightingpipe";
   protected readonly label = "Lighting Pipe";
   private p: Pipe = { double: true, diameter: 48, ends: "both", centreline: false, direction: false, ticks: "none", centers: 500, tickSize: 150, offset: 0, origin: "centre" };
+  private height = HANG_MM;
 
   async preferences(): Promise<void> {
     const p = this.p;
@@ -250,10 +303,12 @@ export class LightingPipeTool extends PathTool {
         { kind: "choice", key: "origin", label: "Origin", value: p.origin, options: ORIGINS },
         { kind: "length", key: "tickSize", label: "Size", value: p.tickSize },
         { kind: "length", key: "offset", label: "Offset", value: p.offset, zero: true, signed: true },
+        { kind: "length", key: "height", label: "Height", value: this.height, zero: true },
       ],
-      "Click the pipe's path. A single line, or a double line the Diameter across (its centre line, with the guide shown, in the drawing's first dashed line type, left out in a drawing without one); an end marker is a bar across an open end four diameters long. Tick marks run every Centers from the middle of the whole pipe, or split either side of it, shifted by the Offset, as lines the Size long or dots the Size across. Smooth corners, arc radii, gaps round the ticks, snap points, materials and weights aren't offered.",
+      "Click the pipe's path. A single line, or a double line the Diameter across (its centre line, with the guide shown, in the drawing's first dashed line type, left out in a drawing without one); an end marker is a bar across an open end four diameters long. Tick marks run every Centers from the middle of the whole pipe, or split either side of it, shifted by the Offset, as lines the Size long or dots the Size across. In 3D the pipe is a tube its Diameter across at the Height above the layer, grouped with its plan. Smooth corners, arc radii, gaps round the ticks, snap points, materials and weights aren't offered.",
     );
     if (!v) return;
+    this.height = v.num("height");
     this.p = {
       double: v.choice("lineType") === "double",
       diameter: v.num("diameter"),
@@ -277,6 +332,22 @@ export class LightingPipeTool extends PathTool {
     if (typeof plan === "string") return plan;
     const dashed = dashedStyle();
     return [...markerParts(plan), ...(dashed === undefined ? [] : plan.hidden.map((pts): Part => ({ shape: { kind: "polyline", points: pts, closed: false }, attrs: { lineStyle: dashed } })))];
+  }
+
+  /** the plan with its pipe as a tube at the Height, grouped as a hybrid */
+  protected override finish(points: Pt[], closed: boolean): void {
+    const parts = this.parts(points, closed);
+    if (typeof parts === "string") {
+      toast(parts, "info");
+      return;
+    }
+    const solid = pipeSolid(points, closed, this.p.diameter, this.height);
+    if (typeof solid === "string") {
+      toast(solid, "info");
+      return;
+    }
+    addHybrid(this.label, parts, solid);
+    this.added(points, closed);
   }
 }
 
@@ -967,5 +1038,179 @@ export class RiggingLoadTool extends PathTool {
     if (typeof plan === "string") return plan;
     const line: Part = { shape: { kind: "polyline", points, closed }, attrs: { lineWeight: LOAD_WEIGHT, penFore: colorMatcher()(LOAD_YELLOW) } };
     return [line, ...markerParts({ ...plan, lines: [] })];
+  }
+}
+
+const JUNCTIONS: Options<JunctionKind> = [
+  { value: "corner", label: "2-Way Corner" },
+  { value: "tee", label: "3-Way Tee" },
+  { value: "cross", label: "4-Way Cross" },
+  { value: "cube", label: "6-Way Cube" },
+];
+
+/** a junction, plate or tower's 3D and plan placed at a click, turned by the drag */
+export class TrussJunctionTool extends PlaceTool {
+  readonly id = "trussjunction";
+  readonly cursor = "crosshair";
+  protected readonly label = "Truss Junction";
+  private kind: JunctionKind = "corner";
+  private width = 290;
+  private chord = 51;
+  private height = HANG_MM;
+  private last: { at: Pt; angle: number } | null = null;
+
+  async preferences(): Promise<void> {
+    const v = await toolPrefs(
+      "Truss Junction Preferences",
+      [
+        { kind: "choice", key: "kind", label: "Junction", value: this.kind, options: JUNCTIONS },
+        { kind: "length", key: "width", label: "Width", value: this.width },
+        { kind: "length", key: "chord", label: "Chord Width", value: this.chord },
+        { kind: "length", key: "height", label: "Height", value: this.height, zero: true },
+      ],
+      "A junction block as wide as the truss it joins, with its chords out along each way: a 2-way corner, a 3-way tee, a 4-way cross or a 6-way cube (the two ways up and down drawn as a circle in plan). Its underside hangs at the Height above the layer. The block is a plain box with chord-width tubes out along each way, a width long; a library symbol isn't used.",
+    );
+    if (!v) return;
+    this.kind = pick(JUNCTIONS, v.choice("kind"), "corner");
+    this.width = v.num("width");
+    this.chord = v.num("chord");
+    this.height = v.num("height");
+  }
+
+  hint(): string {
+    return `${super.hint()} · centred on the point`;
+  }
+
+  protected shapes(at: Pt, angle: number): Part[] | null {
+    this.last = { at, angle };
+    const plan = junction(this.kind, this.width, this.chord);
+    return typeof plan === "string" ? null : markerParts(placedDrawing(plan, at, angle));
+  }
+
+  protected refusal(): string {
+    const plan = junction(this.kind, this.width, this.chord);
+    return typeof plan === "string" ? plan : "The junction can't be drawn.";
+  }
+
+  protected override place(parts: readonly Part[]): void {
+    const last = this.last;
+    if (!last) return;
+    const solid = junctionSolid(this.kind, this.width, this.chord, this.height);
+    if (typeof solid === "string") {
+      toast(solid, "info");
+      return;
+    }
+    addHybrid(this.label, parts, placedSolid(solid, last.at, last.angle));
+  }
+}
+
+/** a base plate on the layer, its size and thickness from its Preferences */
+export class BasePlateTool extends PlaceTool {
+  readonly id = "baseplate";
+  readonly cursor = "crosshair";
+  protected readonly label = "Base Plate";
+  private size = 500;
+  private thickness = 20;
+  private last: { at: Pt; angle: number } | null = null;
+
+  async preferences(): Promise<void> {
+    const v = await toolPrefs(
+      "Base Plate Preferences",
+      [
+        { kind: "length", key: "size", label: "Size", value: this.size },
+        { kind: "length", key: "thickness", label: "Thickness", value: this.thickness },
+      ],
+      "A square base plate the Size across, lying on the layer and the Thickness high: in plan its outline and a cross. A plain plate, with no holes or library symbol.",
+    );
+    if (!v) return;
+    this.size = v.num("size");
+    this.thickness = v.num("thickness");
+  }
+
+  protected shapes(at: Pt, angle: number): Part[] | null {
+    this.last = { at, angle };
+    const plan = basePlate(this.size);
+    return typeof plan === "string" ? null : markerParts(placedDrawing(plan, at, angle));
+  }
+
+  protected refusal(): string {
+    return "Set the plate's Size over 0.";
+  }
+
+  protected override place(parts: readonly Part[]): void {
+    const last = this.last;
+    if (!last) return;
+    const solid = plateSolid(this.size, this.thickness);
+    if (typeof solid === "string") {
+      toast(solid, "info");
+      return;
+    }
+    addHybrid(this.label, parts, placedSolid(solid, last.at, last.angle));
+  }
+}
+
+/** a tower of truss standing on a base plate: its section from its Preferences, up to its Height */
+export class TrussTowerTool extends PlaceTool {
+  readonly id = "trusstower";
+  readonly cursor = "crosshair";
+  protected readonly label = "Truss Tower";
+  private t: TrussSection = { profile: "box", width: 290, chord: 51, ladderBar: 20, lacing: 16, folding: false, highlight: false };
+  private height = 3000;
+  private spacing = 500;
+  private plateSize = 500;
+  private thickness = 20;
+  private last: { at: Pt; angle: number } | null = null;
+
+  async preferences(): Promise<void> {
+    const t = this.t;
+    const v = await toolPrefs(
+      "Truss Tower Preferences",
+      [
+        { kind: "length", key: "width", label: "Width", value: t.width },
+        { kind: "length", key: "chord", label: "Chord Width", value: t.chord },
+        { kind: "length", key: "ladderBar", label: "Ladder Bar Diameter", value: t.ladderBar, zero: true },
+        { kind: "length", key: "lacing", label: "Lacing Diameter", value: t.lacing, zero: true },
+        { kind: "length", key: "spacing", label: "Ladder Bar Spacing", value: this.spacing },
+        { kind: "length", key: "height", label: "Height", value: this.height },
+        { kind: "length", key: "plate", label: "Base Plate Size", value: this.plateSize },
+        { kind: "length", key: "thickness", label: "Base Plate Thickness", value: this.thickness },
+      ],
+      "A tower of square section, the truss's width and chords, its four chords standing on a base plate and rising to the Height above it, with bars across at each bay and lacing down each face. In plan, the plate and the tower's footprint. The plate lies on the layer.",
+    );
+    if (!v) return;
+    this.t = { profile: "box", width: v.num("width"), chord: v.num("chord"), ladderBar: v.num("ladderBar"), lacing: v.num("lacing"), folding: false, highlight: false };
+    this.spacing = v.num("spacing");
+    this.height = v.num("height");
+    this.plateSize = v.num("plate");
+    this.thickness = v.num("thickness");
+  }
+
+  protected shapes(at: Pt, angle: number): Part[] | null {
+    this.last = { at, angle };
+    const plate = basePlate(this.plateSize);
+    const frame = tower(this.t);
+    if (typeof plate === "string" || typeof frame === "string") return null;
+    return markerParts(placedDrawing(joined(plate, frame), at, angle));
+  }
+
+  protected refusal(): string {
+    const frame = tower(this.t);
+    return typeof frame === "string" ? frame : "Set the plate's Size over 0.";
+  }
+
+  protected override place(parts: readonly Part[]): void {
+    const last = this.last;
+    if (!last) return;
+    const plate = plateSolid(this.plateSize, this.thickness);
+    const stand = towerSolid(this.t, this.height, this.spacing, this.thickness);
+    if (typeof plate === "string") {
+      toast(plate, "info");
+      return;
+    }
+    if (typeof stand === "string") {
+      toast(stand, "info");
+      return;
+    }
+    addHybrid(this.label, parts, placedSolid([...plate, ...stand], last.at, last.angle));
   }
 }

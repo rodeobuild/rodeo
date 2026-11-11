@@ -3,6 +3,7 @@
 // module trapped can't convert again, so it is ended, and the next conversion starts another.
 
 import type { CadConvert, Converted, NativeReply, NativeRequest } from "../import/native.ts";
+import { readerMessage, readerStoppedMessage } from "./readerFailure.ts";
 
 let worker: Worker | null = null;
 let queue: Promise<unknown> = Promise.resolve();
@@ -26,11 +27,11 @@ function convertOnce(req: NativeRequest): Promise<Converted> {
       const m = e.data;
       if (m.type === "done") return resolve(m.converted);
       if (m.trap) end();
-      reject(new Error(m.message));
+      reject(new Error(m.trap ? readerStoppedMessage("CAD") : readerMessage("CAD", m.message)));
     };
     w.onerror = (e) => {
       end();
-      reject(new Error(e.message || "the CAD reader stopped"));
+      reject(new Error(readerMessage("CAD", e.message)));
     };
     w.postMessage({ format: req.format, bytes: req.bytes, name: req.name } satisfies NativeRequest);
   });

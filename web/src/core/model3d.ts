@@ -102,7 +102,7 @@ import { f64, i32, setF64, setU16, u16, u32 } from "./bytes.ts";
 import { subtractMeshes, unionMeshes } from "./csg.ts";
 import { simplifyMesh } from "./decimate.ts";
 import { BODY_IN_PARENT, LOCUS, bodySections, instanceScale, translateRecord } from "./encode.ts";
-import { LIGHT, LIGHT_AT, LIGHT_KIND, LIGHT_KINDS, LIGHT_ON, decodeShape, lightAim } from "./geometry.ts";
+import { LIGHT, LIGHT_AT, LIGHT_KIND, LIGHT_KINDS, LIGHT_ON, decodeShape, lightAim, rectFrameIn } from "./geometry.ts";
 import { axisOf, isLightingDevice, readDeviceLight } from "./lightingDevice.ts";
 import { guidOf, layerElevationOf, layerKindAt, objectChildren, type Model } from "./model.ts";
 import { type Box, facesArea, onXtFaces, queueXt, xtFaces } from "./parasolid.ts";
@@ -129,6 +129,10 @@ const TDMD_BASE = 0x60;
 const TD_I32 = 8;
 const TD_F64 = 6;
 const TEXTURE_KEY = 3;
+/** "ttwr" key 1: each texture part's id (3 for the whole object) */
+const PART_KEY = 1;
+/** the whole object's texture part, as Vectorworks numbers it */
+const OBJECT_PART = 3;
 /** "ttwr" keys: each part's mapping, its offset, scale and rotation (6 f64), its axes and origin (12 f64) */
 const MAPPING_KEY = 5;
 const PLACE_KEY = 6;
@@ -136,6 +140,8 @@ const AXES_KEY = 7;
 const PLANE_MAPPING = 0;
 const UV_MAPPING = 5;
 const FIT_MAPPING = 6;
+/** an image laid on each face from the object's own box, one image width across (boxedUvs) */
+const BOX_MAPPING = 7;
 /** "TeMe" key holding u, v per vertex */
 const UV_KEY = 2;
 /** Owners whose body is placed by their own matrix. */
@@ -1058,12 +1064,39 @@ export function turnStepsGeneration(): number {
 /** A profile corner turning more than this (radians) shows an edge up the side. */
 const CREASE = (20 * Math.PI) / 180;
 
+/** The type of an oval: a rectangle's layout with the ellipse inside its frame (FORMAT.md, type 4). */
+const OVAL = 4;
+
+/**
+ * An oval profile's outline as flat xy: its ellipse inside the frame of its rectangle layout, `steps`
+ * points round, from the frame's own axes (u along the frame, v across it); null when the frame doesn't read.
+ */
+export function ovalRing(rec: Rec, steps: number): number[] | null {
+  const f = rectFrameIn(rec);
+  if (!f) return null;
+  const rx = f.w / 2;
+  const ry = f.h / 2;
+  if (!(rx > 0) || !(ry > 0)) return null;
+  const v = { x: -f.u.y, y: f.u.x };
+  const cx = f.o.x + f.u.x * rx + v.x * ry;
+  const cy = f.o.y + f.u.y * rx + v.y * ry;
+  const xy: number[] = [];
+  for (let i = 0; i < steps; i++) {
+    const t = (2 * Math.PI * i) / steps;
+    const a = rx * Math.cos(t);
+    const b = ry * Math.sin(t);
+    xy.push(cx + a * f.u.x + b * v.x, cy + a * f.u.y + b * v.y);
+  }
+  return xy.every(Number.isFinite) ? xy : null;
+}
+
 /**
  * A profile's outline as flat xy, without a repeated closing point. An open polygon or polyline
  * counts as closed, as Vectorworks fills it and extrudes it; lines, open arcs and text are no
  * profile.
  */
 function profileRing(rec: Rec): number[] | null {
+  if (rec.type === OVAL) return ovalRing(rec, turnSteps);
   const s = decodeShape(rec);
   if (!s) return null;
   const xy: number[] = [];
@@ -1639,6 +1672,82 @@ function fitUvs(r: Rec, tris: Float64Array): Float64Array | null {
   return out;
 }
 
+/** A texture part's placement: its offset across and up, scale across and up, and rotation (radians). */
+export interface PartPlacement {
+  offsetU: number;
+  offsetV: number;
+  scaleU: number;
+  scaleV: number;
+  rotation: number;
+}
+
+/**
+ * Texture coordinates for triangles box-mapped on their own frame: the image spans `imageSize` mm
+ * across at the part's scale and its aspect (`aspect` = height over width of the image) up, from the
+ * lower-left corner of the triangles' own box, each triangle's main axis as boxUvs picks it. The
+ * part's offset, scale and rotation are applied as planeUvs applies them. Each corner gets (u, v).
+ */
+export function boxMappedUvs(tris: Float64Array, place: PartPlacement, imageSize: number, aspect: number): Float64Array {
+  const { offsetU, offsetV, scaleU, scaleV, rotation } = place;
+  const width = imageSize * scaleU;
+  const height = imageSize * scaleV * aspect;
+  const lo = [Infinity, Infinity, Infinity];
+  for (let i = 0; i < tris.length; i++) lo[i % 3] = Math.min(lo[i % 3], tris[i]);
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const out = new Float64Array((tris.length / 3) * 2);
+  for (let t = 0, j = 0; t + 8 < tris.length; t += 9) {
+    const ux = tris[t + 3] - tris[t];
+    const uy = tris[t + 4] - tris[t + 1];
+    const uz = tris[t + 5] - tris[t + 2];
+    const vx = tris[t + 6] - tris[t];
+    const vy = tris[t + 7] - tris[t + 1];
+    const vz = tris[t + 8] - tris[t + 2];
+    const nx = Math.abs(uy * vz - uz * vy);
+    const ny = Math.abs(uz * vx - ux * vz);
+    const nz = Math.abs(ux * vy - uy * vx);
+    let iu = 0;
+    let iv = 1;
+    if (nx >= ny && nx >= nz) {
+      iu = 1;
+      iv = 2;
+    } else if (ny >= nz) {
+      iu = 0;
+      iv = 2;
+    }
+    for (let k = 0; k < 3; k++, j += 2) {
+      const a = tris[t + 3 * k + iu] - lo[iu] - offsetU;
+      const b = tris[t + 3 * k + iv] - lo[iv] - offsetV;
+      out[j] = (a * cos + b * sin) / width;
+      out[j + 1] = (b * cos - a * sin) / height;
+    }
+  }
+  return out;
+}
+
+/**
+ * Texture coordinates for an extrude's triangles (in its own frame) when its whole-object part is
+ * box-mapped: the demos' extrudes with a logo (mapping 7) show the image one width across and its
+ * aspect up from the lower-left corner of the object's own box (see boxMappedUvs). Null for every
+ * other mapping, which other paths place, and when the image size isn't known.
+ */
+function boxedUvs(ctx: Ctx, r: Rec, tris: Float64Array): Float64Array | null {
+  const ttwr = tdmdRec(r, "ttwr");
+  if (!ttwr || tris.length < 9) return null;
+  const res = ctx.textures.get(textureOf(ctx.doc, r, -1));
+  if (!res?.imageSize || !res.imagePixels) return null;
+  const part = tdmdInts(ttwr, PART_KEY).indexOf(OBJECT_PART);
+  const mapping = tdmdInts(ttwr, MAPPING_KEY)[part];
+  // only the mapping seen placed this way; the others keep the world-projected box the 3D view gives
+  if (part < 0 || mapping !== BOX_MAPPING) return null;
+  const place = tdmdF64s(ttwr, PLACE_KEY).slice(6 * part, 6 * part + 5);
+  if (place.length < 5) return null;
+  const [offsetU, offsetV, scaleU, scaleV, rotation] = place;
+  const aspect = res.imagePixels.height / res.imagePixels.width;
+  if (!(res.imageSize * scaleU > 0) || !(res.imageSize * scaleV * aspect > 0)) return null;
+  return boxMappedUvs(tris, { offsetU, offsetV, scaleU, scaleV, rotation }, res.imageSize, aspect);
+}
+
 /** A 3D polygon's own frame: its first vertex, x along its first edge, y against its normal, z up its face; null when it has none. */
 function polyFrame(r: Rec): { o: Vec3; x: Vec3; y: Vec3; z: Vec3 } | null {
   const d = r.data;
@@ -2036,7 +2145,9 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
       // a sweep is left as its profile draws it, so its body is not decoded
       for (const b of bodies) {
         const g = bodyGeometry(b, c.type === SWEEP ? null : ctx.doc);
-        if (g) emit(ctx, g, mm, c, top);
+        if (!g) continue;
+        const uvs = c.type === EXTRUDE ? boxedUvs(ctx, c, g.triangles) : null;
+        emit(ctx, uvs ? { ...g, uvs } : g, mm, c, top);
       }
       // a body is the owner's whole result; only groups also hold further objects
       if (c.type === GROUP) walk(ctx, c, m, top);
@@ -2063,7 +2174,8 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
     if (c.type === EXTRUDE || c.type === MULTI_EXTRUDE) {
       const g = c.type === EXTRUDE ? extrudeGeometry(c) : multiExtrudeGeometry(c);
       const own = readXf(c.data, OWNER_MATRIX, OWNER_OFFSET);
-      if (g) emit(ctx, g, own ? compose(m, own) : m, c, top);
+      const uvs = g && c.type === EXTRUDE ? boxedUvs(ctx, c, g.triangles) : null;
+      if (g) emit(ctx, uvs ? { ...g, uvs } : g, own ? compose(m, own) : m, c, top);
       continue;
     }
     if (c.type === LOCUS3D) {
