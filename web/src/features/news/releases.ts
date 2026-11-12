@@ -22,6 +22,17 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-12T12:20:00Z",
+    "rhino-solids",
+    "Cleaner models in Rhino",
+    `Export Rhino 3DM now writes buildings, extrudes, slabs and plain walls as closed solids, so Rhino shows them without triangle lines.
+- Anything that stands straight up with a flat top and bottom goes out as a Rhino extrusion, courtyards and all, which you can edit, boolean and fillet as a solid.
+- Everything else goes out as a mesh with four-sided faces where triangles lie flat together, and smooth shading that keeps sharp edges sharp.
+- Roads, water and green spaces from Import Site Context go out as their 3D surfaces alone, without the plan outlines that drew long cut lines across islands.
+- A 2D fill with holes goes out as its outline and each hole, without the cuts between them.`,
+    "solids",
+  ),
+  release(
     "2026-11-12T12:10:00Z",
     "site-context-bigger",
     "Bigger Site Context areas when signed in",

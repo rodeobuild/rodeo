@@ -3,7 +3,10 @@
 // A hand-built drawing (two design layers, two classes, three colours, a box, triangles and flat linework and
 // text) is written and read back: each mesh comes back as a part with its faces in millimetres, its colour and
 // its layer's path as its group; each line, polyline, circle, arc, ellipse, text and point comes back as a shape
-// of its kind with its millimetre coordinates. Files built in metres and inches read in millimetres. A Brep
+// of its kind with its millimetre coordinates. Upright prisms (a box, a building round a courtyard, one with a
+// corner on a straight run) are written as closed, capped extrusions that keep their faces as a closed render
+// mesh; other pieces stay meshes, coplanar triangle pairs joined into quads and corners split at creases only;
+// a fill's outline round a hole comes back as its two rings, without the cut. Files built in metres and inches read in millimetres. A Brep
 // made in code has no render mesh and is counted; a meshed face reads; an extrusion with no mesh is counted; a
 // block is placed by its transform and coloured by its instance; a mirrored block turns over; blocks nested past
 // eight deep are left out; objects on hidden layers and hidden objects are counted, not read; bytes that aren't
@@ -87,6 +90,31 @@ function attrs(props: { name?: string; layerIndex?: number; colour?: { r: number
 }
 
 /** A part by its name, or undefined. */
+/** A face's area (its corners as flat x, y, z numbers), by Newell's sums. */
+function faceArea(f: readonly number[]): number {
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  const n = f.length / 3;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    x += (f[3 * i + 1] - f[3 * j + 1]) * (f[3 * i + 2] + f[3 * j + 2]);
+    y += (f[3 * i + 2] - f[3 * j + 2]) * (f[3 * i] + f[3 * j]);
+    z += (f[3 * i] - f[3 * j]) * (f[3 * i + 1] + f[3 * j + 1]);
+  }
+  return Math.hypot(x, y, z) / 2;
+}
+
+/** The geometry of the object named `name` in a written file, as rhino3dm reads it. */
+function rawGeometry(bytes: Uint8Array, name: string): unknown {
+  const f = rhino.File3dm.fromByteArray(bytes);
+  for (let i = 0; i < f.objects().count; i++) {
+    const o = f.objects().get(i);
+    if (o.attributes().name === name) return o.geometry();
+  }
+  return null;
+}
+
 const partNamed = (out: MeshFile, name: string) => (out.tree ? unfoldTree(out.tree) : out.parts).filter((p) => p.name === name);
 
 /** Counts of what was left out, with zero for kinds not counted. */
@@ -181,10 +209,20 @@ const out = parse3dm(bytes, rhino);
 check(out.frame?.mm === 1 && out.frame?.yUp === false, "round trip: frame is millimetres, z up");
 
 const wallA = partNamed(out, "Wall A");
+const boxCorner = (f: readonly number[]): boolean =>
+  f.every((v, i) => (i % 3 === 0 ? [0, 4000] : i % 3 === 1 ? [0, 200] : [0, 3000]).some((w) => near(v, w)));
 check(
-  wallA.length === 1 && wallA[0].faces.length === 12 && sameTriangles(wallA[0].faces, boxTriangles(0, 0, 0, 4000, 200, 3000)),
-  "Wall A: 12 faces, the box's corners in mm",
+  wallA.length === 1 && wallA[0].faces.length === 6 && wallA[0].faces.every((f) => f.length === 12 && boxCorner(f)) &&
+    near(wallA[0].faces.reduce((s, f) => s + faceArea(f), 0), 2 * (4000 * 200 + 4000 * 3000 + 200 * 3000), 1),
+  "Wall A: 6 quads, the box's corners in mm, its whole surface",
 );
+{
+  const g = rawGeometry(bytes, "Wall A");
+  check(g instanceof rhino.Extrusion && g.isSolid && g.isCappedAtBottom && g.isCappedAtTop && g.profileCount === 1, "Wall A: written as a capped extrusion, a closed solid");
+  const m = g instanceof rhino.Extrusion ? g.getMesh(rhino.MeshType.Any) : null;
+  check(!!m && m.isClosed && m.normals().count === m.vertices().count, "Wall A: its render mesh closed, with a normal at each vertex");
+  check(rawGeometry(bytes, "Door") instanceof rhino.Mesh, "Door: one triangle, written as a mesh");
+}
 check(wallA.length === 1 && wallA[0].group === "Ground::Walls", "Wall A: its layer's class path as its group");
 check(
   wallA.length === 1 && wallA[0].color !== undefined && near(wallA[0].color.r, 1) && near(wallA[0].color.g, 0) && near(wallA[0].color.b, 0),
@@ -253,6 +291,103 @@ check(
   note?.shape.kind === "text" && note.points === 3,
   "a 0.5 mm text at 1:1 (1.4 points) reads back at 3 points: a text dot keeps whole sizes of 3 and up",
 );
+
+// ---- solids and clean faces -------------------------------------------------------------------------------
+
+{
+  // a building round a courtyard: the ring between its outline and the hole in two triangles a side
+  const outer = [[0, 0], [20000, 0], [20000, 16000], [0, 16000]];
+  const inner = [[6000, 5000], [14000, 5000], [14000, 11000], [6000, 11000]];
+  const t: number[] = [];
+  const z0 = 2500;
+  const z1 = 8500;
+  const up = (a: number[], b: number[], c: number[]): void => void t.push(a[0], a[1], z1, b[0], b[1], z1, c[0], c[1], z1, a[0], a[1], z0, c[0], c[1], z0, b[0], b[1], z0);
+  const wall = (a: number[], b: number[]): void => void t.push(a[0], a[1], z0, b[0], b[1], z0, b[0], b[1], z1, a[0], a[1], z0, b[0], b[1], z1, a[0], a[1], z1);
+  for (let k = 0; k < 4; k++) {
+    const [o0, o1, i0, i1] = [outer[k], outer[(k + 1) % 4], inner[k], inner[(k + 1) % 4]];
+    up(o0, o1, i1);
+    up(o0, i1, i0);
+    wall(o0, o1);
+    wall(i1, i0);
+  }
+  // a block with a corner on a straight run, its ends passing it in a flat sliver
+  const run = [[0, 0], [2000, 0], [4000, 0], [4000, 2000], [0, 2000]];
+  const s: number[] = [];
+  for (const [a, b, c] of [[0, 1, 2], [0, 2, 3], [0, 3, 4]]) s.push(...[run[a], run[b], run[c]].flatMap((p) => [p[0], p[1], 3000]), ...[run[a], run[c], run[b]].flatMap((p) => [p[0], p[1], 0]));
+  for (let k = 0; k < 5; k++) {
+    const [a, b] = [run[k], run[(k + 1) % 5]];
+    s.push(a[0], a[1], 0, b[0], b[1], 0, b[0], b[1], 3000, a[0], a[1], 0, b[0], b[1], 3000, a[0], a[1], 3000);
+  }
+  // a gable roof (two slopes meeting at 90° at the ridge) and a strip folded by 10°, neither a prism
+  const roof = new Float32Array([
+    ...[0, 0, 0, 4000, 0, 0, 4000, 1000, 1000, 0, 0, 0, 4000, 1000, 1000, 0, 1000, 1000],
+    ...[0, 1000, 1000, 4000, 1000, 1000, 4000, 2000, 0, 0, 1000, 1000, 4000, 2000, 0, 0, 2000, 0],
+  ]);
+  const rise = 1000 * Math.tan((10 * Math.PI) / 180);
+  const strip = new Float32Array([
+    ...[0, 0, 0, 1000, 0, 0, 1000, 1000, 0, 0, 0, 0, 1000, 1000, 0, 0, 1000, 0],
+    ...[1000, 0, 0, 2000, 0, rise, 2000, 1000, rise, 1000, 0, 0, 2000, 1000, rise, 1000, 1000, 0],
+  ]);
+  const piece = (triangles: Float32Array) => [{ color: "#808080", opacity: 1, triangles }];
+  const solids: Model3D = {
+    layers: [
+      {
+        id: "g",
+        name: "Ground",
+        elevation: 0,
+        objects: [
+          { id: "c", name: "Courtyard", className: "None", pieces: piece(new Float32Array(t)) },
+          { id: "r", name: "Run", className: "None", pieces: piece(new Float32Array(s)) },
+          { id: "roof", name: "Roof", className: "None", pieces: piece(roof) },
+          { id: "strip", name: "Strip", className: "None", pieces: piece(strip) },
+        ],
+      },
+    ],
+  };
+  const keyholed = shape({
+    kind: "polygon",
+    closed: true,
+    // the outline, out along a cut to the hole, round it and back
+    points: [[0, 0], [1000, 0], [1000, 1000], [400, 600], [600, 600], [600, 400], [400, 400], [400, 600], [1000, 1000], [0, 1000]].map(([x, y]) => ({ x, y })),
+  });
+  const solidBytes = export3dm(solids, [{ layerId: "g", className: "None", z: 0, color: "#000000", scale: 1, shape: keyholed }], new Map([["g", "Ground"]]), rhino);
+
+  const court = rawGeometry(solidBytes, "Courtyard");
+  const courtBrep = court instanceof rhino.Extrusion ? court.toBrep(true) : null;
+  check(
+    court instanceof rhino.Extrusion && court.profileCount === 2 && !!courtBrep && courtBrep.isSolid && courtBrep.faces().count === 10,
+    "a courtyard: an extrusion of its outline and its hole, a closed solid of 10 faces",
+  );
+  const courtMesh = court instanceof rhino.Extrusion ? court.getMesh(rhino.MeshType.Any) : null;
+  check(!!courtMesh && courtMesh.isClosed, "a courtyard: its render mesh closed");
+  const courtPart = partNamed(parse3dm(solidBytes, rhino), "Courtyard");
+  check(
+    courtPart.length === 1 && near(courtPart[0].faces.reduce((a, f) => a + faceArea(f), 0), 2 * (20000 * 16000 - 8000 * 6000) + (72000 + 28000) * 6000, 10),
+    "a courtyard: reads back with its whole surface",
+  );
+
+  const runGeo = rawGeometry(solidBytes, "Run");
+  const runBottom = runGeo instanceof rhino.Extrusion ? runGeo.profile3d(0, 0) : null;
+  check(runGeo instanceof rhino.Extrusion && runBottom instanceof rhino.PolylineCurve && runBottom.pointCount === 5, "a corner on a straight run: an extrusion of 4 corners (5 points, closed), the run straightened");
+  const runMesh = runGeo instanceof rhino.Extrusion ? runGeo.getMesh(rhino.MeshType.Any) : null;
+  check(!!runMesh && runMesh.isClosed, "a corner on a straight run: its render mesh closed, the sliver kept");
+
+  const roofMesh = rawGeometry(solidBytes, "Roof");
+  check(
+    roofMesh instanceof rhino.Mesh && roofMesh.faces().quadCount === 2 && roofMesh.faces().triangleCount === 0 && roofMesh.vertices().count === 8,
+    "a gable roof: a mesh of 2 quads, the ridge's corners split (8 vertices)",
+  );
+  const stripMesh = rawGeometry(solidBytes, "Strip");
+  check(
+    stripMesh instanceof rhino.Mesh && stripMesh.faces().quadCount === 2 && stripMesh.vertices().count === 6 && stripMesh.normals().count === 6,
+    "a strip folded by 10°: 2 quads sharing the fold's corners and their normals (6 vertices)",
+  );
+  const rings = (parse3dm(solidBytes, rhino).shapes ?? []).map((x) => x.shape).filter((x) => x.kind === "polyline" || x.kind === "polygon");
+  check(
+    rings.length === 2 && rings.every((x) => (x.kind === "polygon" || x.kind === "polyline") && x.points.length >= 4 && x.points.length <= 5),
+    `a fill's outline round a hole: its two rings, without the cut (${rings.map((x) => ("points" in x ? x.points.length : 0)).join(", ")} points)`,
+  );
+}
 
 // ---- units ------------------------------------------------------------------------------------------------
 

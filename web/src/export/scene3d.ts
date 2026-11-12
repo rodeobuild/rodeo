@@ -10,6 +10,9 @@ import type { Mesh3D, Shape, VwxDocument } from "../core/types.ts";
 
 /** A group's record type. */
 const GROUP = 11;
+/** A symbol instance's and a mesh's record types. */
+const SYMBOL = 15;
+const MESH = 40;
 
 export interface ModelPiece {
   /** CSS hex, "#rrggbb" */
@@ -210,16 +213,28 @@ function placed(t: Float32Array, m: readonly number[]): Float32Array {
 /**
  * The 2D objects of the design layers in `layerIds` that nothing in 3D stands for: lines, rectangles,
  * polygons, polylines, arcs and text, not inside an object that has a 3D form (a wall's plan
- * outline, a symbol's 2D) and not the wireframe parts of a 3D solid.
+ * outline, a symbol's 2D), not the wireframe parts of a 3D solid, and not in a group that holds a
+ * mesh or a symbol with a 3D form beside them, whose plan drawing they are (Top/Plan shows them in
+ * its place, as with an imported site's roads, water and trees).
  */
 export function flatOf(doc: VwxDocument, layerIds: ReadonlySet<string>): FlatObject[] {
-  const in3d = new Set(doc.model3d().map((m) => m.objectId));
+  const meshes = doc.model3d();
+  const in3d = new Set(meshes.map((m) => m.objectId));
+  // the groups holding a mesh or a placed symbol that shows in 3D, at any depth
+  const plans = new Set<string>();
+  for (const m of meshes) {
+    const part = m.partId ? doc.object(m.partId) : null;
+    if (part?.type !== MESH && part?.type !== SYMBOL) continue;
+    for (let g = part.parentId ? doc.object(part.parentId) : null; g?.type === GROUP && !plans.has(g.id); g = g.parentId ? doc.object(g.parentId) : null) plans.add(g.id);
+  }
   const out: FlatObject[] = [];
   for (const layer of doc.layers()) {
     if (layer.kind !== "design" || !layerIds.has(layer.id)) continue;
     for (const o of doc.objects(layer.id)) {
       const s = o.shape;
       if (!s || o.wireframe || !["line", "rect", "polygon", "polyline", "arc", "text"].includes(s.kind)) continue;
+      // the plan drawing of the mesh or symbol in its group
+      if (o.parentId && plans.has(o.parentId)) continue;
       // one that is part of a symbol or plug-in object stands for it, and is left out when the top-level
       // object holding it has a 3D form; one on its own or only in groups stands for itself
       let top = o;

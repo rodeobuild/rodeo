@@ -288,7 +288,17 @@ The reader is `web/src/import/rvt.ts`, with `cfb.ts` for the compound file aroun
 
 ### Rhino 3DM
 
-**Export Rhino 3DM** writes a Rhino file in millimetres: a Rhino layer per design layer with a sublayer per class, and each object's pieces as meshes in their colours. The 2D linework that stands for nothing in 3D (lines, rectangles, polygons, polylines, arcs, circles, and text as text dots sized in points by its layer's scale) goes at its layer's elevation.
+**Export Rhino 3DM** writes a Rhino file in millimetres: a Rhino layer per design layer with a sublayer per class, and each object's pieces in their colours, named after the object.
+
+- A piece that stands upright with a flat top and bottom (an extrude, a slab, a wall without openings, a building from **Import Site Context**) becomes a closed extrusion, courtyards and all. Rhino shows only its real edges, and it can be edited, booleaned and filleted as a solid.
+- Other pieces become meshes. Triangles that lie flat together are joined into four-sided faces, and edges sharper than 30° stay sharp in the shading, so flat faces don't show triangle diagonals.
+- Each symbol becomes a block, placed where the drawing places it.
+- The 2D linework that stands for nothing in 3D (lines, rectangles, polygons, polylines, arcs, circles, and text as text dots sized in points by its layer's scale) goes at its layer's elevation. A fill with holes goes out as its outline and each hole, without the cuts between them. 2D drawn in a group beside a 3D object is that object's plan drawing and is left out.
+
+**Limits:**
+
+- A piece whose outline touches itself at a corner stays a mesh.
+- Ground, roads and water from Site Context follow the terrain, so they stay meshes, and Rhino draws a mesh's edges.
 
 ### FBX
 

@@ -5,7 +5,9 @@
 // their names in 3D exports, two objects group, and a PNG and a JPEG picture are added and read back
 // with their bounds, bytes and pixel sizes, and the file saves and reopens with the same objects. Layers,
 // classes and units can be added and changed. A model with symbols comes in from a file as definitions
-// placed many times and goes out to 3DM, Collada and FBX the same way. Nothing is drawn.
+// placed many times and goes out to 3DM, Collada and FBX the same way. A 2D outline grouped with a mesh is
+// that mesh's plan drawing and stays out of the 3DM's flat linework; one alone or in a 2D-only group goes in.
+// Nothing is drawn.
 
 import { deflateSync } from "node:zlib";
 import rhino3dm from "rhino3dm";
@@ -13,7 +15,7 @@ import { concat, crc32, setU32be, u32 } from "./bytes.ts";
 import { exportCollada } from "../export/collada.ts";
 import { exportFbx } from "../export/fbx.ts";
 import { export3dm } from "../export/rhino.ts";
-import { modelOf, type ModelObject } from "../export/scene3d.ts";
+import { flatOf, modelOf, type ModelObject } from "../export/scene3d.ts";
 import { parseCollada } from "../import/collada.ts";
 import { parseFbx } from "../import/fbx.ts";
 import type { MeshFile, MeshTreeNode } from "../import/mesh.ts";
@@ -171,6 +173,20 @@ for (const units of ["mm", "ftin"] as const) {
   const tris = (session: typeof s): number =>
     session.doc.model3d().filter((m) => m.objectId === mesh).reduce((n, m) => n + m.triangles.length / 9, 0);
   check(s.doc.object(mesh)?.type === 40 && tris(s) === 12, `${label}: a mesh added (12 triangles in 3D)`);
+
+  // a mesh's plan drawing (an outline grouped with it, as an imported site's roads and water are) is left out of
+  // the 3DM's flat linework; an outline alone or grouped only with other 2D goes in
+  {
+    const n = openVwx(blankDrawing(units), `blank-${units}-plans.vwx`);
+    const on = n.doc.layers()[0].id;
+    const outline = (x: number): NewShape => ({ kind: "polygon", points: [{ x, y: 0 }, { x: x + 1000, y: 0 }, { x: x + 1000, y: 1000 }], closed: true });
+    const [m] = n.addMeshes(on, [box]);
+    n.groupObjects([n.addObject(on, outline(0)), m]);
+    n.addObject(on, outline(3000));
+    n.groupObjects([n.addObject(on, outline(6000)), n.addObject(on, outline(9000))]);
+    const xs = flatOf(n.doc, new Set([on])).map((f) => f.shape.points[0]?.x).sort((p, q) => (p ?? 0) - (q ?? 0));
+    check(xs.join() === "3000,6000,9000", `${label}: a mesh's plan drawing stays out of the flat linework, other outlines go in (${xs})`);
+  }
 
   // meshes named after a file's objects, unique as the drawing's names are; in groups, each exports as an object of its own
   {
