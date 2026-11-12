@@ -57,6 +57,11 @@ export interface RenderScene {
   readonly beams: THREE.Scene;
   /** the materials by materialKey, with the faces each is on */
   readonly materials: ReadonlyMap<string, { readonly material: THREE.MeshPhysicalMaterial; readonly faces: readonly ModelFace[] }>;
+  /**
+   * the objects' ids, numbered as the face meshes' `userData.owners` (an Int32Array, each triangle's
+   * object, -1 for none) count them; empty unless buildScene was asked for them
+   */
+  readonly owners: readonly string[];
   /** Applies new settings that need no new geometry; says what changed. */
   update(settings: RenderSettings, viz: Viz3D): SceneChange;
   /** Frees the compacted geometry, materials and sky (not the 3D view's own geometry or textures). */
@@ -144,7 +149,7 @@ const FACING_SHADOWMAP_VERTEX = /* glsl */ `
 `;
 
 /** Has `material` look its shadows up off whichever side of a face its light is on (FACING_SHADOWMAP_VERTEX). */
-function shadowsFaceLights<M extends THREE.Material>(material: M): M {
+export function shadowsFaceLights<M extends THREE.Material>(material: M): M {
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace("#include <shadowmap_vertex>", FACING_SHADOWMAP_VERTEX);
   };
@@ -172,8 +177,17 @@ interface Lamp {
   readonly source: Light3D;
 }
 
+/** What buildScene keeps beyond the picture's needs. */
+export interface BuildOptions {
+  /**
+   * which object each of the model's triangles belongs to (the Object colours render layer):
+   * RenderScene.owners and each face mesh's `userData.owners`
+   */
+  readonly owners?: boolean;
+}
+
 /** Builds the render scene of the model as the 3D view shows it, with the sun, the sky and the drawing's lights. */
-export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3D): RenderScene {
+export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3D, options: BuildOptions = {}): RenderScene {
   const scene = new THREE.Scene();
   const root = new THREE.Group();
   root.matrixAutoUpdate = false;
@@ -187,6 +201,19 @@ export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3
   const placed: Placed[] = [];
   const ownMaterials: THREE.Material[] = [];
   const groups = new Map<string, FaceGroup>();
+  /** the objects' ids, by the numbers in the meshes' `userData.owners` */
+  const owners: string[] = [];
+  const ownerNumbers = new Map<string, number>();
+  const ownerOf = (id: string | null): number => {
+    if (id === null) return -1;
+    let n = ownerNumbers.get(id);
+    if (n === undefined) {
+      n = owners.length;
+      owners.push(id);
+      ownerNumbers.set(id, n);
+    }
+    return n;
+  };
 
   for (const face of src.faces) {
     if (face.geometry.drawRange.count <= 0 || face.opacity < 0.01) continue;
@@ -208,6 +235,9 @@ export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3
     const mesh = new THREE.Mesh(geometry, group.material);
     mesh.castShadow = castsShadow(face.opacity, group.material);
     mesh.receiveShadow = true;
+    // the render layers' colour blocks (passes.ts): its material, and each triangle's object
+    mesh.userData.materialKey = key;
+    if (options.owners && face.objectOf) mesh.userData.owners = trianglesOwners(face, face.objectOf, ownerOf);
     root.add(mesh);
     group.faces.push(face);
     group.meshes.push(mesh);
@@ -232,6 +262,8 @@ export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3
       mesh.matrix.copy(o.matrixWorld);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.userData.materialKey = `content:${color.getHexString()}${map ? `:${map.uuid}` : ""}`;
+      mesh.userData.objectKey = `content:${o.uuid}`;
       root.add(mesh);
       const pos = o.geometry.attributes.position;
       if (pos) world.union(new THREE.Box3().setFromBufferAttribute(pos).applyMatrix4(o.matrixWorld));
@@ -254,6 +286,8 @@ export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.position.set(centre.x, bounds.min.y - 0.002, centre.z);
   ground.receiveShadow = true;
+  ground.userData.materialKey = "ground";
+  ground.userData.objectKey = "ground";
   ground.visible = settings.environment.groundPlane && !sloping;
   scene.add(ground);
 
@@ -323,6 +357,7 @@ export function buildScene(src: SceneSource, settings: RenderSettings, viz: Viz3
     lamps,
     beams,
     materials: groups,
+    owners,
     update(next, nextViz) {
       const prev = applied;
       const sunNext = sunState(nextViz, next.environment.turbidity);
@@ -440,6 +475,19 @@ function compact(face: ModelFace): THREE.BufferGeometry {
   out.computeVertexNormals();
   out.computeBoundingBox();
   out.computeBoundingSphere();
+  return out;
+}
+
+/**
+ * Each triangle of `face`'s compacted geometry (compact) numbered by the object it belongs to: the
+ * 3D view's triangle a compacted one came from is its first corner's index over three.
+ */
+function trianglesOwners(face: ModelFace, objectOf: (triangle: number) => string | null, ownerOf: (id: string | null) => number): Int32Array {
+  const src = face.geometry;
+  const index = src.index;
+  const count = Math.min(src.drawRange.count, index ? index.count : src.attributes.position.count);
+  const out = new Int32Array(Math.floor(count / 3));
+  for (let t = 0; t < out.length; t++) out[t] = ownerOf(objectOf(Math.floor((index ? index.getX(3 * t) : 3 * t) / 3)));
   return out;
 }
 

@@ -16,6 +16,7 @@ import { AI_ENGINE, AiFailure, aiTerms, aiVariations, paintAll, readyToPaint } f
 import { optionValues, type OptionValues } from "./engines.ts";
 import { engineFields, type EngineFields } from "./engineFields.ts";
 import "./finalRender.css";
+import type { StillLayers } from "./layerFile.ts";
 import { formatSeconds } from "./still.ts";
 import { button } from "./studio/ui.ts";
 import "./studio/viewer.css";
@@ -38,6 +39,8 @@ export interface RenderResult {
   readonly samples: number | null;
   /** how long it took to make, in seconds */
   readonly seconds: number;
+  /** its render layers (layers.ts), to look at one by one and save as one file */
+  readonly layers?: StillLayers;
 }
 
 const THUMB_HEIGHT = 56;
@@ -66,6 +69,12 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
   const list: RenderResult[] = [];
   const urls: string[] = [];
   const beforeUrls = new Map<Blob, string>();
+  /** the layers' pictures, made as they are first shown */
+  const layerUrls = new Map<Blob, string>();
+  /** the layer of the picture shown (0: the picture itself) */
+  let layer = 0;
+  /** the next picture to load is a layer of the one shown: the zoom and pan stay */
+  let keepView = false;
   const canCopy = typeof ClipboardItem !== "undefined" && typeof navigator.clipboard?.write === "function";
   // stops a painting under way when the window closes
   const painting = new AbortController();
@@ -124,12 +133,16 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
   compare.setAttribute("aria-pressed", "false");
   const restyle = named(button("Restyle with AI…", () => void restyleShown(), { icon: "sparkle", title: "Paint this picture again in another style" }), "Restyle with AI…");
   const copy = named(button("Copy", () => copyShown(), { icon: "copy" }), "Copy");
+  // the layers of a picture made with them: one shown at a time, and saved as one file
+  const layerSel = h("select", { cls: "render-viewer-layer", attrs: { "aria-label": "Layer", title: "Look at one of the picture's layers" } });
+  layerSel.addEventListener("change", () => showLayer(Number(layerSel.value)));
+  const saveLayersBtn = named(button("Save layers", () => saveLayers(), { icon: "layers" }), "Save layers");
   const save = named(button("Save", () => saveShown(), { icon: "download", primary: true }), "Save");
   const info = named(button("Info", () => setInfo(!infoOn)), "Info");
   info.classList.add("render-viewer-keep");
   info.setAttribute("aria-pressed", String(infoOn));
   const closeBtn = button("Close", () => finish(), { icon: "close", iconOnly: true });
-  const actions = h("div", { cls: "render-viewer-actions" }, compare, restyle, copy, save, info, closeBtn);
+  const actions = h("div", { cls: "render-viewer-actions" }, layerSel, compare, restyle, copy, saveLayersBtn, save, info, closeBtn);
   const bar = h("header", { cls: "render-viewer-top" }, h("div", { cls: "render-viewer-id" }, title, sub), zoomBox, actions);
 
   // ---- the strip and the facts -------------------------------------------------------
@@ -253,7 +266,32 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
       // a painting of the live view says no time: it was made while the view rested
       fact("Time", r.seconds > 0 ? formatSeconds(r.seconds) : "—"),
       fact("File", `${kindOf(r.blob.type)} · ${bytesText(r.blob.size)}`),
+      ...(r.layers ? [fact("Layers", `${r.layers.list.length - 1} · ${r.layers.kind === "psd" ? "PSD" : "PNG files (zip)"} · ${bytesText(r.layers.file.size)}`)] : []),
     );
+  };
+
+  /** The blob on screen: the picture, or the layer of it chosen. */
+  const shownBlob = (): Blob => {
+    const r = list[current];
+    return r.layers && layer > 0 ? (r.layers.list[layer]?.blob ?? r.blob) : r.blob;
+  };
+
+  /** Shows layer `i` of the picture (0: the picture itself), keeping the zoom and pan. */
+  const showLayer = (i: number): void => {
+    const r = list[current];
+    const layers = r.layers;
+    layer = layers && i > 0 && i < layers.list.length ? i : 0;
+    layerSel.value = String(layer);
+    let url = urls[current];
+    if (layers && layer > 0) {
+      const blob = layers.list[layer].blob;
+      url = layerUrls.get(blob) ?? URL.createObjectURL(blob);
+      layerUrls.set(blob, url);
+    }
+    if (picture.getAttribute("src") === url) return;
+    keepView = natural.w > 0;
+    picture.src = url;
+    picture.alt = layer > 0 && layers ? `Render: ${r.name}, ${layers.list[layer].name}` : `Render: ${r.name}`;
   };
 
   /** Shows picture `i`, fitted: its name, facts and thumbnail; the compare wipe stays if it has a before. */
@@ -261,6 +299,7 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
     current = i;
     const r = list[i];
     fitted = true;
+    keepView = false;
     picture.src = urls[i];
     picture.alt = `Render: ${r.name}`;
     title.textContent = r.name;
@@ -269,7 +308,14 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
     if (!restyle.disabled) status.textContent = "";
     compare.hidden = r.before === undefined;
     restyle.hidden = aiTerms() === null;
-    copy.hidden = !canCopy || r.blob.type !== "image/png";
+    copy.hidden = !canCopy || (r.blob.type !== "image/png" && !r.layers);
+    // the layers' list: the picture first, then each layer by name
+    layer = 0;
+    layerSel.replaceChildren(...(r.layers?.list ?? []).map((l, j) => h("option", { text: l.name, value: String(j) })));
+    layerSel.value = "0";
+    layerSel.hidden = !r.layers;
+    saveLayersBtn.hidden = !r.layers;
+    if (r.layers) saveLayersBtn.title = r.layers.kind === "psd" ? "Save the picture and its layers as one Photoshop file (PSD)" : "Save the picture and its layers as PNG files in a zip";
     prev.hidden = next.hidden = list.length < 2;
     thumbs.forEach((t, j) => t.setAttribute("aria-current", j === i ? "true" : "false"));
     thumbs[i].scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -299,11 +345,11 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
     if (list.length > 1) show((current + by + list.length) % list.length);
   };
 
-  /** Puts the picture shown on the clipboard as a PNG. */
+  /** Puts the picture shown (or its layer shown) on the clipboard as a PNG. */
   const copyShown = (): void => {
-    const r = list[current];
-    if (!canCopy || r.blob.type !== "image/png") return;
-    void navigator.clipboard.write([new ClipboardItem({ "image/png": r.blob })]).then(
+    const blob = shownBlob();
+    if (!canCopy || blob.type !== "image/png") return;
+    void navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(
       () => {
         status.textContent = "Copied to the clipboard.";
       },
@@ -318,6 +364,13 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
     const r = list[current];
     const ext = r.blob.type === "image/jpeg" ? "jpg" : r.blob.type === "image/webp" ? "webp" : "png";
     downloadBlob(`${baseName()}-${slug(r.note ? `${r.name} ${r.note}` : r.name)}.${ext}`, r.blob);
+  };
+
+  /** Downloads the picture's layers: the layered PSD, or the zip of PNG files. */
+  const saveLayers = (): void => {
+    const r = list[current];
+    if (!r.layers) return;
+    downloadBlob(`${baseName()}-${slug(r.note ? `${r.name} ${r.note}` : r.name)}-layers.${r.layers.kind === "psd" ? "psd" : "zip"}`, r.layers.file);
   };
 
   /** Restyle with AI: asks the style, paints the picture shown (or the one it was made from), and shows what came back. */
@@ -355,7 +408,7 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
     painting.abort();
     resize.disconnect();
     win.remove();
-    for (const url of [...urls, ...beforeUrls.values()]) URL.revokeObjectURL(url);
+    for (const url of [...urls, ...beforeUrls.values(), ...layerUrls.values()]) URL.revokeObjectURL(url);
     returnFocus?.focus();
   };
 
@@ -369,6 +422,13 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
       el.style.height = `${natural.h}px`;
     }
     if (list[current].width === 0) showFacts();
+    // another layer of the same picture keeps the view; a new picture is fitted
+    if (keepView) {
+      keepView = false;
+      clampPan();
+      apply();
+      return;
+    }
     fitView();
   });
 
@@ -489,6 +549,10 @@ export function showRenderResult(results: readonly RenderResult[], start = 0): v
       setZoom(zoom / ZOOM_STEP);
     } else if (key.toLowerCase() === "c" && list[current].before) {
       setComparing(!comparing);
+    } else if (key.toLowerCase() === "l" && list[current].layers) {
+      // L and ⇧L step through the picture's layers
+      const n = list[current].layers?.list.length ?? 1;
+      showLayer((layer + (e.shiftKey ? n - 1 : 1)) % n);
     } else {
       cycleFocus(e, win);
     }

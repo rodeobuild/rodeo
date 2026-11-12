@@ -37,6 +37,7 @@ export const ICONS = {
   download: '<path d="M12 4v11M7 10l5 5 5-5M5 19h14"/>',
   copy: '<rect x="8" y="8" width="11" height="11" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/>',
   compare: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M12 3v18"/>',
+  layers: '<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>',
 } as const;
 

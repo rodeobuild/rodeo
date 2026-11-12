@@ -5,6 +5,7 @@
 // No three.js and no DOM here: this loads with the editor.
 
 import type { CameraInfo } from "../../../core/index.ts";
+import { DEFAULT_LAYERS, layerIdsFrom, type LayerId, type LayersFile } from "../layers.ts";
 
 export type Quality = "draft" | "good" | "high" | "best";
 /** this computer's GPU, or the server's cloud renders (cloud.ts) */
@@ -35,6 +36,11 @@ export interface Prefs {
   readonly via: string;
   /** each such engine's fields as last chosen, by its id */
   readonly options: Readonly<Record<string, Readonly<Record<string, string | number | boolean>>>>;
+  /** make the render layers (layers.ts) beside each picture */
+  readonly layersOn: boolean;
+  /** which layers, kept while they are off */
+  readonly layers: readonly LayerId[];
+  readonly layersFile: LayersFile;
 }
 
 export interface Size {
@@ -96,6 +102,9 @@ export function defaultPrefs(): Prefs {
     where: "local",
     via: "",
     options: {},
+    layersOn: false,
+    layers: DEFAULT_LAYERS,
+    layersFile: "psd",
   };
 }
 
@@ -124,6 +133,9 @@ export function prefsFrom(parsed: unknown, defaults: Prefs = defaultPrefs()): Pr
     where: pick<Where>(raw.where, WHERE_IDS, defaults.where),
     via: typeof raw.via === "string" ? raw.via : defaults.via,
     options: optionsFrom(raw.options) ?? defaults.options,
+    layersOn: typeof raw.layersOn === "boolean" ? raw.layersOn : defaults.layersOn,
+    layers: layerIdsFrom(raw.layers) ?? defaults.layers,
+    layersFile: pick<LayersFile>(raw.layersFile, ["psd", "zip"], defaults.layersFile),
   };
 }
 

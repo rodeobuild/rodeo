@@ -35,6 +35,7 @@ import { requireSignIn } from "../account/signin.ts";
 import { zipFiles } from "../../export/zip.ts";
 import { showProgress } from "./progress.ts";
 import { renderStill, type Engine, type Format, type Job, type StillBox } from "./still.ts";
+import type { LayerId, LayersFile } from "./layers.ts";
 import type { RenderResult } from "./viewer.ts";
 import { enterStudio, studioOn } from "./studio/state.ts";
 import {
@@ -102,6 +103,8 @@ export interface Plan {
   /** the engine of engines.ts that makes the pictures from the built-in one's (or from the model), with its fields' values */
   readonly via: { readonly engine: RenderEngine; readonly options: OptionValues } | null;
   readonly prefs: Prefs;
+  /** the render layers each picture is made with (layers.ts): pictures made here by a built-in engine only */
+  readonly layers?: { readonly ids: readonly LayerId[]; readonly file: LayersFile } | null;
 }
 
 type SizeCheck = { readonly size: Size } | { readonly error: string; readonly focus?: HTMLElement };
@@ -171,6 +174,9 @@ export function planOf(prefs: Prefs, cams: readonly CameraInfo[], cloud: RenderT
         : [{ label: "Current view", camera: null }];
   const engine = prefs.engine;
   const options = via ? optionValues(via, prefs.options[via.id]) : null;
+  const where = engine === "pathtraced" && cloud && !via ? prefs.where : "local";
+  // layers are drawn here, beside a built-in engine's picture
+  const layers = prefs.layersOn && prefs.layers.length > 0 && !via && where === "local" ? { ids: prefs.layers, file: prefs.layersFile } : null;
   return {
     plan: {
       shots,
@@ -181,9 +187,10 @@ export function planOf(prefs: Prefs, cams: readonly CameraInfo[], cloud: RenderT
       minutes: prefs.minutes,
       denoise: prefs.denoise,
       format: prefs.format === "hdr" ? "png" : prefs.format,
-      where: engine === "pathtraced" && cloud && !via ? prefs.where : "local",
+      where,
       via: via && options ? { engine: via, options } : null,
       prefs,
+      layers,
     },
   };
 }
@@ -310,6 +317,9 @@ export async function renderPicture(spec: PictureSpec): Promise<RenderResult | n
       where: "local",
       via: "",
       options: {},
+      layersOn: false,
+      layers: [],
+      layersFile: "psd",
     },
   };
   const job: Job = { cancelled: false, finishNow: false };
@@ -543,6 +553,10 @@ export function askRender(cams: readonly CameraInfo[], cloud: RenderTerms | null
       where,
       via: via?.id ?? "",
       options,
+      // this dialog (batch render jobs, Export HDRI) makes no layers; the Output tab's choice is kept
+      layersOn: start.layersOn,
+      layers: start.layers,
+      layersFile: start.layersFile,
     };
     return {
       value: {
@@ -662,7 +676,9 @@ export async function makePictures(plan: Plan, job: Job, box: StillBox, results:
       }
       if (!scene) {
         const started = performance.now();
-        scene = buildScene({ faces: view.modelFaces(), content: view.visibleContent(), lights: view.visibleLights() }, settings, store.viz3d);
+        // which object each triangle is, for an Object colours layer
+        const owners = plan.layers?.ids.includes("object") === true;
+        scene = buildScene({ faces: view.modelFaces(), content: view.visibleContent(), lights: view.visibleLights() }, settings, store.viz3d, { owners });
         note(`render: scene built in ${Math.round(performance.now() - started)} ms`);
       }
       // an engine that paints the picture gets it at its own size

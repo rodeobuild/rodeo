@@ -22,6 +22,17 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-12T12:30:00Z",
+    "render-layers",
+    "Renders in layers, for Photoshop",
+    `Turn on Separate layers in Render's Output tab and each picture also comes with layers that line up with it, as one layered PSD or a zip of PNG files.
+- Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.
+- Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.
+- In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.
+- The render viewer shows each layer (press L to go through them) and saves them with Save layers.`,
+    "layers",
+  ),
+  release(
     "2026-11-12T12:20:00Z",
     "rhino-solids",
     "Cleaner models in Rhino",

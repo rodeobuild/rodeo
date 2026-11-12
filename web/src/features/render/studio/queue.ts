@@ -162,11 +162,11 @@ function shotName(plan: Plan): string {
   return plan.shots.length > 1 ? `${plan.shots.length} shots` : (plan.shots[0]?.label ?? "Current view");
 }
 
-/** "3840 × 2160 · Photoreal · Good": the size, then the engine (an extra engine's short name). */
+/** "3840 × 2160 · Photoreal · Good": the size, then the engine (an extra engine's short name), and "Layers" when it makes them. */
 function metaOf(plan: Plan): string {
   const size = `${plan.width} × ${plan.height}`;
   const engine = plan.via ? plan.via.engine.short : plan.engine === "pathtraced" ? `Photoreal · ${QUALITY[plan.prefs.quality].short}` : "Fast";
-  return `${size} · ${engine}`;
+  return plan.layers?.ids.length ? `${size} · ${engine} · Layers` : `${size} · ${engine}`;
 }
 
 /** Runs the waiting jobs in turn until none waits; the live Path Traced view stops meanwhile. */

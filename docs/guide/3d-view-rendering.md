@@ -333,8 +333,28 @@ Each sets the render mode (Realistic, or Path Traced for Final) and the Render p
 - **Engine**: **Fast** (the Realistic picture: a 4K picture in a second) or **Photoreal** (path traced), or an engine that starts from one of those: **AI** (below), or a plug-in's
 - **Quality** for Photoreal: Draft, Good, High or Best (64 to 4096 samples), a time limit a picture and denoise
 - **File**: PNG or JPEG
+- **Layers**: **Separate layers** also makes the picture's layers, for image editors (see Render layers, below)
 
 The current view is rendered as the frame shows it in Render Studio, whatever the window's shape, and as it was when Render was pressed: you can go on orbiting and editing while it renders.
+
+### Render layers
+
+Turn on **Separate layers** under Output's **Layers** and Render also makes layers that line up with the picture pixel for pixel, for adjusting it or building it up in Photoshop, Affinity Photo, GIMP and other image editors. Choose the layers to make:
+
+- **Material colours** and **Object colours**: a flat colour for each material, or for each object (each object inside a group counts on its own), with hard edges, so the magic wand or Select › Color Range picks out all of it at once. While the model stays the same, a material or object keeps its colour from one view to the next
+- **Shadows**: the shadows of the sun and the lights that cast them, in black on white; lay it over the picture in Multiply
+- **Ambient occlusion**: the soft shade in corners and where things meet, on white; lay it over in Multiply
+- **Base colour**: the materials' own colours and textures, with no light or shade
+- **Depth**: white nearest, black at the far side of the model and beyond, for depth of field and haze
+- **Normals**: which way each face points, as colour, in the camera's space
+- **Lines**: the model's edges and creases in black on a clear layer
+- **Sky mask**: white where the sky shows, black over the model and the ground
+
+**Save as** chooses one **Layered PSD** (the picture at the bottom, named Render, and the layers over it, hidden, with Shadows, Ambient occlusion and Lines set to Multiply) or **PNG files**, a zip numbered in that order. A picture over 16.8 megapixels saves its layers as PNG files whichever is chosen. The layers are named in the interface's language.
+
+In the render viewer, the menu beside **Copy** shows the picture or one of its layers (<kbd>L</kbd> and <kbd>⇧L</kbd> go through them), **Copy** copies what is shown, and **Save layers** saves the PSD or the zip; **Save** still saves the picture alone. The render queue's card says **Layers** on a render that makes them.
+
+**Limits:** layers are drawn on this computer after the picture, so cloud renders and pictures from AI or a plug-in's engine don't make them. They are drawn the way the Fast engine draws, whichever engine made the picture: the shadows are its crisp shadow-map shadows, and a Photoreal picture's soft light, reflections and glass aren't in any layer. Material colours and Object colours aren't smoothed, so each block stays one exact colour; the other layers are smoothed like the picture.
 
 ### The render queue
 
@@ -354,12 +374,13 @@ The finished pictures open in a viewer over the whole window, with the pictures 
 
 - **Fit** and **100 %**, **−** and **+**, the mouse wheel (about the pointer) or a pinch zoom; drag to pan; double-click switches between fit and 100 % at that point
 - the arrows on the picture, the strip, or <kbd>←</kbd> and <kbd>→</kbd> go through the pictures
-- **Info** shows the picture's name, size, engine, samples, time and file
+- **Info** shows the picture's name, size, engine, samples, time and file, and its layers when it has them
+- the layer menu (on a picture with layers) shows the picture or one of its layers, and **Save layers** saves them (see Render layers, above)
 - **Compare** shows a picture an engine made over the one it started from, with a line to drag (or move with the arrow keys) between them
 - **Restyle with AI…** paints the picture shown again in another style, strength or words (an AI picture is painted again from the picture it came from). The new pictures join the strip
 - **Copy** (<kbd>⌘C</kbd>) and **Save** (<kbd>⌘S</kbd>)
 
-Keys: <kbd>F</kbd> fits, <kbd>1</kbd> shows 100 %, <kbd>C</kbd> compares, <kbd>Esc</kbd> closes it.
+Keys: <kbd>F</kbd> fits, <kbd>1</kbd> shows 100 %, <kbd>C</kbd> compares, <kbd>L</kbd> and <kbd>⇧L</kbd> go through the layers, <kbd>Esc</kbd> closes it.
 
 ### Render engines from plug-ins
 

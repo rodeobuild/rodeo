@@ -142,6 +142,8 @@ const ART = {
     ink(ellipse(70, 22, 12)) +
     acc("M62.5 17a9 9 0 0 1 6-5") +
     tint(ellipse(75, 39, 12, 2.5)),
+  // a picture's layers, stacked: the top one picked out, the two under it showing their front edges
+  layers: ink("M36 23L60 31L84 23M36 30L60 38L84 30") + tint("M60 8L84 16L60 24L36 16z") + acc("M60 8L84 16L60 24L36 16z") + afill(ellipse(91, 9, 2.5)),
   // a phone with a plan on it, and a new blank sheet
   phone: ink(rect(35, 5, 22, 38, 4) + "M43 8.5h6" + rect(69, 13, 18, 22, 1.5)) + acc("M40 16h12v16H40zM46 16v7M78 19v10M73 24h10"),
   // a chat bubble and sparkles

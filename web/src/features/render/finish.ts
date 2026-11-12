@@ -11,7 +11,56 @@ import type { RenderScene } from "./sceneBuilder.ts";
 import type { RenderSettings, ToneMap } from "./settings.ts";
 
 /** Outlines are a pixel wide, and grain a pixel across, on a picture this many pixels high; on a bigger one, wider. */
-const OUTLINE_HEIGHT = 1200;
+export const OUTLINE_HEIGHT = 1200;
+
+/**
+ * Ink lines along edges and creases, from a depth texture: `edgeAt(uv)` is 0..1, how much a pixel lies
+ * on one. Shared with the Lines render layer (passes.ts). Needs `#include <packing>` before it and the
+ * uniforms tDepth, uTexel, uOrtho, uNear, uFar, uDepthNoise, uOutlineWidth and uOutlineFar (edgeFar).
+ */
+export const EDGE_GLSL = `
+// A pixel's depth in a measure that runs straight across a flat face on the picture: one over the
+// distance in perspective (0 for the sky), the distance itself in an orthogonal view.
+float lineDepth(vec2 uv) {
+  float d = texture2D(tDepth, uv).x;
+  if (uOrtho > 0.5) return -orthographicDepthToViewZ(d, uNear, uFar);
+  return d >= 1.0 ? 0.0 : -1.0 / perspectiveDepthToViewZ(d, uNear, uFar);
+}
+
+// 0..1, how much the pixel lies on an edge or a crease: across a flat face lineDepth's second
+// difference is nothing beside its first; at an edge or a crease it is about as large.
+float edgeAt(vec2 uv) {
+  vec2 o = uTexel * uOutlineWidth;
+  float c = lineDepth(uv);
+  float l = lineDepth(uv - vec2(o.x, 0.0));
+  float r = lineDepth(uv + vec2(o.x, 0.0));
+  float b = lineDepth(uv - vec2(0.0, o.y));
+  float t = lineDepth(uv + vec2(0.0, o.y));
+  float eps = uOrtho > 0.5 ? 0.02 : 0.0015 * c + uDepthNoise;
+  float ex = abs(l + r - 2.0 * c) / (abs(r - l) + eps);
+  float ey = abs(b + t - 2.0 * c) / (abs(t - b) + eps);
+  // lines fade out past the model, so the ground plane's far edge draws no horizon
+  float nearest = uOrtho > 0.5 ? min(c, min(min(l, r), min(b, t))) : 1.0 / max(max(c, max(max(l, r), max(b, t))), 1.0e-6);
+  return smoothstep(0.3, 0.7, max(ex, ey)) * (1.0 - smoothstep(uOutlineFar, 1.5 * uOutlineFar, nearest));
+}
+`;
+
+/** A few steps of a float depth near 1, as one over the distance: what a flat face's depth wavers by (EDGE_GLSL's uDepthNoise). */
+export function depthNoise(near: number): number {
+  return (3 * 1.2e-7) / Math.max(near, 1e-4);
+}
+
+/**
+ * How far the outlines reach (EDGE_GLSL's uOutlineFar): the far side of the model, along the view in an
+ * orthogonal one, from the eye in perspective, so the ground plane's far edge draws no horizon.
+ */
+export function edgeFar(scene: RenderScene, camera: THREE.Camera): number {
+  const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+  const forward = camera.getWorldDirection(new THREE.Vector3());
+  const diagonal = scene.bounds.getSize(new THREE.Vector3()).length();
+  const toCentre = scene.bounds.getCenter(new THREE.Vector3()).sub(eye);
+  return (camera instanceof THREE.OrthographicCamera ? forward.dot(toCentre) : toCentre.length()) + diagonal;
+}
 
 /** The value of the TONE_MAPPING define that picks each curve in the finish's shader. */
 const TONE_MAPPING_DEFINE: Readonly<Record<ToneMap, number>> = { agx: 0, aces: 1, neutral: 2 };
@@ -76,31 +125,7 @@ vec3 lensAt(vec2 uv) {
   return vec3(texture2D(tColor, uv + shift).r, texture2D(tColor, uv).g, texture2D(tColor, uv - shift).b);
 }
 
-// A pixel's depth in a measure that runs straight across a flat face on the picture: one over the
-// distance in perspective (0 for the sky), the distance itself in an orthogonal view.
-float lineDepth(vec2 uv) {
-  float d = texture2D(tDepth, uv).x;
-  if (uOrtho > 0.5) return -orthographicDepthToViewZ(d, uNear, uFar);
-  return d >= 1.0 ? 0.0 : -1.0 / perspectiveDepthToViewZ(d, uNear, uFar);
-}
-
-// 0..1, how much the pixel lies on an edge or a crease: across a flat face lineDepth's second
-// difference is nothing beside its first; at an edge or a crease it is about as large.
-float edgeAt(vec2 uv) {
-  vec2 o = uTexel * uOutlineWidth;
-  float c = lineDepth(uv);
-  float l = lineDepth(uv - vec2(o.x, 0.0));
-  float r = lineDepth(uv + vec2(o.x, 0.0));
-  float b = lineDepth(uv - vec2(0.0, o.y));
-  float t = lineDepth(uv + vec2(0.0, o.y));
-  float eps = uOrtho > 0.5 ? 0.02 : 0.0015 * c + uDepthNoise;
-  float ex = abs(l + r - 2.0 * c) / (abs(r - l) + eps);
-  float ey = abs(b + t - 2.0 * c) / (abs(t - b) + eps);
-  // lines fade out past the model, so the ground plane's far edge draws no horizon
-  float nearest = uOrtho > 0.5 ? min(c, min(min(l, r), min(b, t))) : 1.0 / max(max(c, max(max(l, r), max(b, t))), 1.0e-6);
-  return smoothstep(0.3, 0.7, max(ex, ey)) * (1.0 - smoothstep(uOutlineFar, 1.5 * uOutlineFar, nearest));
-}
-
+${EDGE_GLSL}
 // white noise from a pixel cell
 float hash(vec2 p) {
   uvec2 q = uvec2(ivec2(p) + 4096) * uvec2(1597334673u, 3812015801u);
@@ -379,12 +404,8 @@ export class Finisher {
     const lens = camera as THREE.PerspectiveCamera | THREE.OrthographicCamera;
     u.uNear.value = lens.near;
     u.uFar.value = lens.far;
-    // a few steps of a float depth near 1, as one over the distance: what a flat face's depth wavers by
-    u.uDepthNoise.value = (3 * 1.2e-7) / Math.max(lens.near, 1e-4);
-    // as far as the far side of the model (an orthogonal view measures along its view, a perspective one from its eye)
-    const diagonal = scene.bounds.getSize(new THREE.Vector3()).length();
-    const toCentre = scene.bounds.getCenter(new THREE.Vector3()).sub(u.uCamPos.value);
-    u.uOutlineFar.value = (u.uOrtho.value > 0.5 ? u.uCamForward.value.dot(toCentre) : toCentre.length()) + diagonal;
+    u.uDepthNoise.value = depthNoise(lens.near);
+    u.uOutlineFar.value = edgeFar(scene, camera);
   }
 
   /** Recompiles only when the curve changes. */

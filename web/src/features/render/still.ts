@@ -10,6 +10,8 @@ import type { Shot } from "./camera.ts";
 import { renderCamera } from "./camera.ts";
 import { webgpuAvailable } from "./gpuSupport.ts";
 import { HdrWriter } from "./hdr.ts";
+import type { StillLayers } from "./layerFile.ts";
+import type { LayerId, LayersFile } from "./layers.ts";
 import { PathEngine } from "./pathtrace.ts";
 import { RasterEngine } from "./raster.ts";
 import type { RenderScene } from "./sceneBuilder.ts";
@@ -30,6 +32,8 @@ export interface StillPlan {
   /** minutes it may take, 0 for no limit */
   readonly minutes: number;
   readonly format: Format;
+  /** the render layers to make beside the picture (layers.ts), and the file they save as */
+  readonly layers?: { readonly ids: readonly LayerId[]; readonly file: LayersFile } | null;
 }
 
 /** Cancel discards everything; Finish now keeps the picture in hand and stops. */
@@ -53,6 +57,8 @@ export interface Still {
   /** samples taken (Photoreal), or null */
   readonly samples: number | null;
   readonly seconds: number;
+  /** its render layers, when the plan asked for them */
+  readonly layers?: StillLayers;
 }
 
 /** Where a picture stands among the job's, for its progress line. */
@@ -160,7 +166,31 @@ export async function renderStill(
     box.label(`${place.prefix}Encoding the picture…`);
     box.bar(null);
     const blob = await encode(picture, plan.format === "jpeg" ? "jpeg" : "png");
-    return { blob, samples, seconds: (performance.now() - started) / 1000 };
+    const asked = plan.layers?.ids.length ? plan.layers : null;
+    if (!asked) return { blob, samples, seconds: (performance.now() - started) / 1000 };
+    // the path tracer's buffers go before the layers are drawn, with the Realistic engine's own
+    engine?.dispose();
+    engine = null;
+    const { makeLayers } = await import("./layerFile.ts");
+    const layers = await makeLayers({
+      renderer,
+      scene,
+      camera: renderCamera(shot, plan.width / plan.height, settings.camera, null, null),
+      ids: asked.ids,
+      file: asked.file,
+      picture,
+      png: plan.format === "jpeg" ? null : blob,
+      encode: (pixels) => encode(pixels, "png"),
+      cancelled: () => job.cancelled,
+      lost: () => lost || renderer.getContext().isContextLost(),
+      progress: (name, index, count) => {
+        box.label(`${place.prefix}Drawing the layers: ${name} (${index + 1} of ${count})…`);
+        box.bar(index / count);
+      },
+      yieldTask,
+    });
+    if (!layers) return null;
+    return { blob, samples, seconds: (performance.now() - started) / 1000, layers };
   } finally {
     linear?.dispose();
     renderer.domElement.removeEventListener("webglcontextlost", onLost);

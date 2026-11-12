@@ -330,7 +330,7 @@ function restoreState(renderer: THREE.WebGLRenderer, s: SavedState): void {
 }
 
 /** The Halton sequence's `index`th value in `base`: sub-pixel offsets spread evenly. */
-function halton(index: number, base: number): number {
+export function halton(index: number, base: number): number {
   let f = 1;
   let r = 0;
   for (let i = index; i > 0; i = Math.floor(i / base)) {
@@ -341,7 +341,7 @@ function halton(index: number, base: number): number {
 }
 
 /** Shifts `base` by (dx, dy) pixels into the camera's projection, and its inverse with it. */
-function jitter(camera: THREE.Camera, base: THREE.Matrix4, dx: number, dy: number, width: number, height: number): void {
+export function jitter(camera: THREE.Camera, base: THREE.Matrix4, dx: number, dy: number, width: number, height: number): void {
   camera.projectionMatrix.copy(base);
   // the shift is in the third column of a perspective matrix and the fourth of an orthogonal one
   const i = camera instanceof THREE.PerspectiveCamera ? 8 : 12;

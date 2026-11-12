@@ -105,6 +105,8 @@ export interface ModelFace {
   readonly alphaMap: THREE.Texture | null;
   /** a wall's faces, drawn behind faces lying exactly on them */
   readonly recessed: boolean;
+  /** the id of the object a triangle of `geometry` belongs to (its first corner's vertex over three): inside a top-level group, the object in it; or null */
+  readonly objectOf?: (triangle: number) => string | null;
 }
 
 /** Where the camera stands, as a view pane keeps it to come back to: its eye, the point it orbits, its lens and ortho size. */
@@ -622,7 +624,24 @@ export class View3D {
       map: this.textures.get(g.texture) ?? null,
       alphaMap: this.masks.get(g.texture) ?? null,
       recessed: g.recessed,
+      objectOf: this.ownerLookup(g.runs),
     }));
+  }
+
+  /**
+   * The object a triangle of a face group's runs belongs to: inside a top-level group, the object in it
+   * (its part), so each piece of a grouped building counts as its own. Triangles mostly come in a run's
+   * order, so the last run is tried first.
+   */
+  private ownerLookup(runs: readonly Run[]): (triangle: number) => string | null {
+    const ids = this.objectIds;
+    const parts = this.partIds;
+    let last: Run | null = null;
+    return (triangle) => {
+      if (!last || triangle < last.start || triangle >= last.end) last = findRun(runs, triangle);
+      if (!last) return null;
+      return (last.part >= 0 ? parts[last.part] : undefined) ?? ids[last.obj] ?? null;
+    };
   }
 
   /** The features' geometry shown with the model (Site Context) on visible layers. */

@@ -17,6 +17,7 @@ import { creditTerms, formatCredit } from "../../account/credit.ts";
 import { engineFields, type EngineFields } from "../engineFields.ts";
 import { onEngines, optionValues, renderEngines, type RenderEngine } from "../engines.ts";
 import { webgpuAvailable, webgpuKnown } from "../gpuSupport.ts";
+import { LAYER_IDS, LAYERS, MAX_PSD_PIXELS, layersFileFor, type LayerId, type LayersFile } from "../layers.ts";
 import { DEFAULT_RENDER, onRender, patchRender, renderSettings, type RenderSettings } from "../settings.ts";
 import {
   ALL,
@@ -266,6 +267,31 @@ export function outputTab(): HTMLElement {
     (f) => setOutput({ format: f }),
   );
 
+  // ---- Layers: the render layers made beside each picture, and the file they save as
+  const layersOn = toggle("Separate layers", (on) => setOutput({ layersOn: on }), "Also make the picture's layers, lined up with it, for Photoshop and other image editors");
+  const layerChips = chips<LayerId>(
+    "Layers",
+    LAYER_IDS.map((id): readonly [LayerId, string] => [id, LAYERS[id].name]),
+    (id) => {
+      const chosen = outputPrefs().layers;
+      setOutput({ layers: chosen.includes(id) ? chosen.filter((l) => l !== id) : LAYER_IDS.filter((l) => l === id || chosen.includes(l)) });
+    },
+  );
+  for (const id of LAYER_IDS) {
+    const b = layerChips.buttons.get(id);
+    if (b) b.title = LAYERS[id].hint;
+  }
+  const layersFile = segmented<LayersFile>(
+    "Save layers as",
+    [
+      ["psd", "Layered PSD"],
+      ["zip", "PNG files"],
+    ],
+    (f) => setOutput({ layersFile: f }),
+  );
+  const layersFileRow = row("Save as", layersFile.el);
+  const layersNote = note("");
+
   // ---- Render on: this computer, or the cloud GPU (when this user can pay for one)
   const whereSeg = segmented<Where>(
     "Render on",
@@ -299,6 +325,7 @@ export function outputTab(): HTMLElement {
   const engineGroup = group("Engine", { key: "output.engine" }, engineHolder, engineNote, startRow, fieldsHolder);
   const qualityGroup = group("Quality", { key: "output.quality" }, qualityPick.el, samplesNote, minutes.el, minutesNote, denoise.el);
   const fileGroup = group("File", { key: "output.file" }, formatPick.el);
+  const layersGroup = group("Layers", { key: "output.layers" }, layersOn.el, layerChips.el, layersFileRow, layersNote);
   const whereGroup = group("Render on", { key: "output.where" }, whereSeg.el, whereNote);
   const liveGroup = group(
     "Live view",
@@ -347,12 +374,37 @@ export function outputTab(): HTMLElement {
 
     // Render on: only for a Photoreal picture, when the server sells cloud renders to this user
     const cloud = cloudTerms();
-    whereGroup.el.hidden = !(cloud && via === null && p.engine === "pathtraced");
+    const cloudShown = cloud !== null && via === null && p.engine === "pathtraced";
+    whereGroup.el.hidden = !cloudShown;
     if (cloud) {
       if (cloudBtn) cloudBtn.textContent = `Cloud GPU (${cloud.gpu})`;
       whereNote.textContent = cloudPrice(cloud);
     }
     whereSeg.set(p.where);
+
+    // Layers: for the built-in engines' pictures, made on this computer
+    layersGroup.el.hidden = via !== null;
+    layersOn.set(p.layersOn);
+    layerChips.el.hidden = layersFileRow.hidden = !p.layersOn;
+    for (const [id, b] of layerChips.buttons) b.setAttribute("aria-pressed", String(p.layers.includes(id)));
+    layersFile.set(p.layersFile);
+    const pictureSize = "size" in sized ? sized.size : null;
+    let layersText = "";
+    let layersWarn = false;
+    if (p.layersOn) {
+      if (cloudShown && p.where === "cloud") {
+        layersText = "Layers are drawn on this computer: choose This computer under Render on to make them.";
+        layersWarn = true;
+      } else if (p.layers.length === 0) {
+        layersText = "Choose the layers to make.";
+        layersWarn = true;
+      } else if (pictureSize && layersFileFor(p.layersFile, pictureSize.width, pictureSize.height) !== p.layersFile) {
+        layersText = `A picture over ${(MAX_PSD_PIXELS / 1e6).toFixed(1)} MP saves its layers as PNG files in a zip.`;
+      } else {
+        layersText = p.layersFile === "psd" ? "One PSD: the picture at the bottom, the layers over it, hidden. Turn on the ones you want." : "A zip of PNG files, one a layer, each the picture's size.";
+      }
+    }
+    setNote(layersNote, layersText, layersWarn);
 
     // the 3D view's own quality
     const q = renderSettings().quality;
@@ -364,7 +416,7 @@ export function outputTab(): HTMLElement {
     liveNoWebgpu.hidden = webgpuKnown() !== false;
   };
 
-  const root = h("div", { cls: "rs-output" }, shotsGroup.el, sizeGroup.el, engineGroup.el, qualityGroup.el, fileGroup.el, whereGroup.el, liveGroup.el);
+  const root = h("div", { cls: "rs-output" }, shotsGroup.el, sizeGroup.el, engineGroup.el, qualityGroup.el, fileGroup.el, layersGroup.el, whereGroup.el, liveGroup.el);
 
   onOutput(sync);
   onEngines(sync);
