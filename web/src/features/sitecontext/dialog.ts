@@ -1,9 +1,11 @@
 // File > Import Site Context…: a large dialog with a Leaflet map to choose the area on (a place
-// search, or a rectangle dragged out, at most 2 km × 2 km), a checklist of the kinds of context, one
+// search, or a rectangle dragged out, at most 2 km × 2 km, or 10 km × 10 km signed in, imported in
+// parts no larger than 2 km that meet as imports side by side do), a checklist of the kinds of context, one
 // layer or a layer for each kind, and, in a drawing with no georeferencing yet, where the area's
 // centre goes. The drawing's georeferencing places the import, and the first import sets it, so
-// imports side by side line up. Import shows its steps and can be cancelled; the drawing gets the
-// result as one undo step (commands.ts's attempt), on new design layers, the first then made active.
+// imports side by side line up. Import shows its steps and can be cancelled; the drawing gets each
+// part as one undo step (commands.ts's attempt), on new design layers, the first then made active.
+// An import in parts that stops part-way keeps the parts written, and Import carries on from there.
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -11,19 +13,21 @@ import "./context.css";
 import { appContext } from "../../app/ext.ts";
 import { attempt, setActiveLayer } from "../../app/commands.ts";
 import { h } from "../../app/dom.ts";
-import { tJoined } from "../../app/i18n.ts";
+import { t, tJoined } from "../../app/i18n.ts";
 import { documentGeoref, setDocumentGeoref } from "../../app/georef.ts";
 import { drawingToGeo, geoToDrawing, georefThrough, type Georef } from "../../app/geoShapes.ts";
 import { addSiteModelFrom } from "../../app/siteModel.ts";
 import { store } from "../../app/state.ts";
 import { toast } from "../../app/toast.ts";
 import { ANCHOR_FIELD, ANCHOR_FORMAT, anchorOf, anchorText, AREA_FIELD, areaOfText, areaText } from "./anchor.ts";
-import { boxCentre, boxFromCorners, boxSizeM, boxTooLarge, MAX_SIDE_M, type GeoBox } from "./geo.ts";
+import { boxCentre, boxFromCorners, boxSizeM, boxTooLarge, MAX_SIDE_M, MAX_SIGNED_IN_M, partsOf, type GeoBox } from "./geo.ts";
 import { runImport, type ImportResult, type Placement } from "./importer.ts";
 import type { SiteCategory } from "./model.ts";
 import { DEFAULT_BUILDING_M } from "./osm.ts";
-import { searchPlaces, type Place } from "./services.ts";
-import { writeSiteContext, type WriteReport } from "./writer.ts";
+import { BusyError, searchPlaces, type Place } from "./services.ts";
+import { joinReports, writeSiteContext, type WriteReport } from "./writer.ts";
+import { requireSignIn } from "../account/signin.ts";
+import { currentUser, onUser, refreshUser } from "../../platform/api.ts";
 import type { EditSession, Pt, VwxDocument } from "../../core/index.ts";
 
 /** The kinds of context, in the order the checklist lists them. */
@@ -45,6 +49,15 @@ const SEARCH_DEBOUNCE_MS = 600;
 /** how near (screen pixels) a dragged corner comes to an earlier import's edge to take it */
 const SNAP_PX = 12;
 const SEARCH_MIN_CHARS = 2;
+/** seconds to wait before asking a busy OpenStreetMap server again, one wait for each try after the first */
+const BUSY_WAITS_S = [15, 45];
+
+/** What the area line warns of ("" for nothing), and whether signing in would clear it. */
+interface Warning {
+  readonly text: string;
+  readonly signIn: boolean;
+}
+const NO_WARNING: Warning = { text: "", signIn: false };
 
 interface Settings {
   area: GeoBox | null;
@@ -84,13 +97,25 @@ class SiteContextDialog {
   private readonly stored = store.session ? storedImports(store.session.doc) : { georef: null, areas: [] };
   /** the drawing's georeferencing when the dialog opened (this browser's, else an earlier import's in the file) */
   private readonly known: Georef | null = documentGeoref() ?? this.stored.georef;
-  /** the areas imported before, shown on the map for the next one to meet */
-  private readonly earlier: readonly GeoBox[] = this.stored.areas;
+  /** the areas imported before, shown on the map for the next one to meet; the parts of a stopped import join them */
+  private readonly earlier: GeoBox[] = [...this.stored.areas];
+  /** whether someone is signed in: their areas may be larger, imported in parts */
+  private signedIn = currentUser() !== null;
+  private stopUser: (() => void) | null = null;
+  /** a sign-in in another tab (an emailed link) is noticed when this one is looked at again */
+  private readonly onFocus = (): void => {
+    if (!this.signedIn) void refreshUser().catch(() => {});
+  };
+  private signInButton: HTMLButtonElement | null = null;
+  /** an import in parts that stopped part-way: its area, the part it stopped at, the parts written and their report */
+  private partial: { area: GeoBox; next: number; done: GeoBox[]; report: WriteReport } | null = null;
   private mapEl: HTMLElement | null = null;
   private readonly returnFocus: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   private backdrop: HTMLElement | null = null;
   private map: L.Map | null = null;
   private rect: L.Rectangle | null = null;
+  /** where a bigger area divides into its parts */
+  private partLines: L.LayerGroup | null = null;
   private drawing = false;
   private anchor: L.LatLng | null = null;
   private drawButton: HTMLButtonElement | null = null;
@@ -144,7 +169,12 @@ class SiteContextDialog {
     });
 
     this.initMap();
-    this.refresh();
+    // the limit follows the account: refresh() now and whenever someone signs in or out
+    this.stopUser = onUser((u) => {
+      this.signedIn = u !== null;
+      this.refresh();
+    });
+    window.addEventListener("focus", this.onFocus);
     this.searchInput?.focus();
   }
 
@@ -174,6 +204,11 @@ class SiteContextDialog {
     this.drawButton.addEventListener("click", () => this.setDrawing(!this.drawing));
     this.areaText = h("p", { cls: "sc-area" });
     this.warning = h("p", { cls: "sc-warning", attrs: { role: "status" }, hidden: true });
+    this.signInButton = h("button", { cls: "btn primary sc-signin", text: "Sign In…", attrs: { type: "button" }, hidden: true });
+    this.signInButton.addEventListener(
+      "click",
+      () => void requireSignIn(`Sign in to import areas up to ${MAX_SIGNED_IN_M / 1000} km × ${MAX_SIGNED_IN_M / 1000} km.`),
+    );
 
     const kindRows = KINDS.map(({ cat, label }) => this.kindRow(cat, label));
     const placeRadio = (value: "origin" | "view", label: string): HTMLElement => {
@@ -211,6 +246,7 @@ class SiteContextDialog {
       this.drawButton,
       this.areaText,
       this.warning,
+      this.signInButton,
       h("h3", { cls: "sc-heading", text: "Include" }),
       ...kindRows,
       h("h3", { cls: "sc-heading", text: "Layers" }),
@@ -309,15 +345,7 @@ class SiteContextDialog {
     this.map = map;
     // the areas imported before, for the next one to meet; the map opens on them
     if (this.earlier.length) {
-      for (const b of this.earlier) {
-        L.rectangle(
-          [
-            [b.south, b.west],
-            [b.north, b.east],
-          ],
-          { color: "#6b6b6b", weight: 1, dashArray: "4 4", fillOpacity: 0.12, interactive: false },
-        ).addTo(map);
-      }
+      for (const b of this.earlier) this.showEarlier(b);
       const all = L.latLngBounds(this.earlier.map((b) => [b.south, b.west] as [number, number]));
       for (const b of this.earlier) all.extend([b.north, b.east]);
       map.fitBounds(all.pad(0.6));
@@ -348,6 +376,18 @@ class SiteContextDialog {
       if (width >= MIN_AREA_M && height >= MIN_AREA_M) this.settings.area = box;
       this.setDrawing(false);
     });
+  }
+
+  /** Shows an area imported before on the map, dashed. */
+  private showEarlier(b: GeoBox): void {
+    if (!this.map) return;
+    L.rectangle(
+      [
+        [b.south, b.west],
+        [b.north, b.east],
+      ],
+      { color: "#6b6b6b", weight: 1, dashArray: "4 4", fillOpacity: 0.12, interactive: false },
+    ).addTo(this.map);
   }
 
   /** A point with its latitude and longitude taken to an earlier import's edge when it is near one on screen. */
@@ -400,8 +440,7 @@ class SiteContextDialog {
   private previewArea(a: L.LatLng, b: L.LatLng): void {
     const box = boxFromCorners({ lat: a.lat, lon: a.lng }, { lat: b.lat, lon: b.lng });
     this.showRect(box);
-    const { width, height } = boxSizeM(box);
-    this.updateAreaText(width, height);
+    this.updateAreaText(box);
     this.setWarning(this.warningFor(box));
   }
 
@@ -409,17 +448,32 @@ class SiteContextDialog {
   private hideRect(): void {
     this.rect?.remove();
     this.rect = null;
+    this.partLines?.remove();
+    this.partLines = null;
   }
 
   private showRect(box: GeoBox): void {
     if (!this.map) return;
     const bounds = L.latLngBounds([box.south, box.west], [box.north, box.east]);
-    const tooLarge = boxTooLarge(box);
+    const tooLarge = boxTooLarge(box, this.limit());
     const style = { color: tooLarge ? "#d33" : "#2b78e4", weight: 2, fillOpacity: 0.08 };
     if (!this.rect) this.rect = L.rectangle(bounds, style).addTo(this.map);
     else {
       this.rect.setBounds(bounds);
       this.rect.setStyle(style);
+    }
+    // the lines between the parts it comes in, each part's east and north edge inside the area
+    this.partLines?.remove();
+    this.partLines = null;
+    const parts = tooLarge ? [] : partsOf(box);
+    if (parts.length > 1) {
+      const line = { color: style.color, weight: 1, dashArray: "3 5", interactive: false };
+      const lines: L.Polyline[] = [];
+      for (const p of parts) {
+        if (p.east < box.east) lines.push(L.polyline([[p.south, p.east], [p.north, p.east]], line));
+        if (p.north < box.north) lines.push(L.polyline([[p.north, p.west], [p.north, p.east]], line));
+      }
+      this.partLines = L.layerGroup(lines).addTo(this.map);
     }
   }
 
@@ -476,9 +530,18 @@ class SiteContextDialog {
 
   // ---- state shown ----------------------------------------------------------------
 
-  private updateAreaText(width: number, height: number): void {
+  /** The area's size, and how many parts it comes in when it takes more than one. */
+  private updateAreaText(box: GeoBox): void {
     if (!this.areaText) return;
-    this.areaText.textContent = `Area: ${Math.round(width)} m × ${Math.round(height)} m`;
+    const { width, height } = boxSizeM(box);
+    const [w, tall] = [Math.round(width), Math.round(height)];
+    const parts = boxTooLarge(box, this.limit()) ? 1 : partsOf(box).length;
+    this.areaText.textContent = parts > 1 ? `Area: ${w} m × ${tall} m, imported in ${parts} parts` : `Area: ${w} m × ${tall} m`;
+  }
+
+  /** The longest side an area may have, metres: longer signed in, imported in parts. */
+  private limit(): number {
+    return this.signedIn ? MAX_SIGNED_IN_M : MAX_SIDE_M;
   }
 
   /** Brings the area readout, the warning, the Draw button and the Import button into line with the settings. */
@@ -486,8 +549,7 @@ class SiteContextDialog {
     const area = this.settings.area;
     if (!this.drawing) {
       if (area) {
-        const { width, height } = boxSizeM(area);
-        this.updateAreaText(width, height);
+        this.updateAreaText(area);
         this.showRect(area);
       } else {
         this.hideRect();
@@ -495,33 +557,48 @@ class SiteContextDialog {
       }
       if (this.drawButton) this.drawButton.textContent = area ? "Redraw Area" : "Draw Area";
     }
-    this.setWarning(this.settings.kinds.size === 0 ? "Choose at least one kind of context." : area ? this.warningFor(area) : "");
+    this.setWarning(this.settings.kinds.size === 0 ? { text: "Choose at least one kind of context.", signIn: false } : area ? this.warningFor(area) : NO_WARNING);
     if (this.intervalSelect) this.intervalSelect.disabled = !this.settings.kinds.has("terrain");
     if (this.labelBox) this.labelBox.disabled = !this.settings.kinds.has("buildings");
     if (this.centreBox) this.centreBox.disabled = !this.settings.kinds.has("roads");
     if (this.importButton) this.importButton.disabled = !this.canImport() || this.run !== null;
   }
 
-  /** What is wrong with an area, or "" when it can be imported as it is. */
-  private warningFor(box: GeoBox): string {
-    if (boxTooLarge(box)) {
-      return `The area is larger than ${MAX_SIDE_M / 1000} km × ${MAX_SIDE_M / 1000} km. Draw a smaller one: import a bigger place in parts, and they line up.`;
+  /** What is wrong with an area ("" when it can be imported as it is), and whether signing in would let it be. */
+  private warningFor(box: GeoBox): Warning {
+    if (boxTooLarge(box, this.limit())) {
+      if (!this.signedIn && !boxTooLarge(box, MAX_SIGNED_IN_M)) {
+        const [km, more] = [MAX_SIDE_M / 1000, MAX_SIGNED_IN_M / 1000];
+        return {
+          text: `Areas larger than ${km} km × ${km} km need you to sign in. Signed in, you can import up to ${more} km × ${more} km, in parts that line up.`,
+          signIn: true,
+        };
+      }
+      const km = this.limit() / 1000;
+      return { text: `The area is larger than ${km} km × ${km} km. Draw a smaller one: import a bigger place in parts, and they line up.`, signIn: false };
     }
-    if (this.earlier.some((e) => overlapping(e, box))) {
-      return "Part of this area was imported before: its buildings, trees and facilities are left out there, but its terrain, roads and water come in again. Start it at the earlier area's edge to avoid that.";
+    // the parts a stopped import of this same area wrote are no overlap: Import carries on beside them
+    const own = this.partial?.area === box ? this.partial.done : [];
+    if (this.earlier.some((e) => !own.includes(e) && overlapping(e, box))) {
+      return {
+        text: "Part of this area was imported before: its buildings, trees and facilities are left out there, but its terrain, roads and water come in again. Start it at the earlier area's edge to avoid that.",
+        signIn: false,
+      };
     }
-    return "";
+    return NO_WARNING;
   }
 
-  private setWarning(message: string): void {
-    if (!this.warning) return;
-    this.warning.textContent = message;
-    this.warning.hidden = message === "";
+  private setWarning(w: Warning): void {
+    if (this.warning) {
+      this.warning.textContent = w.text;
+      this.warning.hidden = w.text === "";
+    }
+    if (this.signInButton) this.signInButton.hidden = !w.signIn;
   }
 
   private canImport(): boolean {
     const area = this.settings.area;
-    return area !== null && !boxTooLarge(area) && this.settings.kinds.size > 0 && !this.drawing;
+    return area !== null && !boxTooLarge(area, this.limit()) && this.settings.kinds.size > 0 && !this.drawing;
   }
 
   // ---- importing ----------------------------------------------------------------
@@ -537,53 +614,116 @@ class SiteContextDialog {
     this.setError("");
     this.refresh();
 
+    const georef = this.georefFor(area);
+    const place: Placement = {
+      toDrawing: (p) => geoToDrawing(georef, p),
+      toGeo: (p) => drawingToGeo(georef, p),
+    };
+    const parts = partsOf(area);
+    // an import of this same area that stopped part-way carries on from the part it stopped at
+    const resumed = this.partial?.area === area ? this.partial : null;
+    this.partial = null;
+    const done: GeoBox[] = resumed ? [...resumed.done] : [];
+    let report: WriteReport | null = resumed?.report ?? null;
+    let at = resumed?.next ?? 0;
     try {
-      const georef = this.georefFor(area);
-      const place: Placement = {
-        toDrawing: (p) => geoToDrawing(georef, p),
-        toGeo: (p) => drawingToGeo(georef, p),
-      };
-      const result = await runImport(
-        {
-          box: area,
-          kinds: this.settings.kinds,
-          contourInterval: this.settings.contourInterval,
-          labelHeights: this.settings.labelHeights,
-          centreLines: this.settings.centreLines,
-          place,
-          earlier: this.earlier,
-        },
-        run.signal,
-        (label, sameStep) => this.step(label, sameStep === true),
-      );
-      if (run.signal.aborted) throw new Error("cancelled");
-      if (result.features.length === 0 && (result.terrain === null || result.terrain.points.length < 3)) {
+      for (; at < parts.length; at++) {
+        const part = parts[at];
+        if (parts.length > 1) {
+          this.stepLabels = [];
+          this.step(`Part ${at + 1} of ${parts.length}`);
+        }
+        const result = await this.importPart(part, place, run.signal);
+        if (run.signal.aborted) throw new Error("cancelled");
+        // a part with nothing in it (open sea): the next
+        if (result.features.length === 0 && (result.terrain === null || result.terrain.points.length < 3)) continue;
+        this.step("Writing to the drawing");
+        // one layer: every part on the first part's
+        const into = report && !this.settings.layerPerKind ? report.layerId : undefined;
+        const written = this.write(result, georef, part, into);
+        if (!written) {
+          throw new Error(
+            done.length ? "The drawing could not take this part." : "The drawing could not take the context. Nothing was imported.",
+          );
+        }
+        done.push(part);
+        report = report ? joinReports(report, written) : written;
+        // the drawing is placed on the Earth from now on: the next part, and the next import, line up with this one
+        if (!documentGeoref()) setDocumentGeoref(georef);
+        const { area: _area, ...choices } = this.settings;
+        remembered = { ...choices, kinds: new Set(choices.kinds) };
+      }
+      if (!report) {
         this.setError("Nothing to import: this area has none of the chosen kinds in OpenStreetMap. Try a larger area or more kinds.");
         this.finishRun();
         return;
       }
-      this.step("Writing to the drawing");
-      const written = this.write(result, georef, area);
-      if (!written) {
-        this.finishRun();
-        return;
-      }
-      // the drawing is placed on the Earth from now on: the next import lines up with this one
-      if (!documentGeoref()) setDocumentGeoref(georef);
-      const { area: _area, ...choices } = this.settings;
-      remembered = { ...choices, kinds: new Set(choices.kinds) };
-      setActiveLayer(written.layerId);
+      setActiveLayer(report.layerId);
       appContext()?.fit();
       this.close();
-      toast(summary(written), "info");
+      toast(summary(report, done.length), "info");
     } catch (err) {
-      if (run.signal.aborted) {
-        this.setError("");
-        this.step("Cancelled");
+      const cancelled = run.signal.aborted;
+      if (cancelled) this.step("Cancelled");
+      const why = cancelled ? "" : err instanceof Error ? err.message : "The import failed.";
+      if (report && at < parts.length) {
+        // the parts written stay in the drawing, shown as imported, and Import carries on from the one that stopped
+        this.partial = { area, next: at, done, report };
+        for (const b of done) {
+          if (this.earlier.includes(b)) continue;
+          this.earlier.push(b);
+          this.showEarlier(b);
+        }
+        const carryOn = `The parts before part ${at + 1} of ${parts.length} are in the drawing: press Import to carry on from it.`;
+        // each sentence in the interface's language here: shown together, no one text would match them
+        this.setError(why ? `${t(why)} ${t(carryOn)}` : carryOn);
       } else {
-        this.setError(err instanceof Error ? err.message : "The import failed.");
+        this.setError(why);
       }
       this.finishRun();
+    }
+  }
+
+  /** Fetches one part (the whole area when it is one), asking a busy OpenStreetMap server again after a wait. */
+  private async importPart(box: GeoBox, place: Placement, signal: AbortSignal): Promise<ImportResult> {
+    for (let tries = 0; ; tries++) {
+      try {
+        return await runImport(
+          {
+            box,
+            kinds: this.settings.kinds,
+            contourInterval: this.settings.contourInterval,
+            labelHeights: this.settings.labelHeights,
+            centreLines: this.settings.centreLines,
+            place,
+            earlier: this.earlier,
+          },
+          signal,
+          (label, sameStep) => this.step(label, sameStep === true),
+        );
+      } catch (err) {
+        if (!(err instanceof BusyError) || tries >= BUSY_WAITS_S.length || signal.aborted) throw err;
+        await this.waitOut(BUSY_WAITS_S[tries], signal);
+      }
+    }
+  }
+
+  /** Counts down `seconds` in the steps; rejects when the import is cancelled. */
+  private async waitOut(seconds: number, signal: AbortSignal): Promise<void> {
+    for (let left = seconds; left > 0; left--) {
+      this.step(`The OpenStreetMap server is busy: trying again in ${left} s`, left !== seconds);
+      await new Promise<void>((resolve, reject) => {
+        const stop = (): void => {
+          window.clearTimeout(timer);
+          reject(new DOMException("Cancelled", "AbortError"));
+        };
+        const timer = window.setTimeout(() => {
+          signal.removeEventListener("abort", stop);
+          resolve();
+        }, 1000);
+        if (signal.aborted) stop();
+        else signal.addEventListener("abort", stop, { once: true });
+      });
     }
   }
 
@@ -601,15 +741,17 @@ class SiteContextDialog {
    * centre at the origin or the view's centre, true north up.
    */
   private georefFor(area: GeoBox): Georef {
-    if (this.known) return this.known;
+    // an earlier part of this import set the drawing's
+    const known = this.known ?? documentGeoref();
+    if (known) return known;
     const c = boxCentre(area);
     const at = this.origin();
     const base: Georef = { system: "local", lat: c.lat, lon: c.lon, north: 0 };
     return at.x === 0 && at.y === 0 ? base : georefThrough(base, at, c);
   }
 
-  /** Writes the import in one undo step; the report says what was placed. */
-  private write(result: ImportResult, georef: Georef, area: GeoBox): WriteReport | null {
+  /** Writes an import (or a part of one, onto `intoLayer` when it has one) in one undo step; the report says what was placed. */
+  private write(result: ImportResult, georef: Georef, area: GeoBox, intoLayer?: string): WriteReport | null {
     const corner = { x: result.area.x0, y: result.area.y0 };
     const fallbackClass = store.activeClassIndex;
     const layerPerKind = this.settings.layerPerKind;
@@ -620,15 +762,14 @@ class SiteContextDialog {
           corner,
           fallbackClass,
           layerPerKind,
+          intoLayer,
           siteModel: (s2, layerId, classIndex, points, interval) => addSiteModelFrom(s2, layerId, points, { name: "Site Model", classIndex, interval }),
         });
         if (report.creditId) keepAnchor(s, report.creditId, georef, area);
         return report;
       }),
     );
-    if (r) return r.value;
-    this.setError("The drawing could not take the context. Nothing was imported.");
-    return null;
+    return r ? r.value : null;
   }
 
   private step(label: string, sameStep = false): void {
@@ -666,6 +807,9 @@ class SiteContextDialog {
   }
 
   private close(): void {
+    this.stopUser?.();
+    this.stopUser = null;
+    window.removeEventListener("focus", this.onFocus);
     this.searchAbort?.abort();
     window.clearTimeout(this.searchTimer);
     this.run?.abort();
@@ -721,16 +865,17 @@ function keepAnchor(s: EditSession, id: string, g: Georef, area: GeoBox): void {
 }
 
 /**
- * The toast after an import: what went in, and what had to be simplified, as parts joined by "; ",
+ * The toast after an import: what went in (in how many parts), and what had to be simplified, as parts joined by "; ",
  * each translated here: shown whole, "Imported {0} objects{1}{2}" would take it as one text.
  */
-function summary(r: WriteReport): string {
+function summary(r: WriteReport, pieces: number): string {
   const placed = Object.values(r.placed).reduce((n, v) => n + (v ?? 0), 0);
   const parts = [
     r.layers.length > 1
       ? `Imported ${placed} ${placed === 1 ? "object" : "objects"} onto ${r.layers.length} layers`
       : `Imported ${placed} ${placed === 1 ? "object" : "objects"} onto "${r.layerName}"`,
   ];
+  if (pieces > 1) parts.push(`each of the ${pieces} parts is its own undo step`);
   const built = r.buildings3d;
   if (built > 0) parts.push(`${built} ${built === 1 ? "building stands" : "buildings stand"} in 3D on the ground`);
   const guessed = r.heightsGuessed;

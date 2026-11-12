@@ -158,3 +158,107 @@ export function stitchRings(lines: readonly (readonly Pt[])[]): Pt[][] {
   }
   return rings;
 }
+
+/** True when `p` is inside the ring (even-odd; a closing point repeated or not). */
+export function pointInRing(p: Pt, ring: readonly Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * A multipolygon's outer rings, each with the inner rings inside it as its holes (an inner ring
+ * goes to the first outer ring holding its first point; one inside none is left out).
+ */
+export function ringsWithHoles(outers: readonly Pt[][], inners: readonly Pt[][]): { outer: Pt[]; holes: Pt[][] }[] {
+  const out = outers.map((outer) => ({ outer, holes: [] as Pt[][] }));
+  const boxes = outers.map((r) => {
+    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const p of r) {
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
+    }
+    return { x0, y0, x1, y1 };
+  });
+  for (const inner of inners) {
+    const p = inner[0];
+    const k = out.findIndex((o, i) => {
+      const b = boxes[i];
+      return p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1 && pointInRing(p, o.outer);
+    });
+    if (k >= 0) out[k].holes.push(inner);
+  }
+  return out;
+}
+
+/** True when segments ab and cd cross at a point inside both (touching at an end does not count). */
+function crosses(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+  const side = (p: Pt, q: Pt, r: Pt): number => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = side(c, d, a);
+  const d2 = side(c, d, b);
+  const d3 = side(a, b, c);
+  const d4 = side(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/**
+ * A polygon with holes as one outline that a fill shows the holes in: the outline anticlockwise,
+ * and each hole, clockwise, joined to it by a cut there and back from the hole's nearest corner to
+ * the nearest corner of the outline it can reach without crossing anything. A hole with no such
+ * cut is left out (filled over).
+ */
+export function keyhole(outer: readonly Pt[], holes: readonly (readonly Pt[])[]): Pt[] {
+  const open = (pts: readonly Pt[]): Pt[] => {
+    const out = dedupe(pts);
+    if (out.length > 1 && samePoint(out[0], out[out.length - 1])) out.pop();
+    return out;
+  };
+  let ring = open(outer);
+  if (polygonArea(ring) < 0) ring.reverse();
+  const pending = holes.map(open).filter((h) => h.length >= 3);
+  for (const h of pending) if (polygonArea(h) > 0) h.reverse();
+  // the holes nearest the outline first, so later ones can reach it through the holes joined before
+  const edgesOf = (r: readonly Pt[]): [Pt, Pt][] => r.map((p, i) => [p, r[(i + 1) % r.length]]);
+  while (pending.length) {
+    let joined = false;
+    for (let k = 0; k < pending.length && !joined; k++) {
+      const hole = pending[k];
+      const others = pending.filter((_, j) => j !== k).flatMap(edgesOf);
+      const walls = [...edgesOf(ring), ...edgesOf(hole), ...others];
+      // try the hole's corners against the outline's, nearest pairs first, a bounded number of them
+      const most = 64;
+      const pairs: { hi: number; ri: number; d: number }[] = [];
+      const step = Math.max(1, Math.floor(hole.length / 16));
+      for (let hi = 0; hi < hole.length; hi += step) {
+        const hp = hole[hi];
+        for (let ri = 0; ri < ring.length; ri++) {
+          const d = (ring[ri].x - hp.x) ** 2 + (ring[ri].y - hp.y) ** 2;
+          if (pairs.length === most && d >= pairs[most - 1].d) continue;
+          let at = pairs.length;
+          while (at > 0 && pairs[at - 1].d > d) at--;
+          pairs.splice(at, 0, { hi, ri, d });
+          if (pairs.length > most) pairs.pop();
+        }
+      }
+      for (const { hi, ri } of pairs) {
+        const a = hole[hi];
+        const b = ring[ri];
+        if (walls.some(([p, q]) => crosses(a, b, p, q))) continue;
+        const around = [...hole.slice(hi), ...hole.slice(0, hi), hole[hi]];
+        ring = [...ring.slice(0, ri + 1), ...around, ...ring.slice(ri)];
+        pending.splice(k, 1);
+        joined = true;
+        break;
+      }
+    }
+    // what is left can't be reached: filled over
+    if (!joined) break;
+  }
+  return ring;
+}

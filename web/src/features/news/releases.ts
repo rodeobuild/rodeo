@@ -22,6 +22,29 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-12T12:10:00Z",
+    "site-context-bigger",
+    "Bigger Site Context areas when signed in",
+    `Signed in, Import Site Context takes an area up to 10 km × 10 km, free, and brings it in as parts that line up.
+- The parts are at most 2 km a side, imported one after another. The area line says how many there are, and each part is its own undo step.
+- Signed out, an area is still up to 2 km × 2 km, and a bigger one shows a Sign In button.
+- If a part can't be fetched, the parts before it stay in the drawing, and Import carries on from the part that stopped.
+- When the OpenStreetMap server is busy, the import waits and asks again before it stops.
+- Writing an import into the drawing is much faster: a town that took half a minute or more now takes a couple of seconds.`,
+    "site",
+  ),
+  release(
+    "2026-11-12T12:00:00Z",
+    "site-context-ground",
+    "Roads, water and trees in 3D",
+    `Import Site Context now lays roads, paths, water and green spaces on the ground in 3D, and stands a tree at each tree.
+- Water, green spaces and squares follow the ground of the site model. Roads, paths and railways are strips as wide as they are.
+- Each one is a group: Top/Plan shows its outline as before, and 3D shows its surface.
+- Water and green spaces show their colour in plan, where they were white, and a lake or lagoon leaves its islands out.
+- An area imported before this has its roads, water and trees flat: delete its layers and import it again to have them in 3D.`,
+    "site",
+  ),
+  release(
     "2026-11-11T12:40:00Z",
     "site-context-3d",
     "Site Context in 3D, saved with the drawing",

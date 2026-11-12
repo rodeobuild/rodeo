@@ -4,8 +4,8 @@
 
 import type { Pt } from "../../core/index.ts";
 import type { GeoBox } from "./geo.ts";
-import type { SiteFeature } from "./model.ts";
-import { offsetLine, polygonCentroid, samePoint, stitchRings } from "./shapes.ts";
+import type { Ground, SiteFeature } from "./model.ts";
+import { offsetLine, polygonCentroid, ringsWithHoles, samePoint, stitchRings } from "./shapes.ts";
 
 /** The OpenStreetMap kinds, in the order the dialog lists them. */
 export const OSM_KINDS = ["buildings", "roads", "paths", "rail", "water", "green", "trees", "facilities"] as const;
@@ -64,12 +64,17 @@ const ROAD_WIDTH_M: Readonly<Record<string, number>> = {
 const LINK_WIDTH_M = 5;
 const LANE_M = 3.5;
 const DEFAULT_ROAD_M = 6;
+/** Widths used when a path has no width tag, metres. */
+const PATH_WIDTH_M: Readonly<Record<string, number>> = { footway: 2, path: 1.5, cycleway: 2.5, pedestrian: 4, bridleway: 2, steps: 2, track: 3 };
+const DEFAULT_PATH_M = 2;
 const WATERWAY_WIDTH_M: Readonly<Record<string, number>> = { river: 10, canal: 8, stream: 2, drain: 1.5, ditch: 1 };
 const DEFAULT_WATERWAY_M = 2;
 const LEVEL_M = 3.2;
 export const DEFAULT_BUILDING_M = 6;
 /** a standard gauge railway's rails, metres apart (centre to centre of the offsets: half each side) */
 const RAIL_GAUGE_M = 1.435;
+/** a railway's bed in 3D, metres across */
+const RAIL_BED_M = 3;
 /** tree canopy: a circle 5 m across */
 const TREE_RADIUS_MM = 2500;
 /** a facility's marker: a circle 2 m across */
@@ -183,6 +188,13 @@ export function roadWidthM(tags: Tags): number {
   return ROAD_WIDTH_M[highway] ?? DEFAULT_ROAD_M;
 }
 
+/** A path's width: its width tag, else a default for its kind. */
+export function pathWidthM(tags: Tags): number {
+  const w = lengthM(tags.width);
+  if (w !== null) return w;
+  return PATH_WIDTH_M[tags.highway ?? ""] ?? DEFAULT_PATH_M;
+}
+
 /** A waterway's width: its width tag, else a default for its kind. */
 export function waterwayWidthM(tags: Tags): number {
   const w = lengthM(tags.width);
@@ -232,9 +244,11 @@ export function featuresFromOverpass(
   options: FeatureOptions,
 ): SiteFeature[] {
   const out: SiteFeature[] = [];
-  const add = (cat: SiteFeature["cat"], geom: SiteFeature["geom"], heightM?: number, heightGuessed?: boolean): void => {
-    out.push(heightM === undefined ? { cat, geom } : heightGuessed ? { cat, geom, heightM, heightGuessed } : { cat, geom, heightM });
+  const add = (cat: SiteFeature["cat"], geom: SiteFeature["geom"], ground?: Ground): void => {
+    out.push(ground ? { cat, geom, ground } : { cat, geom });
   };
+  const AREA: Ground = { kind: "area" };
+  const TREE: Ground = { kind: "tree" };
   // geometry is kept as points with x = longitude, y = latitude until it is projected
   const lonLat = (coords: readonly OverpassCoord[]): Pt[] => coords.map((c) => ({ x: c.lon, y: c.lat }));
   const toPt = (p: Pt): Pt => toWorld(p.y, p.x);
@@ -248,20 +262,25 @@ export function featuresFromOverpass(
     add("facilities", { kind: "label", at: { x: at.x + MARKER_RADIUS_MM, y: at.y + MARKER_RADIUS_MM }, text: facilityLabel(tags) });
   };
 
-  /** an area: a building (with its height), water or green space, each ring a polygon */
-  const areas = (cat: "buildings" | "water" | "green", rings: readonly Pt[][], tags: Tags): void => {
-    for (const ring of rings) {
-      const points = outline(ring);
+  /**
+   * An area: a building (with its height; its courtyards are not cut out), water or green space
+   * (with its holes: a lagoon's islands), each outer ring a polygon.
+   */
+  const areas = (cat: "buildings" | "water" | "green", shapes: readonly { readonly outer: Pt[]; readonly holes: readonly Pt[][] }[], tags: Tags): void => {
+    for (const shape of shapes) {
+      const points = outline(shape.outer);
       if (points.length < 3) continue;
       if (cat === "buildings") {
-        const h = buildingHeightM(tags);
-        add("buildings", { kind: "polygon", points }, h, !buildingHeightKnown(tags));
-        if (options.labelHeights) add("buildings", { kind: "label", at: polygonCentroid(points), text: heightLabel(h) });
+        const heightM = buildingHeightM(tags);
+        out.push(buildingHeightKnown(tags) ? { cat, geom: { kind: "polygon", points }, heightM } : { cat, geom: { kind: "polygon", points }, heightM, heightGuessed: true });
+        if (options.labelHeights) add("buildings", { kind: "label", at: polygonCentroid(points), text: heightLabel(heightM) });
       } else {
-        add(cat, { kind: "polygon", points });
+        const holes = shape.holes.map(outline).filter((h) => h.length >= 3);
+        add(cat, holes.length ? { kind: "polygon", points, holes } : { kind: "polygon", points }, AREA);
       }
     }
   };
+  const whole = (ring: Pt[]): { outer: Pt[]; holes: Pt[][] }[] => [{ outer: ring, holes: [] }];
 
   for (const el of data.elements ?? []) {
     const tags: Tags = el.tags ?? {};
@@ -269,7 +288,7 @@ export function featuresFromOverpass(
     if (el.type === "node") {
       if (el.lat === undefined || el.lon === undefined) continue;
       const at = toWorld(el.lat, el.lon);
-      if (kinds.has("trees") && tags.natural === "tree") add("trees", { kind: "circle", at, radius: TREE_RADIUS_MM });
+      if (kinds.has("trees") && tags.natural === "tree") add("trees", { kind: "circle", at, radius: TREE_RADIUS_MM }, TREE);
       if (kinds.has("facilities") && isFacility(tags)) facility(at, tags);
       continue;
     }
@@ -281,46 +300,47 @@ export function featuresFromOverpass(
       const closed = closedLoop(ll);
       const world = ll.map(toPt);
       if (kinds.has("buildings") && tags.building !== undefined && tags.building !== "no" && closed) {
-        areas("buildings", [ll], tags);
+        areas("buildings", whole(ll), tags);
       }
       if (kinds.has("roads") && tags.highway !== undefined && ROAD_HIGHWAYS.includes(tags.highway)) {
-        const half = (roadWidthM(tags) * 1000) / 2;
-        add("roads", { kind: "polyline", points: offsetLine(world, half) });
-        add("roads", { kind: "polyline", points: offsetLine(world, -half) });
-        if (options.centreLines) add("roads", { kind: "polyline", points: world });
+        const width = roadWidthM(tags) * 1000;
+        add("roads", { kind: "band", points: world, half: width / 2, centre: options.centreLines }, { kind: "strip", width });
       }
       if (kinds.has("paths") && tags.highway !== undefined && PATH_HIGHWAYS.includes(tags.highway)) {
-        add("paths", { kind: "polyline", points: world });
+        // a square or a pedestrian area: its outline, paved in 3D
+        if (closed && tags.area === "yes") add("paths", { kind: "polygon", points: outline(ll) }, AREA);
+        else add("paths", { kind: "polyline", points: world }, { kind: "strip", width: pathWidthM(tags) * 1000 });
       }
       if (kinds.has("rail") && tags.railway !== undefined && RAIL_TYPES.includes(tags.railway)) {
-        const half = (RAIL_GAUGE_M * 1000) / 2;
-        add("rail", { kind: "polyline", points: offsetLine(world, half) });
-        add("rail", { kind: "polyline", points: offsetLine(world, -half) });
+        add("rail", { kind: "band", points: world, half: (RAIL_GAUGE_M * 1000) / 2 }, { kind: "strip", width: RAIL_BED_M * 1000 });
       }
       if (kinds.has("water")) {
-        if (tags.natural === "water" && closed) areas("water", [ll], tags);
+        if (tags.natural === "water" && closed) areas("water", whole(ll), tags);
         if (tags.waterway !== undefined && WATERWAYS.includes(tags.waterway) && !closed) {
           // a waterway is drawn as its banks: a band as wide as it is
           const half = (waterwayWidthM(tags) * 1000) / 2;
           const banks = [...offsetLine(world, half), ...offsetLine(world, -half).reverse()];
-          if (banks.length >= 3) add("water", { kind: "polygon", points: banks });
+          if (banks.length >= 3) add("water", { kind: "polygon", points: banks }, AREA);
         }
       }
-      if (kinds.has("green") && closed && isGreen(tags)) areas("green", [ll], tags);
-      if (kinds.has("trees") && tags.natural === "tree_row") add("trees", { kind: "polyline", points: world });
+      if (kinds.has("green") && closed && isGreen(tags)) areas("green", whole(ll), tags);
+      if (kinds.has("trees") && tags.natural === "tree_row") add("trees", { kind: "polyline", points: world }, TREE);
       if (kinds.has("facilities") && isFacility(tags)) facility(centreOf(world, closed), tags);
       continue;
     }
 
     if (el.type === "relation" && tags.type === "multipolygon") {
-      const pieces = (el.members ?? [])
-        .filter((m) => m.role === "outer" && m.geometry && m.geometry.length >= 2)
-        .map((m) => lonLat(m.geometry ?? []));
-      const rings = stitchRings(pieces);
+      const pieces = (role: string): Pt[][] =>
+        (el.members ?? []).filter((m) => m.role === role && m.geometry && m.geometry.length >= 2).map((m) => lonLat(m.geometry ?? []));
+      const rings = stitchRings(pieces("outer"));
       if (rings.length === 0) continue;
-      if (kinds.has("buildings") && tags.building !== undefined && tags.building !== "no") areas("buildings", rings, tags);
-      if (kinds.has("water") && tags.natural === "water") areas("water", rings, tags);
-      if (kinds.has("green") && isGreen(tags)) areas("green", rings, tags);
+      const water = kinds.has("water") && tags.natural === "water";
+      const green = kinds.has("green") && isGreen(tags);
+      // the holes only where they are cut out: a lagoon's islands, a park's pond
+      const shapes = water || green ? ringsWithHoles(rings, stitchRings(pieces("inner"))) : rings.map((outer) => ({ outer, holes: [] }));
+      if (kinds.has("buildings") && tags.building !== undefined && tags.building !== "no") areas("buildings", shapes, tags);
+      if (water) areas("water", shapes, tags);
+      if (green) areas("green", shapes, tags);
       if (kinds.has("facilities") && isFacility(tags)) facility(polygonCentroid(outline(rings[0])), tags);
     }
   }

@@ -1,11 +1,13 @@
 // Trims the OpenStreetMap features to the chosen area. Overpass answers with every way that
 // touches the box, whole: a river or a long road can run on for kilometres past it. Areas
-// (water, green space) and lines are cut at the box's edge; buildings stay whole, since half a
+// (water, green space, with their holes) and lines (a road along its middle) are cut at the box's
+// edge; buildings stay whole, since half a
 // building is no use as context; trees, facilities and labels outside it are dropped. Which
 // buildings and points are the area's own can be decided by `owns` (by latitude and longitude, so
 // two areas side by side share out the buildings on their edge, and one drawn over an earlier
 // import leaves out what that brought in).
 
+import polygonClipping, { type Pair, type Polygon } from "polygon-clipping";
 import type { Pt } from "../../core/index.ts";
 import type { SiteFeature, SiteGeom } from "./model.ts";
 import { polygonCentroid } from "./shapes.ts";
@@ -96,12 +98,63 @@ export function clipPolyline(points: readonly Pt[], r: Rect): Pt[][] {
   return pieces;
 }
 
+/** True when the ring's bounding box meets the rectangle. */
+function ringMeets(ring: readonly Pt[], r: Rect): boolean {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const p of ring) {
+    x0 = Math.min(x0, p.x);
+    y0 = Math.min(y0, p.y);
+    x1 = Math.max(x1, p.x);
+    y1 = Math.max(y1, p.y);
+  }
+  return x1 >= r.x0 && x0 <= r.x1 && y1 >= r.y0 && y0 <= r.y1;
+}
+
+/**
+ * A polygon with holes cut to the rectangle: the pieces inside, each with the holes left in it (a
+ * lagoon cut to the box is the water between the islands in it). Holes away from the box are not
+ * looked at.
+ */
+export function clipPolygonWithHoles(outer: readonly Pt[], holes: readonly (readonly Pt[])[], r: Rect): { points: Pt[]; holes: Pt[][] }[] {
+  const ring = (pts: readonly Pt[]): Pair[] => {
+    const out: Pair[] = pts.map((p) => [p.x, p.y]);
+    if (out.length) out.push(out[0]);
+    return out;
+  };
+  const back = (pairs: readonly Pair[]): Pt[] => pairs.slice(0, -1).map(([x, y]) => ({ x, y }));
+  const subject: Polygon = [ring(outer), ...holes.filter((h) => h.length >= 3 && ringMeets(h, r)).map(ring)];
+  const box: Polygon = [
+    [
+      [r.x0, r.y0],
+      [r.x1, r.y0],
+      [r.x1, r.y1],
+      [r.x0, r.y1],
+      [r.x0, r.y0],
+    ],
+  ];
+  return polygonClipping
+    .intersection(subject, box)
+    .map(([o, ...hs]) => ({ points: back(o), holes: hs.map(back).filter((h) => h.length >= 3) }))
+    .filter((piece) => piece.points.length >= 3);
+}
+
 function clipGeom(geom: SiteGeom, r: Rect, owns: (p: Pt) => boolean): SiteGeom[] {
   switch (geom.kind) {
     case "polygon": {
+      if (geom.holes?.length) {
+        try {
+          return clipPolygonWithHoles(geom.points, geom.holes, r).map((piece) =>
+            piece.holes.length ? { kind: "polygon", points: piece.points, holes: piece.holes } : { kind: "polygon", points: piece.points },
+          );
+        } catch {
+          // polygon-clipping gave up on it: the outline alone
+        }
+      }
       const points = clipPolygon(geom.points, r);
       return points ? [{ kind: "polygon", points }] : [];
     }
+    case "band":
+      return clipPolyline(geom.points, r).map((points) => ({ ...geom, points }));
     case "polyline": {
       const pts = geom.closed && geom.points.length > 0 ? [...geom.points, geom.points[0]] : geom.points;
       // a loop that stays inside keeps its closed form
@@ -123,7 +176,7 @@ export function clipFeatures(features: readonly SiteFeature[], r: Rect, owns: (p
   for (const f of features) {
     if (f.cat === "buildings") {
       const g = f.geom;
-      const centre = g.kind === "polygon" ? polygonCentroid(g.points) : g.kind === "polyline" ? g.points[0] : g.at;
+      const centre = g.kind === "polygon" ? polygonCentroid(g.points) : g.kind === "polyline" || g.kind === "band" ? g.points[0] : g.at;
       if (centre && inside(r, centre) && owns(centre)) out.push(f);
       continue;
     }

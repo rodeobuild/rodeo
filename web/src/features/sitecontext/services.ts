@@ -33,6 +33,9 @@ export async function searchPlaces(query: string, signal: AbortSignal): Promise<
   });
 }
 
+/** The Overpass server turned a request away for now (too many requests, or overloaded): worth asking again shortly. */
+export class BusyError extends Error {}
+
 /** The Overpass answer to a query (one request). Throws with a reason the user can act on. */
 export async function fetchOverpass(query: string, signal: AbortSignal): Promise<OverpassResponse> {
   const res = await fetch(OVERPASS_URL, {
@@ -42,11 +45,10 @@ export async function fetchOverpass(query: string, signal: AbortSignal): Promise
     signal,
   });
   if (!res.ok) {
-    throw new Error(
-      res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504
-        ? `The OpenStreetMap server is busy (HTTP ${res.status}). Try again in a minute, or pick a smaller area.`
-        : `OpenStreetMap data could not be fetched (HTTP ${res.status}).`,
-    );
+    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new BusyError(`The OpenStreetMap server is busy (HTTP ${res.status}). Try again in a minute, or pick a smaller area.`);
+    }
+    throw new Error(`OpenStreetMap data could not be fetched (HTTP ${res.status}).`);
   }
   const data = (await res.json()) as OverpassResponse;
   if (data.remark && /error/i.test(data.remark)) throw new Error(`OpenStreetMap could not answer: ${data.remark}`);

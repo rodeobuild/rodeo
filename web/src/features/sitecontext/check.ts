@@ -9,6 +9,9 @@ import {
   boxSizeM,
   boxTooLarge,
   fromMetres,
+  MAX_SIDE_M,
+  MAX_SIGNED_IN_M,
+  partsOf,
   pixelOf,
   projectionAt,
   terrainGridSize,
@@ -20,13 +23,14 @@ import {
 } from "./geo.ts";
 import { geoToDrawing, drawingToGeo, type Georef } from "../../app/geoShapes.ts";
 import { anchorOf, anchorText, areaOfText, areaText } from "./anchor.ts";
-import { clipFeatures } from "./clip.ts";
+import { clipFeatures, clipPolygonWithHoles } from "./clip.ts";
+import { areaFaces, groundFaces, groundOf, stripFaces, treeParts, treeSpots, TREE_SPACING_MM, type Face } from "./ground3d.ts";
 import { areaOf, boxAround, gridCoordOf, gridPoint, ownsBy, terrainFeatures, terrainPoints, withBases, type GridFrame, type Placement } from "./importer.ts";
 import type { SiteFeature, SiteTerrain } from "./model.ts";
 import { buildingHeightKnown, buildingHeightM, featuresFromOverpass, lengthM, overpassQuery, roadWidthM, type OsmKind, type OverpassResponse } from "./osm.ts";
-import { offsetLine, polygonArea, polygonCentroid, simplify, stitchRings } from "./shapes.ts";
+import { keyhole, offsetLine, polygonArea, polygonCentroid, simplify, stitchRings } from "./shapes.ts";
 import { contours, decodeTerrarium, gridHeightAt, Mosaic, sampleGrid, simplifyContour } from "./terrain.ts";
-import { CLASS_NAME, CREDIT_TEXT, importName, labelHeightMm, milsOf, nearestColor, uniqueName, writeSiteContext } from "./writer.ts";
+import { CLASS_NAME, CREDIT_TEXT, importName, joinReports, labelHeightMm, milsOf, nearestColor, TREE_SYMBOL, uniqueName, writeSiteContext, type WriteReport } from "./writer.ts";
 
 let passed = 0;
 let failed = 0;
@@ -75,6 +79,51 @@ check("box too large past 2 km", () => {
   assert.equal(boxTooLarge(two), true);
   const small = boxFromCorners({ lat: 52, lon: 0 }, { lat: 52.017, lon: 0.0225 });
   assert.equal(boxTooLarge(small), false);
+});
+
+check("a bigger area in parts: none past 2 km (a row nearer the equator by metres), edges shared, the whole box covered", () => {
+  // about 4.9 km × 3.3 km at 52 N; and one across the equator, where a degree of longitude is longest
+  for (const box of [boxFromCorners({ lat: 52, lon: 0 }, { lat: 52.03, lon: 0.0715 }), boxFromCorners({ lat: -0.01, lon: 10 }, { lat: 0.02, lon: 10.044 })]) {
+    assert.equal(boxTooLarge(box, MAX_SIGNED_IN_M), false);
+    const parts = partsOf(box);
+    const { width, height } = boxSizeM(box);
+    const nx = Math.ceil(width / MAX_SIDE_M);
+    const ny = Math.ceil(height / MAX_SIDE_M);
+    assert.equal(parts.length, nx * ny);
+    for (const p of parts) assert.equal(boxTooLarge(p, MAX_SIDE_M * 1.002), false, `a part is ${JSON.stringify(boxSizeM(p))}`);
+    // rows south to north, each west to east; a part's east edge is the next one's west edge, to the degree
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const p = parts[j * nx + i];
+        if (i + 1 < nx) assert.equal(p.east, parts[j * nx + i + 1].west);
+        if (j + 1 < ny) assert.equal(p.north, parts[(j + 1) * nx + i].south);
+      }
+    }
+    assert.equal(parts[0].south, box.south);
+    assert.equal(parts[0].west, box.west);
+    assert.equal(parts[parts.length - 1].north, box.north);
+    assert.equal(parts[parts.length - 1].east, box.east);
+    const area = (b: GeoBox): number => (b.north - b.south) * (b.east - b.west);
+    near(parts.reduce((n, p) => n + area(p), 0), area(box), 1e-12);
+  }
+  // 5 km square: 3 × 3; 2 km and under: the box itself
+  const five = boxFromCorners({ lat: 52, lon: 0 }, { lat: 52 + 4990 / 110540, lon: 4990 / (Math.cos((52.0226 * Math.PI) / 180) * 111320) });
+  assert.equal(partsOf(five).length, 9);
+  // the most a signed-in area may be: 10 km square, 5 × 5 parts of 2 km
+  const ten = boxFromCorners({ lat: 52, lon: 0 }, { lat: 52 + 9990 / 110540, lon: 9990 / (Math.cos((52.0452 * Math.PI) / 180) * 111320) });
+  assert.equal(boxTooLarge(ten, MAX_SIGNED_IN_M), false);
+  assert.equal(partsOf(ten).length, 25);
+  for (const p of partsOf(ten)) assert.equal(boxTooLarge(p, MAX_SIDE_M * 1.002), false);
+  const small = boxFromCorners({ lat: 52, lon: 0 }, { lat: 52.017, lon: 0.0225 });
+  assert.deepEqual(partsOf(small), [small]);
+  // a point on a shared edge belongs to one part only (half-open boxes), so nothing comes in twice
+  const two = partsOf(boxFromCorners({ lat: 52, lon: 0 }, { lat: 52.01, lon: 0.05 }));
+  const edge = { lat: 52.005, lon: two[0].east };
+  const georef: Georef = { system: "local", lat: 52.005, lon: 0.025, north: 0 };
+  const place: Placement = { toDrawing: (g) => geoToDrawing(georef, g), toGeo: (p) => drawingToGeo(georef, p) };
+  const at = place.toDrawing(edge);
+  const owners = two.filter((b) => ownsBy(b, [], place)(at));
+  assert.equal(owners.length, 1);
 });
 
 check("terrain zoom and grid for 2 km and 500 m", () => {
@@ -283,16 +332,43 @@ function x2(f: SiteFeature): string {
   return f.geom.kind === "label" ? f.geom.text : "";
 }
 
-check("road kerbs are the road's width apart", () => {
+check("a road is a band its width across, a strip that wide in 3D", () => {
   const data: OverpassResponse = {
     elements: [{ type: "way", id: 2, tags: { highway: "residential", lanes: "2" }, geometry: ll([[0, 0], [0, 0.001]]) }],
   };
   const f = featuresFromOverpass(data, new Set<Kind>(["roads"]), mock, { centreLines: true, labelHeights: false });
-  const lines = f.filter((x) => x.cat === "roads");
-  assert.equal(lines.length, 3);
-  const ys = lines.slice(0, 2).map((l) => (l.geom as unknown as { points: Pt[] }).points[0].y);
-  // the mock maps a road running east (along lon) to a line along x, so its kerbs are 7 m apart in y
-  near(Math.abs(ys[0] - ys[1]), 7000, 1e-6);
+  assert.equal(f.length, 1);
+  const g = f[0].geom;
+  assert.ok(g.kind === "band" && g.half === 3500 && g.centre === true);
+  assert.deepEqual(f[0].ground, { kind: "strip", width: 7000 });
+});
+
+check("paths: a strip their width; a pedestrian area paved; a lake with its island", () => {
+  const data: OverpassResponse = {
+    elements: [
+      { type: "way", id: 20, tags: { highway: "steps" }, geometry: ll([[0, 0], [0, 0.001]]) },
+      { type: "way", id: 21, tags: { highway: "pedestrian", area: "yes" }, geometry: ll([[0, 0], [0, 0.001], [0.001, 0.001], [0, 0]]) },
+      {
+        type: "relation",
+        id: 22,
+        tags: { type: "multipolygon", natural: "water" },
+        members: [
+          { type: "way", role: "outer", geometry: ll([[0, 0], [0, 0.01], [0.01, 0.01], [0.01, 0], [0, 0]]) },
+          { type: "way", role: "inner", geometry: ll([[0.004, 0.004], [0.006, 0.004], [0.006, 0.006], [0.004, 0.006], [0.004, 0.004]]) },
+          { type: "way", role: "inner", geometry: ll([[0.05, 0.05], [0.06, 0.05], [0.06, 0.06], [0.05, 0.05]]) },
+        ],
+      },
+    ],
+  };
+  const f = featuresFromOverpass(data, new Set<Kind>(["paths", "water"]), mock, opts);
+  const steps = f.find((x) => x.geom.kind === "polyline");
+  assert.deepEqual(steps?.ground, { kind: "strip", width: 2000 });
+  const square = f.find((x) => x.cat === "paths" && x.geom.kind === "polygon");
+  assert.deepEqual(square?.ground, { kind: "area" });
+  const lake = f.find((x) => x.cat === "water");
+  assert.ok(lake && lake.geom.kind === "polygon");
+  if (lake.geom.kind === "polygon") assert.equal(lake.geom.holes?.length, 1, "the island inside it is its hole; the one outside is left out");
+  assert.deepEqual(lake.ground, { kind: "area" });
 });
 
 check("multipolygon: outer ring stitched from two ways, inner ring skipped", () => {
@@ -349,7 +425,7 @@ check("only chosen kinds come out", () => {
     ],
   };
   const f = featuresFromOverpass(data, new Set<Kind>(["paths", "rail"]), mock, opts);
-  assert.deepEqual(f.map((x) => x.cat).sort(), ["paths", "rail", "rail"]);
+  assert.deepEqual(f.map((x) => x.cat).sort(), ["paths", "rail"]);
 });
 
 check("water: a river band and a lake; green: a park", () => {
@@ -376,9 +452,11 @@ interface FakeLayer {
 }
 
 /** A session with the parts writeSiteContext uses, recording what it is asked to add. */
-function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<NewShape["kind"]>; noExtrude?: boolean }): {
+function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<NewShape["kind"]>; noExtrude?: boolean; refuse?: (shape: NewShape) => boolean }): {
   session: EditSession;
   added: { layer: string; shape: NewShape; cls: number }[];
+  /** how many times objects were added: once for each addObjects or addObject call */
+  calls: { n: number };
   classNames: string[];
   extruded: { id: string; height: number; base: number }[];
   layers: FakeLayer[];
@@ -387,6 +465,7 @@ function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<Ne
   const layers: FakeLayer[] = opts.layers.map((name, i) => ({ id: `L${i}`, name, scale: 100 }));
   const classNames = ["None", ...opts.classes];
   const added: { layer: string; shape: NewShape; cls: number }[] = [];
+  const calls = { n: 0 };
   const colors = [
     { index: 0, css: "#000000", name: "Black" },
     { index: 1, css: "#ffffff", name: "White" },
@@ -410,8 +489,20 @@ function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<Ne
     },
     canAdd: (kind: NewShape["kind"]) => opts.canAdd.has(kind),
     addObject: (layer: string, shape: NewShape, cls: number) => {
+      calls.n++;
+      if (opts.refuse?.(shape)) throw new Error("refused");
       added.push({ layer, shape, cls });
       return `o${added.length}`;
+    },
+    // like the session's: all or nothing, one change
+    addObjects: (layer: string, shapes: NewShape[], cls: number | number[], attrs?: unknown) => {
+      calls.n++;
+      if (shapes.some((x) => opts.refuse?.(x))) throw new Error("refused");
+      return shapes.map((shape, i) => {
+        const a = Array.isArray(attrs) ? attrs[i] : attrs;
+        (added as { layer: string; shape: NewShape; cls: number; attrs?: unknown }[]).push({ layer, shape, cls: Array.isArray(cls) ? cls[i] : cls, attrs: a });
+        return `o${added.length}`;
+      });
     },
     extrudeObjects: (ids: string[], height: number, each?: ReadonlyMap<string, { height: number; base: number }>) => {
       if (opts.noExtrude) throw new Error("no extrude");
@@ -419,7 +510,7 @@ function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<Ne
       return ids.map((id) => `x${id}`);
     },
   };
-  return { session: session as unknown as EditSession, added, classNames, extruded, layers };
+  return { session: session as unknown as EditSession, added, classNames, extruded, layers, calls };
 }
 
 const ALL_KINDS: NewShape["kind"][] = ["line", "rect", "roundrect", "polygon", "polyline", "arc", "text"];
@@ -711,6 +802,254 @@ check("box corners in any order", () => {
   assert.equal(box.east, 0.01);
   const back = fromMetres(projectionAt({ lat: 52.005, lon: 0.005 }), 0, 0);
   near(back.lat, 52.005);
+});
+
+
+// ---- holes, and the ground in 3D ---------------------------------------------------
+
+const faceArea = (faces: readonly Face[]): number =>
+  faces.reduce((sum, f) => {
+    let a = 0;
+    const n = f.length / 3;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      a += f[3 * i] * f[3 * j + 1] - f[3 * j] * f[3 * i + 1];
+    }
+    return sum + a / 2;
+  }, 0);
+
+check("a lagoon cut to the box keeps the islands in the box as holes", () => {
+  const outer = square(0, 0, 1000);
+  const island = square(100, 100, 50);
+  const astride = square(400, 0, 200);
+  const far = square(5000, 5000, 10);
+  const pieces = clipPolygonWithHoles(outer, [island, astride, far], { x0: -500, y0: -500, x1: 500, y1: 500 });
+  assert.equal(pieces.length, 1);
+  assert.equal(pieces[0].holes.length, 1, "the island inside; the one astride the edge bites the outline");
+  near(Math.abs(polygonArea(pieces[0].points)) - Math.abs(polygonArea(pieces[0].holes[0])), 1000 * 1000 - 100 * 100 - 300 * 400, 1e-3);
+});
+
+check("keyhole: one outline whose area leaves the holes out", () => {
+  const ring = keyhole(square(0, 0, 100), [square(-50, 0, 20), square(50, 0, 20)]);
+  near(polygonArea(ring), 200 * 200 - 2 * 40 * 40, 1e-6);
+  assert.equal(ring.length, 4 + 2 * (4 + 1) + 2, "each hole's corners, its first again, and the outline's corner it leaves from again");
+});
+
+check("an area on flat ground: its faces cover it less its hole, at the lift, facing up", () => {
+  const flat = groundOf(null, null);
+  const faces = areaFaces(square(0, 0, 1000), [square(0, 0, 200)], flat, 150);
+  near(faceArea(faces), 2000 * 2000 - 400 * 400, 1e-3);
+  assert.ok(faces.every((f) => f[2] === 150 && f[5] === 150 && f[8] === 150));
+  assert.ok(faces.every((f) => faceArea([f]) > 0), "anticlockwise from above");
+});
+
+check("an area on a ridge is split to follow it", () => {
+  // a ridge along x = 0, falling 1 m in 10 m either side
+  const ridge = groundOf((x) => 5000 - Math.abs(x) / 10, { x0: -20000, y0: -20000, x1: 20000, y1: 20000 });
+  const faces = areaFaces(square(0, 0, 10000), [], ridge, 150);
+  assert.ok(faces.length > 2, "split");
+  near(faceArea(faces), 20000 * 20000, 1e-3);
+  for (const f of faces) {
+    const cx = (f[0] + f[3] + f[6]) / 3;
+    const cy = (f[1] + f[4] + f[7]) / 3;
+    const over = (f[2] + f[5] + f[8]) / 3 - ridge(cx, cy);
+    assert.ok(over >= 50 - 1e-6 && over <= 150 + 300 + 1e-6, `no face sinks into the ground or floats over it (${over})`);
+  }
+  // nearly flat ground, within the lift: left whole
+  const bumpy = groundOf((x, y) => 2000 + 40 * Math.sin(x / 3000) * Math.cos(y / 2000), { x0: -20000, y0: -20000, x1: 20000, y1: 20000 });
+  assert.equal(areaFaces(square(0, 0, 10000), [], bumpy, 150).length, 2);
+});
+
+check("a strip: its width along the line, on the ground", () => {
+  const slope = groundOf((x) => x / 20, { x0: -1e6, y0: -1e6, x1: 1e6, y1: 1e6 });
+  const faces = stripFaces([{ x: 0, y: 0 }, { x: 10000, y: 0 }], 2000, slope, 300);
+  near(faceArea(faces), 10000 * 2000, 1e-3);
+  for (const f of faces) for (let i = 0; i < 3; i++) near(f[3 * i + 2], f[3 * i] / 20 + 300, 1e-6);
+  const band = groundFaces({ kind: "band", points: [{ x: 0, y: 0 }, { x: 0, y: 5000 }], half: 3500 }, { kind: "strip", width: 7000 }, groundOf(null, null), 0);
+  near(faceArea(band), 5000 * 7000, 1e-3);
+});
+
+check("trees: one at a circle, every 8 m along a row and at its end", () => {
+  assert.deepEqual(treeSpots({ kind: "circle", at: { x: 3, y: 4 }, radius: 2500 }), [{ x: 3, y: 4 }]);
+  const row = treeSpots({ kind: "polyline", points: [{ x: 0, y: 0 }, { x: 12000, y: 0 }, { x: 12000, y: 9000 }] });
+  assert.deepEqual(row.map((p) => [p.x, p.y]), [[0, 0], [8000, 0], [12000, 4000], [12000, 9000]]);
+  assert.equal(TREE_SPACING_MM, 8000);
+  // the crown is closed: every edge between two faces
+  const { trunk, crown } = treeParts();
+  const edges = new Map<string, number>();
+  const key = (f: Face, i: number): string => `${Math.round(f[3 * i])},${Math.round(f[3 * i + 1])},${Math.round(f[3 * i + 2])}`;
+  for (const f of crown) {
+    const n = f.length / 3;
+    for (let i = 0; i < n; i++) {
+      const [a, b] = [key(f, i), key(f, (i + 1) % n)];
+      if (a === b) continue;
+      const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+      edges.set(k, (edges.get(k) ?? 0) + 1);
+    }
+  }
+  assert.ok([...edges.values()].every((n) => n === 2));
+  assert.equal(trunk.length, 7);
+  assert.ok(Math.max(...crown.flatMap((f) => [f[2], f[5], f[8]])) > 7000, "about 7.3 m tall");
+});
+
+/** fakeSession, with meshes, groups, symbols and colours it records */
+function fakeSession3d(): ReturnType<typeof fakeSession> & {
+  meshes: { layer: string; faces: number; attrs: Record<string, number> }[];
+  groups: string[][];
+  symbols: string[];
+  instances: { layer: string; at: number[] }[];
+} {
+  const base = fakeSession({ layers: [], classes: [], canAdd: new Set(ALL_KINDS) });
+  const meshes: { layer: string; faces: number; attrs: Record<string, number> }[] = [];
+  const groups: string[][] = [];
+  const symbols: string[] = [];
+  const instances: { layer: string; at: number[] }[] = [];
+  const s = base.session as unknown as Record<string, unknown> & { doc: Record<string, unknown> };
+  const added = base.added as unknown as { layer: string; shape: NewShape; cls: number; attrs?: Record<string, number> }[];
+  s.addObject = (layer: string, shape: NewShape, cls: number, attrs: Record<string, number>) => {
+    added.push({ layer, shape, cls, attrs });
+    return `o${added.length}`;
+  };
+  s.addObjects = (layer: string, shapes: NewShape[], cls: number[], attrs: Record<string, number>[]) =>
+    shapes.map((shape, i) => {
+      added.push({ layer, shape, cls: cls[i], attrs: attrs[i] });
+      return `o${added.length}`;
+    });
+  s.canAddMeshes = () => true;
+  s.addColors = (css: string[]) => css.map((_, i) => 100 + i);
+  s.addMeshes = (layer: string, parts: Face[][], _cls: number, attrs: Record<string, number>) =>
+    parts.map((p) => {
+      meshes.push({ layer, faces: p.length, attrs });
+      return `m${meshes.length}`;
+    });
+  s.groupEach = (sets: string[][]) =>
+    sets.map((set) => {
+      groups.push(set);
+      return `g${groups.length}`;
+    });
+  s.doc.symbolDefs = () => symbols.map((name, index) => ({ index, name, folder: "" }));
+  s.addMeshSymbols = (defs: { name: string }[]) =>
+    defs.map((d) => {
+      symbols.push(d.name);
+      return symbols.length - 1;
+    });
+  s.addMeshElements = (layer: string, els: { matrix: number[] }[]) =>
+    els.map((e) => {
+      instances.push({ layer, at: e.matrix.slice(9) });
+      return `t${instances.length}`;
+    });
+  return { ...base, meshes, groups, symbols, instances };
+}
+
+check("writer: water, roads and trees in 3D, each grouped with its plan drawing", () => {
+  const fake = fakeSession3d();
+  const features: SiteFeature[] = [
+    { cat: "trees", geom: { kind: "circle", at: { x: 500, y: 500 }, radius: 2500 }, ground: { kind: "tree" } },
+    { cat: "roads", geom: { kind: "band", points: [{ x: 0, y: 0 }, { x: 0, y: 5000 }], half: 3000 }, ground: { kind: "strip", width: 6000 } },
+    { cat: "water", geom: { kind: "polygon", points: square(0, 0, 1000), holes: [square(0, 0, 200)] }, ground: { kind: "area" } },
+    { cat: "buildings", geom: { kind: "polygon", points: square(50, 0, 5) }, heightM: 6 },
+  ];
+  // the ground rises 1 m in 10 m eastwards
+  const pts: [number, number, number][] = [];
+  for (const x of [-10000, 0, 10000]) for (const y of [-10000, 0, 10000]) pts.push([x, y, 2000 + x / 10]);
+  const r = writeSiteContext(fake.session, features, { points: pts, contours: [], interval: 1000 }, { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0, siteModel: () => "model" });
+  assert.equal(r.onGround, 2);
+  assert.equal(r.trees3d, 1);
+  assert.equal(fake.meshes.length, 2);
+  // water: its fill round the hole without a pen, its outline and the hole's edge, and its mesh; drawn before the road
+  const kinds = (set: string[]): string[] => set.map((id) => (id.startsWith("o") ? (fake.added[Number(id.slice(1)) - 1].shape.kind as string) : id[0]));
+  assert.deepEqual(kinds(fake.groups[0]), ["polygon", "polyline", "polyline", "m"]);
+  assert.deepEqual(kinds(fake.groups[1]), ["polyline", "polyline", "m"], "the road: its two edges and its strip");
+  assert.deepEqual(kinds(fake.groups[2]), ["arc", "t"], "the tree: its canopy and the tree standing there");
+  const fill = (fake.added as unknown as { attrs: Record<string, number> }[])[0].attrs;
+  assert.equal(fill.lineStyle, 0);
+  assert.equal(fill.fillPattern, 1);
+  assert.equal(fill.fillBack, fill.fillFore, "a solid fill shows its back colour: the same");
+  assert.equal(fake.symbols.length, 1);
+  assert.equal(fake.symbols[0], TREE_SYMBOL);
+  near(fake.instances[0].at[2], 2000 + 500 / 10, 1e-6, );
+  assert.equal(r.buildings3d, 1);
+  // a second import uses the same tree
+  writeSiteContext(fake.session, [features[0]], null, { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0 });
+  assert.equal(fake.symbols.length, 1);
+  assert.equal(fake.instances.length, 2);
+});
+
+check("writer: a later part onto the first part's layer (one layer), or onto the kinds' layers", () => {
+  const { session, layers } = fakeSession({ layers: [], classes: [], canAdd: new Set(ALL_KINDS) });
+  const water: SiteFeature = { cat: "water", geom: { kind: "polygon", points: square(0, 0, 10) } };
+  const opts = { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0 };
+  const first = writeSiteContext(session, [water], null, opts);
+  const second = writeSiteContext(session, [water], null, { ...opts, intoLayer: first.layerId });
+  assert.equal(second.layerId, first.layerId);
+  assert.equal(layers.length, 1);
+  // a layer gone (undone) since: a new one, as for a first part
+  const third = writeSiteContext(session, [water], null, { ...opts, intoLayer: "gone" });
+  assert.notEqual(third.layerId, first.layerId);
+  assert.equal(third.layerName, "Site Context 2");
+  // a layer for each kind: the parts share the kinds' layers without being told
+  const a = writeSiteContext(session, [water], null, { ...opts, layerPerKind: true });
+  const b = writeSiteContext(session, [water], null, { ...opts, layerPerKind: true });
+  assert.equal(a.layerId, b.layerId);
+});
+
+check("writer: a kind's objects added in one call; one refused leaves only itself out", () => {
+  const water = (n: number): SiteFeature => ({ cat: "water", geom: { kind: "polygon", points: square(n * 100, 0, 10) } });
+  const roads: SiteFeature[] = [0, 1, 2].map((n) => ({ cat: "roads", geom: { kind: "polyline", points: [{ x: n, y: 0 }, { x: n, y: 50 }] } }));
+  const opts = { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0 };
+  const a = fakeSession({ layers: [], classes: [], canAdd: new Set(ALL_KINDS) });
+  const r = writeSiteContext(a.session, [water(0), water(1), water(2), water(3), ...roads], null, opts);
+  assert.deepEqual(r.placed, { water: 4, roads: 3 });
+  // water, roads, then the credit
+  assert.equal(a.calls.n, 3);
+  // in the order drawn: stacking kept
+  assert.deepEqual(a.added.slice(0, 4).map((x) => (x.shape as { points: Pt[] }).points[0].x), [-10, 90, 190, 290]);
+  // the file refuses the third water: the rest go in one by one, and it is counted as skipped
+  const b = fakeSession({ layers: [], classes: [], canAdd: new Set(ALL_KINDS), refuse: (x) => x.kind === "polygon" && (x.points[0]?.x ?? 0) === 190 });
+  const rb = writeSiteContext(b.session, [water(0), water(1), water(2), water(3), ...roads], null, opts);
+  assert.equal(rb.placed.water, 3);
+  assert.equal(rb.placed.roads, 3);
+  assert.equal(rb.skipped, 1);
+});
+
+check("writer: the parts' reports as one", () => {
+  const report = (over: Partial<WriteReport>): WriteReport => ({
+    layerId: "L1",
+    layerName: "Site Context",
+    layers: [{ id: "L1", name: "Site Context" }],
+    placed: {},
+    buildings3d: 0,
+    heightsGuessed: 0,
+    buildingsFlat: 0,
+    onGround: 0,
+    trees3d: 0,
+    terrain: "none",
+    creditId: null,
+    circlesAsPolygons: 0,
+    outlinesSimplified: 0,
+    skipped: 0,
+    ...over,
+  });
+  const a = report({ placed: { buildings: 3, water: 1 }, buildings3d: 3, heightsGuessed: 2, creditId: "c1" });
+  const b = report({
+    layers: [{ id: "L1", name: "Site Context" }, { id: "L2", name: "Site Context Trees" }],
+    placed: { buildings: 4, trees: 5 },
+    buildings3d: 4,
+    trees3d: 5,
+    terrain: "site model",
+    creditId: "c2",
+    skipped: 1,
+  });
+  const ab = joinReports(a, b);
+  assert.deepEqual(ab.placed, { buildings: 7, water: 1, trees: 5 });
+  assert.equal(ab.buildings3d, 7);
+  assert.equal(ab.heightsGuessed, 2);
+  assert.equal(ab.trees3d, 5);
+  assert.equal(ab.skipped, 1);
+  assert.equal(ab.terrain, "site model");
+  assert.equal(ab.creditId, "c1");
+  assert.equal(ab.layerId, "L1");
+  assert.deepEqual(ab.layers.map((l) => l.id), ["L1", "L2"]);
 });
 
 console.log(`${passed} passed, ${failed} failed`);

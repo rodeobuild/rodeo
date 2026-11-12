@@ -18,8 +18,10 @@ export interface GeoBox {
 /** Metres per degree of latitude, and of longitude at the equator (scaled by the cosine of the latitude). */
 export const METRES_PER_DEG_LAT = 110540;
 export const METRES_PER_DEG_LON = 111320;
-/** The longest side a drawn area may have, metres. */
+/** The longest side a drawn area may have, metres; and the largest part a bigger area is imported in. */
 export const MAX_SIDE_M = 2000;
+/** The longest side a signed-in user's area may have, metres: imported in parts no larger than MAX_SIDE_M. */
+export const MAX_SIGNED_IN_M = 10000;
 
 /** Web-mercator metres per pixel at zoom 0 (256-pixel tiles). */
 const METRES_PER_PIXEL_Z0 = 156543.03392;
@@ -85,6 +87,27 @@ export function boxSizeM(box: GeoBox): { width: number; height: number } {
 export function boxTooLarge(box: GeoBox, max = MAX_SIDE_M): boolean {
   const { width, height } = boxSizeM(box);
   return width > max || height > max;
+}
+
+/**
+ * The box as an even grid of parts no wider or taller than `max` metres, measured as boxSizeM
+ * measures the box (at its middle latitude, so the count matches the limit the box is held to; a
+ * row nearer the equator is a few metres in ten kilometres wider): rows south to north, each west
+ * to east. Neighbours share their edges to the degree, so the parts meet as imports side by side
+ * do. The box itself when it fits.
+ */
+export function partsOf(box: GeoBox, max = MAX_SIDE_M): GeoBox[] {
+  const { width, height } = boxSizeM(box);
+  const nx = Math.max(1, Math.ceil(width / max - 1e-9));
+  const ny = Math.max(1, Math.ceil(height / max - 1e-9));
+  if (nx === 1 && ny === 1) return [box];
+  const lon = (k: number): number => (k === nx ? box.east : box.west + ((box.east - box.west) * k) / nx);
+  const lat = (k: number): number => (k === ny ? box.north : box.south + ((box.north - box.south) * k) / ny);
+  const out: GeoBox[] = [];
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) out.push({ south: lat(j), west: lon(i), north: lat(j + 1), east: lon(i + 1) });
+  }
+  return out;
 }
 
 /** Metres across one pixel of web-mercator tiles at a latitude and zoom. */

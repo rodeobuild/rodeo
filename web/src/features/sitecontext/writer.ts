@@ -1,13 +1,19 @@
 // Site Context's writer: puts the import into the drawing on a new design layer (or a layer for each
 // kind), with the Context classes (reused by name when they exist) and the look each kind is drawn
 // with. Buildings stand as extrudes at their heights on the ground under them, and the terrain is a
-// site model (contour lines when the drawing can't take one). It runs inside the caller's
+// site model (contour lines when the drawing can't take one). Water, green spaces, squares, roads,
+// paths and railways are drawn flat for Top/Plan and grouped with a mesh laid on the ground for 3D;
+// each tree's circle is grouped with a tree standing there (a symbol). It runs inside the caller's
 // session.batch, so the import is one undo step. A kind the file has no object to copy settings
 // from is drawn another way (a circle as a polygon, a polygon as a closed line, a line as lines),
 // and every such change is counted for the report.
 
 import type { Attributes, EditSession, NewShape, Pt } from "../../core/index.ts";
+import { heightLookup, surfaceOf } from "../../app/siteModelShapes.ts";
+import type { Rect } from "./clip.ts";
+import { groundFaces, groundOf, LIFT, treeParts, treeSpots, type Face } from "./ground3d.ts";
 import type { Pt3, SiteCategory, SiteFeature, SiteTerrain } from "./model.ts";
+import { keyhole, offsetLine } from "./shapes.ts";
 
 /** The class each kind of context goes into; created when the drawing has none of that name. */
 export const CLASS_NAME: Readonly<Record<SiteCategory, string>> = {
@@ -40,6 +46,19 @@ const LOOK: Readonly<Record<SiteCategory, Look>> = {
   trees: { fill: "#5d9a4b", pen: "#2c5a25", penMm: 0.18 },
   facilities: { pen: "#1f1f1f", penMm: 0.18 },
 };
+
+/** The colour of each kind's surface in 3D, and of the trees' trunks and crowns. */
+const LOOK_3D: Readonly<Partial<Record<SiteCategory, string>>> = {
+  water: "#7fb2d8",
+  green: "#9fc77f",
+  paths: "#d6d0c4",
+  roads: "#8f8f8f",
+  rail: "#7d7368",
+};
+const TRUNK = "#6b4f35";
+const CROWN = "#5d9a4b";
+/** the symbol each tree is an instance of (reused by name when an earlier import made it) */
+export const TREE_SYMBOL = "Site Context Tree";
 
 const WHITE = "#ffffff";
 const BLACK = "#000000";
@@ -80,6 +99,8 @@ export interface WriteOptions {
   readonly fallbackClass: number;
   /** a design layer for each kind ("Site Context Buildings"), not one for them all; a later import adds to the ones there */
   readonly layerPerKind?: boolean;
+  /** one layer: this one (an earlier part's of the same import) rather than a new one, when the drawing has it */
+  readonly intoLayer?: string;
   /** makes the terrain a site model; without it, or when it fails, the terrain is drawn as contour lines */
   readonly siteModel?: SiteModelMaker;
 }
@@ -97,6 +118,10 @@ export interface WriteReport {
   readonly heightsGuessed: number;
   /** buildings left flat: the drawing would not extrude them */
   readonly buildingsFlat: number;
+  /** water, green spaces, squares, roads, paths and railways laid on the ground in 3D */
+  readonly onGround: number;
+  /** trees standing in 3D */
+  readonly trees3d: number;
   /** the terrain: a site model, contour lines, or none */
   readonly terrain: "site model" | "contours" | "none";
   /** the credit text's id, when one was placed */
@@ -107,6 +132,30 @@ export interface WriteReport {
   readonly outlinesSimplified: number;
   /** labels left out (the file has no text to copy) and objects the file refused */
   readonly skipped: number;
+}
+
+/** Two reports as one, for an import written in parts: the first's layer and credit, the counts added, every layer once. */
+export function joinReports(a: WriteReport, b: WriteReport): WriteReport {
+  const placed: Partial<Record<SiteCategory, number>> = { ...a.placed };
+  for (const [cat, n] of Object.entries(b.placed) as [SiteCategory, number][]) placed[cat] = (placed[cat] ?? 0) + n;
+  const layers = [...a.layers];
+  for (const l of b.layers) if (!layers.some((x) => x.id === l.id)) layers.push(l);
+  return {
+    layerId: a.layerId,
+    layerName: a.layerName,
+    layers,
+    placed,
+    buildings3d: a.buildings3d + b.buildings3d,
+    heightsGuessed: a.heightsGuessed + b.heightsGuessed,
+    buildingsFlat: a.buildingsFlat + b.buildingsFlat,
+    onGround: a.onGround + b.onGround,
+    trees3d: a.trees3d + b.trees3d,
+    terrain: a.terrain === "none" ? b.terrain : a.terrain,
+    creditId: a.creditId ?? b.creditId,
+    circlesAsPolygons: a.circlesAsPolygons + b.circlesAsPolygons,
+    outlinesSimplified: a.outlinesSimplified + b.outlinesSimplified,
+    skipped: a.skipped + b.skipped,
+  };
 }
 
 /** The first of `base`, `base 2`, `base 3`, ... that no name in `taken` has (any case). */
@@ -216,7 +265,8 @@ export function writeSiteContext(s: EditSession, features: readonly SiteFeature[
   const layerFor = (cat: SiteCategory): string => {
     if (!perKind) {
       if (only === null) {
-        const l = newLayer(s, base);
+        const there = options.intoLayer ? s.doc.layers().find((l) => l.id === options.intoLayer) : undefined;
+        const l = there ? { id: there.id, name: there.name } : newLayer(s, base);
         layers.push(l);
         only = l.id;
       }
@@ -240,8 +290,20 @@ export function writeSiteContext(s: EditSession, features: readonly SiteFeature[
   const scaleOf = (layerId: string): number => s.doc.layers().find((l) => l.id === layerId)?.scale ?? 100;
   const classes = classesFor(s, cats, options.fallbackClass);
   const colors = s.doc.colors();
-  const white = nearestColor(colors, WHITE);
-  const black = nearestColor(colors, BLACK);
+  // the colours exactly, added to the drawing's table where it hasn't them; else the nearest it has
+  const hexes = [
+    ...new Set([WHITE, BLACK, TRUNK, CROWN, ...Object.values(LOOK).flatMap((l) => (l.fill ? [l.pen, l.fill] : [l.pen])), ...Object.values(LOOK_3D)]),
+  ].filter((h): h is string => h !== undefined);
+  const colorIndex = new Map<string, number>();
+  try {
+    const got = typeof s.addColors === "function" ? s.addColors(hexes) : [];
+    if (got.length === hexes.length) hexes.forEach((h, i) => colorIndex.set(h, got[i]));
+  } catch {
+    // the nearest instead
+  }
+  const colour = (hex: string): number => colorIndex.get(hex) ?? nearestColor(colors, hex);
+  const white = colour(WHITE);
+  const black = colour(BLACK);
   const noneClass = s.doc.classes().find((c) => c.name === "None")?.index ?? options.fallbackClass;
 
   const placed: Partial<Record<SiteCategory, number>> = {};
@@ -252,70 +314,135 @@ export function writeSiteContext(s: EditSession, features: readonly SiteFeature[
   const attrsFor = (cat: SiteCategory, filled: boolean): Partial<Attributes> => {
     const look = LOOK[cat];
     const fill = filled && look.fill !== undefined;
+    // a solid fill shows its back colour (as Vectorworks draws it): both are the fill's
+    const fillColour = fill ? colour(look.fill ?? WHITE) : white;
     return {
       lineStyle: 2,
       lineWeight: milsOf(look.penMm),
-      penFore: nearestColor(colors, look.pen),
+      penFore: colour(look.pen),
       fillPattern: fill ? 1 : 0,
-      fillFore: fill ? nearestColor(colors, look.fill ?? WHITE) : white,
+      fillFore: fillColour,
+      fillBack: fillColour,
       fillOpacity: 100,
       penOpacity: 100,
     };
   };
-
-  /** Adds one object; its id, or null (and counted) when the file refuses it. */
-  const put = (cat: SiteCategory, classIndex: number, shape: NewShape, attrs: Partial<Attributes>): string | null => {
-    try {
-      return s.addObject(layerFor(cat), shape, classIndex, attrs);
-    } catch {
-      skipped++;
-      return null;
-    }
+  /** A surface's look in 3D: filled with `hex`, no pen. */
+  const attrs3d = (hex: string): Partial<Attributes> => {
+    const c = colour(hex);
+    return { lineStyle: 0, lineWeight: milsOf(0.05), penFore: c, fillPattern: 1, fillFore: c, fillBack: c, fillOpacity: 100, penOpacity: 100 };
   };
 
-  /** A closed outline: a polygon, else a closed polyline, else its edges as lines. Its id when it is one object. */
-  const outline = (cat: SiteCategory, pts: readonly Pt[], filled: boolean): string | null => {
+  // The objects are queued as they are drawn and added a kind at a time, in one addObjects call:
+  // one change to the drawing for each kind, not one for each object, each of which would rebuild
+  // the whole drawing (minutes for a town written into a drawing that holds earlier parts)
+  let queue: { layer: string; shape: NewShape; cls: number; attrs: Partial<Attributes> }[] = [];
+  /** the queue positions of the objects the feature being drawn makes */
+  let drawing: number[] = [];
+  const put = (cat: SiteCategory, classIndex: number, shape: NewShape, attrs: Partial<Attributes>): void => {
+    drawing.push(queue.length);
+    queue.push({ layer: layerFor(cat), shape, cls: classIndex, attrs });
+  };
+  /** Adds what is queued, in order, a layer at a time: the ids by queue position, "" for one the file refused (counted). */
+  const flush = (): string[] => {
+    const all = queue;
+    queue = [];
+    const ids = all.map(() => "");
+    const byLayer = new Map<string, number[]>();
+    all.forEach((q, i) => {
+      const at = byLayer.get(q.layer);
+      if (at) at.push(i);
+      else byLayer.set(q.layer, [i]);
+    });
+    for (const [layer, at] of byLayer) {
+      try {
+        const got = s.addObjects(
+          layer,
+          at.map((i) => all[i].shape),
+          at.map((i) => all[i].cls),
+          at.map((i) => all[i].attrs),
+        );
+        if (got.length === at.length) {
+          at.forEach((i, k) => (ids[i] = got[k]));
+          continue;
+        }
+      } catch {
+        // one of them refused (the batch adds nothing then): each on its own, so only that one is left out
+      }
+      for (const i of at) {
+        try {
+          ids[i] = s.addObject(layer, all[i].shape, all[i].cls, all[i].attrs);
+        } catch {
+          skipped++;
+        }
+      }
+    }
+    return ids;
+  };
+
+  /** A closed outline: a polygon, else a closed polyline, else its edges as lines. */
+  const outline = (cat: SiteCategory, pts: readonly Pt[], filled: boolean): void => {
     const attrs = attrsFor(cat, filled);
     const cls = classes.get(cat) ?? options.fallbackClass;
-    if (s.canAdd("polygon")) return put(cat, cls, { kind: "polygon", points: [...pts], closed: true }, attrs);
-    if (s.canAdd("polyline")) {
+    if (s.canAdd("polygon")) {
+      put(cat, cls, { kind: "polygon", points: [...pts], closed: true }, attrs);
+    } else if (s.canAdd("polyline")) {
       outlinesSimplified++;
-      return put(cat, cls, { kind: "polyline", points: [...pts], closed: true }, attrs);
-    }
-    if (s.canAdd("line")) {
+      put(cat, cls, { kind: "polyline", points: [...pts], closed: true }, attrs);
+    } else if (s.canAdd("line")) {
       outlinesSimplified++;
       for (let i = 0; i < pts.length; i++) put(cat, cls, { kind: "line", a: pts[i], b: pts[(i + 1) % pts.length] }, attrs);
     } else {
       skipped++;
     }
-    return null;
   };
 
-  /** A feature drawn flat; false when nothing of it could be placed. */
-  const draw = (f: SiteFeature, onOutline?: (id: string) => void): boolean => {
+  /** An open line: a polyline, else its segments as lines. */
+  const line = (cat: SiteCategory, pts: readonly Pt[], closed: boolean): void => {
+    const attrs = attrsFor(cat, false);
+    const cls = classes.get(cat) ?? options.fallbackClass;
+    if (s.canAdd("polyline")) {
+      put(cat, cls, { kind: "polyline", points: [...pts], closed }, attrs);
+    } else if (s.canAdd("line")) {
+      outlinesSimplified++;
+      const n = closed ? pts.length : pts.length - 1;
+      for (let i = 0; i < n; i++) put(cat, cls, { kind: "line", a: pts[i], b: pts[(i + 1) % pts.length] }, attrs);
+    } else {
+      skipped++;
+    }
+  };
+
+  /** A feature drawn flat, queued: the queue positions of its objects (none when nothing of it can be placed). */
+  const draw = (f: SiteFeature): number[] => {
+    drawing = [];
     const cat = f.cat;
     const cls = classes.get(cat) ?? options.fallbackClass;
     const g = f.geom;
     switch (g.kind) {
-      case "polygon": {
-        const id = outline(cat, g.points, true);
-        if (id && onOutline) onOutline(id);
-        return true;
-      }
-      case "polyline": {
-        const attrs = attrsFor(cat, false);
-        if (s.canAdd("polyline")) return put(cat, cls, { kind: "polyline", points: [...g.points], closed: g.closed === true }, attrs) !== null;
-        if (s.canAdd("line")) {
-          outlinesSimplified++;
-          for (let i = 0; i + 1 < g.points.length; i++) put(cat, cls, { kind: "line", a: g.points[i], b: g.points[i + 1] }, attrs);
-          return true;
+      case "polygon":
+        if (g.holes?.length && s.canAdd("polygon") && s.canAdd("polyline")) {
+          // the fill as one outline round the holes, without a pen (its cuts would show), and the
+          // outline and the holes' edges as lines over it
+          put(cat, cls, { kind: "polygon", points: keyhole(g.points, g.holes), closed: true }, { ...attrsFor(cat, true), lineStyle: 0 });
+          for (const ring of [g.points, ...g.holes]) line(cat, ring, true);
+        } else {
+          outline(cat, g.points, true);
         }
-        skipped++;
-        return false;
-      }
+        break;
+      case "polyline":
+        line(cat, g.points, g.closed === true);
+        break;
+      case "band":
+        line(cat, offsetLine(g.points, g.half), false);
+        line(cat, offsetLine(g.points, -g.half), false);
+        if (g.centre) line(cat, g.points, false);
+        break;
       case "circle": {
         const attrs = attrsFor(cat, true);
-        if (s.canAdd("arc")) return put(cat, cls, { kind: "arc", center: g.at, radius: g.radius, startAngle: 0, sweepAngle: 360 }, attrs) !== null;
+        if (s.canAdd("arc")) {
+          put(cat, cls, { kind: "arc", center: g.at, radius: g.radius, startAngle: 0, sweepAngle: 360 }, attrs);
+          break;
+        }
         circlesAsPolygons++;
         const sides = 24;
         const pts = Array.from({ length: sides }, (_, k) => {
@@ -323,15 +450,95 @@ export function writeSiteContext(s: EditSession, features: readonly SiteFeature[
           return { x: g.at.x + g.radius * Math.cos(a), y: g.at.y + g.radius * Math.sin(a) };
         });
         outline(cat, pts, true);
-        return true;
+        break;
       }
       case "label":
         if (s.canAdd("text")) {
           const layerId = layerFor(cat);
-          return put(cat, cls, { kind: "text", at: g.at, text: g.text, height: labelHeightMm(LABEL_PT, scaleOf(layerId)) }, attrsFor(cat, false)) !== null;
+          put(cat, cls, { kind: "text", at: g.at, text: g.text, height: labelHeightMm(LABEL_PT, scaleOf(layerId)) }, attrsFor(cat, false));
+        } else {
+          skipped++;
         }
-        skipped++;
-        return false;
+        break;
+    }
+    return drawing;
+  };
+
+  /** Draws features flat and adds them: each feature with the ids of the objects it made, leaving out those with none. */
+  const drawAll = (features: readonly SiteFeature[]): { f: SiteFeature; ids: string[] }[] => {
+    const queued = features.map((f) => ({ f, at: draw(f) }));
+    const ids = flush();
+    return queued.map(({ f, at }) => ({ f, ids: at.map((i) => ids[i]).filter((id) => id !== "") })).filter((x) => x.ids.length > 0);
+  };
+
+  // 3D on the ground: the site model's own surface, so what lies on it follows it
+  const meshes = typeof s.canAddMeshes === "function" && s.canAddMeshes();
+  let ground = groundOf(null, null);
+  if (meshes && terrain && terrain.points.length >= 3) {
+    const surface = surfaceOf(terrain.points);
+    if (surface) {
+      const xs = terrain.points.map((p) => p[0]);
+      const ys = terrain.points.map((p) => p[1]);
+      const box: Rect = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+      ground = groundOf(heightLookup(surface), box);
+    }
+  }
+  let onGround = 0;
+  let trees3d = 0;
+
+  /** Each feature's surface as a mesh, grouped with its flat drawing. */
+  const lay = (cat: SiteCategory, items: readonly { readonly ids: string[]; readonly faces: Face[] }[]): void => {
+    const hex = LOOK_3D[cat];
+    const some = items.filter((x) => x.faces.length && x.ids.length);
+    if (!hex || !some.length) return;
+    try {
+      const ids = s.addMeshes(layerFor(cat), some.map((x) => x.faces), classes.get(cat) ?? options.fallbackClass, attrs3d(hex));
+      // every part has faces, so each has its mesh, in order
+      if (ids.length !== some.length) return;
+      s.groupEach(some.map((x, i) => [...x.ids, ids[i]]));
+      onGround += some.length;
+    } catch {
+      // flat only
+    }
+  };
+
+  /** The tree symbol: the earlier import's, else a new one; null when the drawing can't take it. */
+  let treeSymbol: number | null | undefined;
+  const treeSymbolIndex = (cls: number): number | null => {
+    if (treeSymbol !== undefined) return treeSymbol;
+    treeSymbol = s.doc.symbolDefs().find((d) => d.name === TREE_SYMBOL)?.index ?? null;
+    if (treeSymbol === null) {
+      const { trunk, crown } = treeParts();
+      try {
+        treeSymbol = s.addMeshSymbols([{ name: TREE_SYMBOL, parts: [trunk, crown], attrs: [attrs3d(TRUNK), attrs3d(CROWN)], classIndex: cls }])[0] ?? null;
+      } catch {
+        treeSymbol = null;
+      }
+    }
+    return treeSymbol;
+  };
+
+  /** A tree standing at each spot, on the ground, grouped with the flat drawing it stands for. */
+  const plant = (cat: SiteCategory, items: readonly { readonly ids: string[]; readonly spots: Pt[] }[]): void => {
+    const some = items.filter((x) => x.spots.length && x.ids.length);
+    if (!some.length) return;
+    const cls = classes.get(cat) ?? options.fallbackClass;
+    const symbol = treeSymbolIndex(cls);
+    if (symbol === null) return;
+    try {
+      const elements = some.flatMap((x) => x.spots.map((p) => ({ symbol, matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, p.x, p.y, ground(p.x, p.y)], classIndex: cls })));
+      const ids = s.addMeshElements(layerFor(cat), elements);
+      if (ids.length !== elements.length) return;
+      let k = 0;
+      const sets = some.map((x) => {
+        const mine = ids.slice(k, k + x.spots.length).filter((id) => id !== "");
+        k += x.spots.length;
+        return [...x.ids, ...mine];
+      });
+      s.groupEach(sets);
+      trees3d += elements.length;
+    } catch {
+      // flat only
     }
   };
 
@@ -352,23 +559,33 @@ export function writeSiteContext(s: EditSession, features: readonly SiteFeature[
       terrainKind = "site model";
       placed.terrain = 1;
     } else {
-      for (const f of terrain.contours) if (draw(f)) placed.terrain = (placed.terrain ?? 0) + 1;
+      const drawn = drawAll(terrain.contours);
+      if (drawn.length) placed.terrain = drawn.length;
       if (terrain.contours.length) terrainKind = "contours";
     }
   }
 
-  // the rest, ground first; the buildings' outlines are kept to stand up afterwards
+  // the rest, ground first, a kind at a time: each kind's 3D grouped with it before the next kind is
+  // drawn, so the kinds keep their stacking; the buildings' outlines are kept to stand up afterwards
   const standing = new Map<string, { readonly height: number; readonly base: number }>();
   let guessed = 0;
   const guessedIds = new Set<string>();
-  for (const f of sorted) {
-    if (f.cat === "terrain") continue;
-    const building = f.cat === "buildings" && f.geom.kind === "polygon" && f.heightM !== undefined && f.heightM > 0;
-    const ok = draw(f, building ? (id) => {
-      standing.set(id, { height: (f.heightM ?? 0) * 1000, base: (f.baseM ?? 0) * 1000 });
-      if (f.heightGuessed) guessedIds.add(id);
-    } : undefined);
-    if (ok) placed[f.cat] = (placed[f.cat] ?? 0) + 1;
+  for (const cat of STACK) {
+    if (cat === "terrain") continue;
+    const laid: { ids: string[]; faces: Face[] }[] = [];
+    const planted: { ids: string[]; spots: Pt[] }[] = [];
+    for (const { f, ids } of drawAll(sorted.filter((f) => f.cat === cat))) {
+      placed[cat] = (placed[cat] ?? 0) + 1;
+      if (cat === "buildings" && f.geom.kind === "polygon" && f.heightM !== undefined && f.heightM > 0 && ids.length === 1) {
+        standing.set(ids[0], { height: f.heightM * 1000, base: (f.baseM ?? 0) * 1000 });
+        if (f.heightGuessed) guessedIds.add(ids[0]);
+      }
+      if (!meshes || !f.ground) continue;
+      if (f.ground.kind === "tree") planted.push({ ids, spots: treeSpots(f.geom) });
+      else laid.push({ ids, faces: groundFaces(f.geom, f.ground, ground, LIFT[cat] ?? 200) });
+    }
+    lay(cat, laid);
+    plant(cat, planted);
   }
 
   // the buildings up at their heights, on the ground under them, as one change
@@ -413,6 +630,8 @@ export function writeSiteContext(s: EditSession, features: readonly SiteFeature[
     buildings3d,
     heightsGuessed: guessed,
     buildingsFlat,
+    onGround,
+    trees3d,
     terrain: terrainKind,
     creditId,
     circlesAsPolygons,
