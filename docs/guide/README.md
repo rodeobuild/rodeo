@@ -29,7 +29,7 @@ How to use Rodeo, the drawing and 3D modelling app at [rodeo.build](https://rode
 ## Disciplines
 
 - [Architecture: walls, doors, slabs and roofs](architecture.md): walls, doors and windows, slabs and columns, stairs, roofs, spaces and framing.
-- [Site and landscape](site.md): site models and grading, massing models, planting and hardscape, roads and parking, existing trees and surveys, GIS.
+- [Site and landscape](site.md): site models and grading, massing models, planting and hardscape, roads and parking, existing trees and surveys, GIS and Site Context.
 - [Interiors and furniture](interiors.md): tables and seating, furniture and fixtures, ceiling grids, railings, cabinets and countertops.
 - [MEP: piping, ducts, electrical and irrigation](mep.md): piping, ducts, electrical devices and calculations, and irrigation.
 - [Detailing, machine parts and fasteners](detailing-machine.md): the Detailing tools, gears, bearings, springs, fasteners, holes and the Machine Design calculators.

@@ -1,6 +1,6 @@
 # Site and landscape
 
-This page covers site models, grading, planting, hardscape, roads and parking, surveyed trees and georeferencing. The tools here are all in the Site Planning tool set.
+This page covers site models, grading, planting, hardscape, roads and parking, surveyed trees, georeferencing and importing a real place as site context. The tools here are all in the Site Planning tool set.
 
 ## Landmark objects in Vectorworks files
 
@@ -261,3 +261,19 @@ It draws its indicator in Vectorworks' eight styles and its label (ID, elevation
 Place a drawing on the Earth with **File › Document Settings › Georeferencing** (local, UTM or Pseudo-Mercator, kept in this browser). Then use **Graticule**, **Great Circle**, **Survey Point**, **GIS Stake** and **Modify › Move Geographic**. The Onscreen View Control gets a compass ring.
 
 **Limits:** other coordinate systems and background maps aren't there.
+
+### Import Site Context
+
+**File › Import › Import Site Context…** brings a real place into the drawing at true scale, from OpenStreetMap and free terrain tiles. Find a place, click **Draw Area** and drag a box over the map (up to 2 km × 2 km), tick what to bring in, and click **Import**. It's one undo step.
+
+- **Terrain** comes in as a site model with its contours every 1, 2, 5 or 10 m, its heights in metres above sea level. It shows in 3D like any site model, and its settings are in Object Info.
+- **Buildings** stand in 3D as extrudes, each on the lowest ground under it. A building is as tall as OpenStreetMap says, else 3.2 m a storey, else 6 m; change one's height in Object Info. **Label heights** writes each one's height on it in plan.
+- **Roads** (with their **Centre lines** if you want them), **Paths and cycleways**, **Railways**, **Water**, **Green spaces**, **Trees** and **Public facilities** come in flat.
+
+Everything goes on a new design layer, **Site Context**, with a class for each kind (**Context-Buildings**, **Context-Terrain** and so on) to show and hide them by. Choose **A layer for each kind** for **Site Context Terrain**, **Site Context Buildings** and so on instead, the ground at the bottom; later imports add to the same layers. The dialog remembers your choices until you reload the page.
+
+The drawing's georeferencing places the import. A drawing without one gets it from its first import, which puts the area's centre at the drawing's origin or the centre of the view, north up. So a place bigger than 2 km comes in as parts that line up: earlier imports show on the map as grey boxes, and a new box's edges snap to theirs. A building on the line between two parts comes in once, with the part its centre is in. Each import keeps the georeferencing and its area in a **Site Context Data** record on its credit text, so this works in another browser too.
+
+When it's done, a message says how many buildings OpenStreetMap gives no height for, which stand at 6 m.
+
+**Limits:** OpenStreetMap often has no height for a building. Building parts and roof shapes aren't drawn, and a courtyard mapped as a hole in a building is filled in. The terrain tiles are coarse (tens of metres in much of the world), so a flat city such as Venice shows little of its ground. A box drawn over an earlier import leaves out the buildings, trees and facilities that import brought, but brings its terrain, roads and water in again. The public OpenStreetMap server is sometimes busy: try again in a minute.

@@ -18,12 +18,15 @@ import {
   TILE_PX,
   type GeoBox,
 } from "./geo.ts";
-import { contextBuildings, contextTerrain, gridCoordOf, gridPoint, terrainFeatures, type GridFrame } from "./importer.ts";
-import type { SiteFeature } from "./model.ts";
-import { buildingHeightM, featuresFromOverpass, lengthM, overpassQuery, roadWidthM, type OsmKind, type OverpassResponse } from "./osm.ts";
+import { geoToDrawing, drawingToGeo, type Georef } from "../../app/geoShapes.ts";
+import { anchorOf, anchorText, areaOfText, areaText } from "./anchor.ts";
+import { clipFeatures } from "./clip.ts";
+import { areaOf, boxAround, gridCoordOf, gridPoint, ownsBy, terrainFeatures, terrainPoints, withBases, type GridFrame, type Placement } from "./importer.ts";
+import type { SiteFeature, SiteTerrain } from "./model.ts";
+import { buildingHeightKnown, buildingHeightM, featuresFromOverpass, lengthM, overpassQuery, roadWidthM, type OsmKind, type OverpassResponse } from "./osm.ts";
 import { offsetLine, polygonArea, polygonCentroid, simplify, stitchRings } from "./shapes.ts";
 import { contours, decodeTerrarium, gridHeightAt, Mosaic, sampleGrid, simplifyContour } from "./terrain.ts";
-import { CLASS_NAME, CREDIT_TEXT, labelHeightMm, milsOf, nearestColor, uniqueName, writeSiteContext } from "./writer.ts";
+import { CLASS_NAME, CREDIT_TEXT, importName, labelHeightMm, milsOf, nearestColor, uniqueName, writeSiteContext } from "./writer.ts";
 
 let passed = 0;
 let failed = 0;
@@ -161,9 +164,9 @@ check("terrain features: contours and labels in world millimetres", () => {
   const n = 7;
   const grid = new Float32Array(n * n);
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) grid[j * n + i] = (i - 3) ** 2 + (j - 3) ** 2 + 0.25;
-  const frame: GridFrame = { nx: n, ny: n, widthM: 6, heightM: 6 };
   const offset: Pt = { x: 1000, y: 2000 };
-  const feats = terrainFeatures(grid, frame, offset, 1);
+  const frame: GridFrame = { nx: n, ny: n, x0: offset.x - 3000, y0: offset.y - 3000, x1: offset.x + 3000, y1: offset.y + 3000 };
+  const feats = terrainFeatures(grid, frame, 1);
   const labels = feats.filter((f) => f.geom.kind === "label").map((f) => (f.geom.kind === "label" ? f.geom.text : ""));
   assert.deepEqual(labels.sort(), ["10 m", "15 m", "5 m"]);
   for (const f of feats) {
@@ -173,10 +176,10 @@ check("terrain features: contours and labels in world millimetres", () => {
       assert.ok(p.y >= offset.y - 3000 - 1e-6 && p.y <= offset.y + 3000 + 1e-6, `y ${p.y}`);
     }
   }
-  const p = gridPoint(frame, offset, 3, 3);
+  const p = gridPoint(frame, 3, 3);
   near(p.x, offset.x, 1e-6);
   near(p.y, offset.y, 1e-6);
-  const g = gridCoordOf(frame, offset, p);
+  const g = gridCoordOf(frame, p);
   near(g.gx, 3, 1e-9);
   near(g.gy, 3, 1e-9);
 });
@@ -373,11 +376,14 @@ interface FakeLayer {
 }
 
 /** A session with the parts writeSiteContext uses, recording what it is asked to add. */
-function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<NewShape["kind"]> }): {
+function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<NewShape["kind"]>; noExtrude?: boolean }): {
   session: EditSession;
   added: { layer: string; shape: NewShape; cls: number }[];
   classNames: string[];
+  extruded: { id: string; height: number; base: number }[];
+  layers: FakeLayer[];
 } {
+  const extruded: { id: string; height: number; base: number }[] = [];
   const layers: FakeLayer[] = opts.layers.map((name, i) => ({ id: `L${i}`, name, scale: 100 }));
   const classNames = ["None", ...opts.classes];
   const added: { layer: string; shape: NewShape; cls: number }[] = [];
@@ -389,7 +395,7 @@ function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<Ne
   ];
   const session = {
     doc: {
-      layers: () => layers.map((l) => ({ id: l.id, name: l.name, scale: l.scale })),
+      layers: () => layers.map((l) => ({ id: l.id, name: l.name, scale: l.scale, kind: "design" })),
       classes: () => classNames.map((name, index) => ({ index, name, visibility: "visible", objectCount: 0 })),
       colors: () => colors,
     },
@@ -407,8 +413,13 @@ function fakeSession(opts: { layers: string[]; classes: string[]; canAdd: Set<Ne
       added.push({ layer, shape, cls });
       return `o${added.length}`;
     },
+    extrudeObjects: (ids: string[], height: number, each?: ReadonlyMap<string, { height: number; base: number }>) => {
+      if (opts.noExtrude) throw new Error("no extrude");
+      extruded.push(...ids.map((id) => ({ id, height: each?.get(id)?.height ?? height, base: each?.get(id)?.base ?? 0 })));
+      return ids.map((id) => `x${id}`);
+    },
   };
-  return { session: session as unknown as EditSession, added, classNames };
+  return { session: session as unknown as EditSession, added, classNames, extruded, layers };
 }
 
 const ALL_KINDS: NewShape["kind"][] = ["line", "rect", "roundrect", "polygon", "polyline", "arc", "text"];
@@ -425,7 +436,7 @@ check("writer: layer numbered, classes reused by name, credit at the corner", ()
     { cat: "trees", geom: { kind: "circle", at: { x: 5, y: 5 }, radius: 2500 } },
     { cat: "facilities", geom: { kind: "label", at: { x: 5, y: 5 }, text: "School" } },
   ];
-  const r = writeSiteContext(session, features, { layerName: "Site Context", corner: { x: -10, y: -20 }, fallbackClass: 0 });
+  const r = writeSiteContext(session, features, null, { layerName: "Site Context", corner: { x: -10, y: -20 }, fallbackClass: 0 });
   assert.equal(r.layerName, "Site Context 2");
   assert.equal(added.filter((a) => a.layer === r.layerId).length, 5);
   assert.ok(classNames.includes(CLASS_NAME.buildings));
@@ -448,7 +459,7 @@ check("writer: fallbacks when the file has no arc, polygon or text", () => {
     { cat: "roads", geom: { kind: "polyline", points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }] } },
     { cat: "facilities", geom: { kind: "label", at: { x: 0, y: 0 }, text: "X" } },
   ];
-  const r = writeSiteContext(session, features, { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0 });
+  const r = writeSiteContext(session, features, null, { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0 });
   assert.equal(r.layerName, "Site Context");
   assert.equal(r.circlesAsPolygons, 1);
   // the circle becomes 24 lines; the road's two segments are two lines
@@ -465,27 +476,215 @@ check("writer: names, colours and label heights", () => {
   near(labelHeightMm(9, 100), 9 * 0.3528 * 100, 1e-9);
 });
 
-// ---- the 3D overlay's data ---------------------------------------------------------
+// ---- 3D: buildings on the ground, the terrain as a site model ----------------------
 
-check("context buildings stand on the terrain under their centre", () => {
+const square = (cx: number, cy: number, r: number): Pt[] => [
+  { x: cx - r, y: cy - r },
+  { x: cx + r, y: cy - r },
+  { x: cx + r, y: cy + r },
+  { x: cx - r, y: cy + r },
+];
+
+check("buildings stand on the lowest ground under them", () => {
   const n = 3;
   const grid = new Float32Array(n * n);
   // heights rise by 1 m per cell eastwards from 10 m
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) grid[j * n + i] = 10 + i;
-  const frame: GridFrame = { nx: n, ny: n, widthM: 2, heightM: 2 };
-  const offset: Pt = { x: 0, y: 0 };
+  const frame: GridFrame = { nx: n, ny: n, x0: -1000, y0: -1000, x1: 1000, y1: 1000 };
   const f: SiteFeature[] = [
-    { cat: "buildings", geom: { kind: "polygon", points: [{ x: -100, y: -100 }, { x: 100, y: -100 }, { x: 100, y: 100 }, { x: -100, y: 100 }] }, heightM: 9 },
+    { cat: "buildings", geom: { kind: "polygon", points: square(0, 0, 500) }, heightM: 9 },
+    { cat: "roads", geom: { kind: "polyline", points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] } },
   ];
-  const b = contextBuildings(f, frame, offset, grid);
-  assert.equal(b.length, 1);
-  assert.equal(b[0].heightMm, 9000);
-  // the centre is in the middle of the grid: height 11 m, lowest 10 m, so 1000 mm
-  near(b[0].baseMm, 1000, 1e-3);
-  const t = contextTerrain(grid, frame, offset);
-  near(t.z[0], 0);
-  near(t.z[2], 2000);
-  assert.equal(t.nx, 3);
+  const b = withBases(f, frame, grid);
+  // its west corners are half a cell from the middle: 10.5 m
+  near(b[0].baseM ?? NaN, 10.5, 1e-6);
+  assert.equal(b[1].baseM, undefined, "only buildings get a base");
+  assert.equal(withBases(f, null, null)[0].baseM, 0, "no terrain: on the layer");
+});
+
+check("terrain points: the grid thinned, its edges kept, heights in mm", () => {
+  const nx = 11;
+  const ny = 6;
+  const grid = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) grid[j * nx + i] = i + j / 10;
+  const frame: GridFrame = { nx, ny, x0: 0, y0: 0, x1: 10000, y1: 5000 };
+  const all = terrainPoints(grid, frame);
+  assert.equal(all.length, nx * ny);
+  const thin = terrainPoints(grid, frame, 4);
+  // every 4th of 0..10 and the last: 0, 4, 8, 10 across; 0, 4, 5 up
+  assert.equal(thin.length, 4 * 3);
+  const xs = [...new Set(thin.map((p) => p[0]))].sort((a, b) => a - b);
+  assert.deepEqual(xs, [0, 4000, 8000, 10000]);
+  const corner = thin.find((p) => p[0] === 10000 && p[1] === 5000);
+  near(corner?.[2] ?? NaN, (10 + 0.5) * 1000, 1e-3);
+});
+
+check("writer: buildings extruded at their heights on their bases, the terrain a site model first", () => {
+  const { session, added, extruded } = fakeSession({ layers: [], classes: [], canAdd: new Set(ALL_KINDS) });
+  const features: SiteFeature[] = [
+    { cat: "trees", geom: { kind: "circle", at: { x: 5, y: 5 }, radius: 2500 } },
+    { cat: "buildings", geom: { kind: "polygon", points: square(0, 0, 5) }, heightM: 9.6, baseM: 2 },
+    { cat: "buildings", geom: { kind: "polygon", points: square(50, 0, 5) }, heightM: 6, heightGuessed: true, baseM: 1.5 },
+    { cat: "roads", geom: { kind: "polyline", points: [{ x: 0, y: 0 }, { x: 1, y: 0 }] } },
+  ];
+  const terrain: SiteTerrain = { points: [[0, 0, 0], [10, 0, 0], [0, 10, 1000]], contours: [], interval: 1000 };
+  const models: { layer: string; cls: number; points: number; interval: number }[] = [];
+  const r = writeSiteContext(session, features, terrain, {
+    layerName: "Site Context",
+    corner: { x: 0, y: 0 },
+    fallbackClass: 0,
+    siteModel: (_s, layer, cls, points, interval) => {
+      models.push({ layer, cls, points: points.length, interval });
+      return "model";
+    },
+  });
+  assert.equal(models.length, 1);
+  assert.equal(models[0].interval, 1000);
+  assert.equal(r.terrain, "site model");
+  assert.equal(r.buildings3d, 2);
+  assert.equal(r.heightsGuessed, 1);
+  assert.deepEqual(
+    extruded.map((e) => [e.height, e.base]),
+    [
+      [9600, 2000],
+      [6000, 1500],
+    ],
+  );
+  // stacked ground first: the road, then the buildings, then the tree
+  const kinds = added.map((a) => a.shape.kind);
+  assert.deepEqual(kinds.slice(0, 4), ["polyline", "polygon", "polygon", "arc"]);
+  assert.equal(r.layers.length, 1);
+});
+
+check("writer: contours when there is no site model, buildings flat when nothing extrudes", () => {
+  const { session, added } = fakeSession({ layers: [], classes: [], canAdd: new Set(ALL_KINDS), noExtrude: true });
+  const contour: SiteFeature = { cat: "terrain", geom: { kind: "polyline", points: [{ x: 0, y: 0 }, { x: 5, y: 5 }] } };
+  const r = writeSiteContext(
+    session,
+    [{ cat: "buildings", geom: { kind: "polygon", points: square(0, 0, 5) }, heightM: 6 }],
+    { points: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], contours: [contour], interval: 1000 },
+    {
+      layerName: "Site Context",
+      corner: { x: 0, y: 0 },
+      fallbackClass: 0,
+      siteModel: () => {
+        throw new Error("no site model here");
+      },
+    },
+  );
+  assert.equal(r.terrain, "contours");
+  assert.equal(r.buildingsFlat, 1);
+  assert.equal(r.buildings3d, 0);
+  assert.equal(added[0].shape.kind, "polyline", "the contour goes first");
+});
+
+check("writer: a layer for each kind, ground first, added to the ones an earlier import made", () => {
+  const { session, added, layers } = fakeSession({ layers: ["Site Context Buildings"], classes: [], canAdd: new Set(ALL_KINDS) });
+  const features: SiteFeature[] = [
+    { cat: "buildings", geom: { kind: "polygon", points: square(0, 0, 5) }, heightM: 6 },
+    { cat: "water", geom: { kind: "polygon", points: square(9, 9, 2) } },
+  ];
+  const r = writeSiteContext(session, features, null, { layerName: "Site Context", corner: { x: 0, y: 0 }, fallbackClass: 0, layerPerKind: true });
+  assert.deepEqual(
+    r.layers.map((l) => l.name),
+    ["Site Context Water", "Site Context Buildings"],
+  );
+  assert.equal(layers.length, 2, "the buildings went on the layer that was there");
+  assert.equal(r.layers[1].id, "L0");
+  const onLayer = (name: string): NewShape["kind"][] => added.filter((a) => a.layer === r.layers.find((l) => l.name === name)?.id).map((a) => a.shape.kind);
+  assert.deepEqual(onLayer("Site Context Water"), ["polygon", "text"], "water, and the credit on the bottom layer");
+  assert.deepEqual(onLayer("Site Context Buildings"), ["polygon"]);
+  assert.equal(importName("Site Context", ["Buildings"], ["site context buildings", "Site Context 2 Buildings"]), "Site Context 3");
+  assert.equal(importName("Site Context", null, ["Site Context Buildings"]), "Site Context");
+});
+
+check("buildings on an edge go to the area their centre is in", () => {
+  const left = { x0: -100, y0: -100, x1: 0, y1: 100 };
+  const right = { x0: 0, y0: -100, x1: 100, y1: 100 };
+  const b: SiteFeature = { cat: "buildings", geom: { kind: "polygon", points: square(-10, 0, 30) }, heightM: 6 };
+  assert.equal(clipFeatures([b], left).length, 1);
+  assert.equal(clipFeatures([b], right).length, 0);
+  const far: SiteFeature = { cat: "buildings", geom: { kind: "polygon", points: square(500, 0, 5) }, heightM: 6 };
+  assert.equal(clipFeatures([far], left).length, 0, "a building wholly outside is left out");
+});
+
+check("height known from height or levels, else guessed", () => {
+  assert.equal(buildingHeightKnown({ height: "12" }), true);
+  assert.equal(buildingHeightKnown({ "building:levels": "3" }), true);
+  assert.equal(buildingHeightKnown({ building: "yes" }), false);
+  const data: OverpassResponse = {
+    elements: [
+      {
+        type: "way",
+        id: 1,
+        tags: { building: "yes" },
+        geometry: [
+          { lat: 0, lon: 0 },
+          { lat: 0, lon: 1 },
+          { lat: 1, lon: 1 },
+          { lat: 0, lon: 0 },
+        ],
+      },
+    ],
+  };
+  const [f] = featuresFromOverpass(data, new Set<OsmKind>(["buildings"]), (lat, lon) => ({ x: lon, y: lat }), { centreLines: false, labelHeights: false });
+  assert.equal(f.heightGuessed, true);
+});
+
+// ---- placing by the drawing's georeferencing -----------------------------------------
+
+const VENICE: Georef = { system: "local", lat: 45.4371, lon: 12.3326, north: 0 };
+const placeBy = (g: Georef): Placement => ({ toDrawing: (p) => geoToDrawing(g, p), toGeo: (p) => drawingToGeo(g, p) });
+
+check("two areas side by side meet along one line in the drawing", () => {
+  const place = placeBy(VENICE);
+  const west: GeoBox = { south: 45.43, north: 45.445, west: 12.31, east: 12.335 };
+  const east: GeoBox = { south: 45.43, north: 45.445, west: 12.335, east: 12.36 };
+  const a = areaOf(west, place);
+  const b = areaOf(east, place);
+  // the shared meridian leans and the parallels bow a little in the drawing (a few cm over
+  // 1.7 km here), so the rectangles round the two areas meet to within that
+  near(a.x1, b.x0, 200);
+  near(a.y0, b.y0, 200);
+  near(a.y1, b.y1, 200);
+  // a building astride the meridian is one area's: the one its centre is in, by longitude
+  const onEdge = place.toDrawing({ lat: 45.4375, lon: 12.335 });
+  const building: SiteFeature = { cat: "buildings", geom: { kind: "polygon", points: square(onEdge.x - 3000, onEdge.y, 10000) }, heightM: 6 };
+  const inWest = clipFeatures([building], a, ownsBy(west, [], place)).length;
+  const inEast = clipFeatures([building], b, ownsBy(east, [], place)).length;
+  assert.equal(inWest + inEast, 1, "taken once");
+  assert.equal(inWest, 1, "its centre is west of the meridian");
+  // drawn again over the west area, it is left out: the earlier import has it
+  const again = clipFeatures([building], a, ownsBy(west, [west], place)).length;
+  assert.equal(again, 0);
+  // the georeferencing's own place is the drawing's origin
+  const o = place.toDrawing({ lat: VENICE.lat, lon: VENICE.lon });
+  near(o.x, 0, 1e-3);
+  near(o.y, 0, 1e-3);
+  // what is fetched covers the area
+  const fetched = boxAround(a, place);
+  assert.ok(fetched.south <= west.south + 1e-9 && fetched.north >= west.north - 1e-9);
+  assert.ok(fetched.west <= west.west + 1e-9 && fetched.east >= west.east - 1e-9);
+});
+
+check("a turned georeferencing fetches round the whole area", () => {
+  const place = placeBy({ ...VENICE, north: 20 });
+  const box: GeoBox = { south: 45.43, north: 45.44, west: 12.33, east: 12.34 };
+  const area = areaOf(box, place);
+  const fetched = boxAround(area, place);
+  assert.ok(fetched.south < box.south && fetched.north > box.north && fetched.west < box.west && fetched.east > box.east);
+});
+
+check("the georeferencing kept in the file reads back", () => {
+  const g: Georef = { system: "utm", lat: 45.4, lon: 12.3, north: 1.5, zone: 33, south: false };
+  assert.deepEqual(anchorOf(anchorText(g)), g);
+  assert.deepEqual(anchorOf(anchorText(VENICE)), VENICE);
+  assert.equal(anchorOf("not json"), null);
+  assert.equal(anchorOf(JSON.stringify({ system: "local", lat: 99, lon: 0, north: 0 })), null);
+  assert.equal(anchorOf(JSON.stringify({ system: "mars", lat: 0, lon: 0, north: 0 })), null);
+  const box: GeoBox = { south: 45.43, west: 12.31, north: 45.445, east: 12.335 };
+  assert.deepEqual(areaOfText(areaText(box)), box);
+  assert.equal(areaOfText(JSON.stringify({ south: 2, west: 0, north: 1, east: 1 })), null, "north of south");
 });
 
 check("sampling beyond the tiles' edge stays finite", () => {

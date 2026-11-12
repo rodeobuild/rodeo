@@ -67,7 +67,7 @@ const DEFAULT_ROAD_M = 6;
 const WATERWAY_WIDTH_M: Readonly<Record<string, number>> = { river: 10, canal: 8, stream: 2, drain: 1.5, ditch: 1 };
 const DEFAULT_WATERWAY_M = 2;
 const LEVEL_M = 3.2;
-const DEFAULT_BUILDING_M = 6;
+export const DEFAULT_BUILDING_M = 6;
 /** a standard gauge railway's rails, metres apart (centre to centre of the offsets: half each side) */
 const RAIL_GAUGE_M = 1.435;
 /** tree canopy: a circle 5 m across */
@@ -158,6 +158,11 @@ export function lengthM(value: string | undefined): number | null {
   return v > 0 ? v : null;
 }
 
+/** True when a building's tags give its height or its levels (else it is drawn DEFAULT_BUILDING_M tall). */
+export function buildingHeightKnown(tags: Tags): boolean {
+  return lengthM(tags.height) !== null || parseFloat(tags["building:levels"] ?? "") > 0;
+}
+
 /** A building's height: its height tag, else its levels at 3.2 m each, else 6 m. */
 export function buildingHeightM(tags: Tags): number {
   const h = lengthM(tags.height);
@@ -227,8 +232,8 @@ export function featuresFromOverpass(
   options: FeatureOptions,
 ): SiteFeature[] {
   const out: SiteFeature[] = [];
-  const add = (cat: SiteFeature["cat"], geom: SiteFeature["geom"], heightM?: number): void => {
-    out.push(heightM === undefined ? { cat, geom } : { cat, geom, heightM });
+  const add = (cat: SiteFeature["cat"], geom: SiteFeature["geom"], heightM?: number, heightGuessed?: boolean): void => {
+    out.push(heightM === undefined ? { cat, geom } : heightGuessed ? { cat, geom, heightM, heightGuessed } : { cat, geom, heightM });
   };
   // geometry is kept as points with x = longitude, y = latitude until it is projected
   const lonLat = (coords: readonly OverpassCoord[]): Pt[] => coords.map((c) => ({ x: c.lon, y: c.lat }));
@@ -250,7 +255,7 @@ export function featuresFromOverpass(
       if (points.length < 3) continue;
       if (cat === "buildings") {
         const h = buildingHeightM(tags);
-        add("buildings", { kind: "polygon", points }, h);
+        add("buildings", { kind: "polygon", points }, h, !buildingHeightKnown(tags));
         if (options.labelHeights) add("buildings", { kind: "label", at: polygonCentroid(points), text: heightLabel(h) });
       } else {
         add(cat, { kind: "polygon", points });

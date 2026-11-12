@@ -1,7 +1,9 @@
 // File > Import Site Context…: a large dialog with a Leaflet map to choose the area on (a place
-// search, or a rectangle dragged out, at most 2 km × 2 km), a checklist of the kinds of context, and
-// where the area's centre goes. Import shows its steps and can be cancelled; the drawing gets the
-// result as one undo step (commands.ts's attempt), on a new design layer, which is then made active.
+// search, or a rectangle dragged out, at most 2 km × 2 km), a checklist of the kinds of context, one
+// layer or a layer for each kind, and, in a drawing with no georeferencing yet, where the area's
+// centre goes. The drawing's georeferencing places the import, and the first import sets it, so
+// imports side by side line up. Import shows its steps and can be cancelled; the drawing gets the
+// result as one undo step (commands.ts's attempt), on new design layers, the first then made active.
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -9,24 +11,20 @@ import "./context.css";
 import { appContext } from "../../app/ext.ts";
 import { attempt, setActiveLayer } from "../../app/commands.ts";
 import { h } from "../../app/dom.ts";
+import { tJoined } from "../../app/i18n.ts";
+import { documentGeoref, setDocumentGeoref } from "../../app/georef.ts";
+import { drawingToGeo, geoToDrawing, georefThrough, type Georef } from "../../app/geoShapes.ts";
+import { addSiteModelFrom } from "../../app/siteModel.ts";
 import { store } from "../../app/state.ts";
 import { toast } from "../../app/toast.ts";
-import {
-  boxCentre,
-  boxFromCorners,
-  boxSizeM,
-  boxTooLarge,
-  MAX_SIDE_M,
-  projectionAt,
-  toMetres,
-  type GeoBox,
-} from "./geo.ts";
-import { runImport, type ImportResult } from "./importer.ts";
+import { ANCHOR_FIELD, ANCHOR_FORMAT, anchorOf, anchorText, AREA_FIELD, areaOfText, areaText } from "./anchor.ts";
+import { boxCentre, boxFromCorners, boxSizeM, boxTooLarge, MAX_SIDE_M, type GeoBox } from "./geo.ts";
+import { runImport, type ImportResult, type Placement } from "./importer.ts";
 import type { SiteCategory } from "./model.ts";
+import { DEFAULT_BUILDING_M } from "./osm.ts";
 import { searchPlaces, type Place } from "./services.ts";
-import { siteOverlay } from "./overlay3d.ts";
 import { writeSiteContext, type WriteReport } from "./writer.ts";
-import type { Pt } from "../../core/index.ts";
+import type { EditSession, Pt, VwxDocument } from "../../core/index.ts";
 
 /** The kinds of context, in the order the checklist lists them. */
 const KINDS: readonly { cat: SiteCategory; label: string }[] = [
@@ -44,6 +42,8 @@ const KINDS: readonly { cat: SiteCategory; label: string }[] = [
 const CONTOUR_INTERVALS = [1, 2, 5, 10];
 const MIN_AREA_M = 5;
 const SEARCH_DEBOUNCE_MS = 600;
+/** how near (screen pixels) a dragged corner comes to an earlier import's edge to take it */
+const SNAP_PX = 12;
 const SEARCH_MIN_CHARS = 2;
 
 interface Settings {
@@ -53,7 +53,11 @@ interface Settings {
   labelHeights: boolean;
   centreLines: boolean;
   placement: "origin" | "view";
+  layerPerKind: boolean;
 }
+
+/** The choices made last time, for the next import (the area aside) while the page is open. */
+let remembered: Omit<Settings, "area"> | null = null;
 
 /** Opens the dialog; resolves when it closes. */
 export function openSiteContextDialog(): Promise<void> {
@@ -65,14 +69,23 @@ export function openSiteContextDialog(): Promise<void> {
 
 class SiteContextDialog {
   private readonly done: () => void;
-  private readonly settings: Settings = {
-    area: null,
-    kinds: new Set(KINDS.map((k) => k.cat)),
-    contourInterval: 5,
-    labelHeights: false,
-    centreLines: false,
-    placement: "origin",
-  };
+  private readonly settings: Settings = remembered
+    ? { ...remembered, area: null, kinds: new Set(remembered.kinds) }
+    : {
+        area: null,
+        kinds: new Set(KINDS.map((k) => k.cat)),
+        contourInterval: 5,
+        labelHeights: false,
+        centreLines: false,
+        placement: "origin",
+        layerPerKind: false,
+      };
+  /** what earlier imports wrote into the drawing: their georeferencing and areas */
+  private readonly stored = store.session ? storedImports(store.session.doc) : { georef: null, areas: [] };
+  /** the drawing's georeferencing when the dialog opened (this browser's, else an earlier import's in the file) */
+  private readonly known: Georef | null = documentGeoref() ?? this.stored.georef;
+  /** the areas imported before, shown on the map for the next one to meet */
+  private readonly earlier: readonly GeoBox[] = this.stored.areas;
   private mapEl: HTMLElement | null = null;
   private readonly returnFocus: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   private backdrop: HTMLElement | null = null;
@@ -171,6 +184,21 @@ class SiteContextDialog {
       });
       return h("label", { cls: "menu-dialog-check" }, box, label);
     };
+    const layerRadio = (perKind: boolean, label: string): HTMLElement => {
+      const box = h("input", { attrs: { type: "radio", name: "sc-layers", value: perKind ? "kind" : "one" } });
+      box.checked = this.settings.layerPerKind === perKind;
+      box.addEventListener("change", () => {
+        if (box.checked) this.settings.layerPerKind = perKind;
+      });
+      return h("label", { cls: "menu-dialog-check" }, box, label);
+    };
+    const placing = this.known
+      ? [h("p", { cls: "sc-hint muted", text: "Placed by the drawing's georeferencing, so it lines up with what is already there." })]
+      : [
+          placeRadio("origin", "Drawing origin (0, 0)"),
+          placeRadio("view", "Current view centre"),
+          h("p", { cls: "sc-hint muted", text: "This sets the drawing's georeferencing, so later imports line up with this one." }),
+        ];
 
     return h(
       "aside",
@@ -185,9 +213,11 @@ class SiteContextDialog {
       this.warning,
       h("h3", { cls: "sc-heading", text: "Include" }),
       ...kindRows,
+      h("h3", { cls: "sc-heading", text: "Layers" }),
+      layerRadio(false, "One layer, a class for each kind"),
+      layerRadio(true, "A layer for each kind"),
       h("h3", { cls: "sc-heading", text: "Place the area's centre" }),
-      placeRadio("origin", "Drawing origin (0, 0)"),
-      placeRadio("view", "Current view centre"),
+      ...placing,
       h(
         "p",
         { cls: "sc-credit muted" },
@@ -277,6 +307,21 @@ class SiteContextDialog {
       maxZoom: 19,
     }).addTo(map);
     this.map = map;
+    // the areas imported before, for the next one to meet; the map opens on them
+    if (this.earlier.length) {
+      for (const b of this.earlier) {
+        L.rectangle(
+          [
+            [b.south, b.west],
+            [b.north, b.east],
+          ],
+          { color: "#6b6b6b", weight: 1, dashArray: "4 4", fillOpacity: 0.12, interactive: false },
+        ).addTo(map);
+      }
+      const all = L.latLngBounds(this.earlier.map((b) => [b.south, b.west] as [number, number]));
+      for (const b of this.earlier) all.extend([b.north, b.east]);
+      map.fitBounds(all.pad(0.6));
+    }
     // a drag makes the rectangle while Draw Area is on: pointer events on the map's container
     const container = map.getContainer();
     container.addEventListener("pointerdown", (e) => {
@@ -284,16 +329,16 @@ class SiteContextDialog {
       e.preventDefault();
       e.stopPropagation();
       container.setPointerCapture(e.pointerId);
-      this.anchor = map.mouseEventToLatLng(e);
+      this.anchor = this.snap(map.mouseEventToLatLng(e));
       this.previewArea(this.anchor, this.anchor);
     });
     container.addEventListener("pointermove", (e) => {
       if (!this.anchor) return;
-      this.previewArea(this.anchor, map.mouseEventToLatLng(e));
+      this.previewArea(this.anchor, this.snap(map.mouseEventToLatLng(e)));
     });
     container.addEventListener("pointerup", (e) => {
       if (!this.anchor) return;
-      const end = map.mouseEventToLatLng(e);
+      const end = this.snap(map.mouseEventToLatLng(e));
       const start = this.anchor;
       this.anchor = null;
       if (container.hasPointerCapture(e.pointerId)) container.releasePointerCapture(e.pointerId);
@@ -303,6 +348,34 @@ class SiteContextDialog {
       if (width >= MIN_AREA_M && height >= MIN_AREA_M) this.settings.area = box;
       this.setDrawing(false);
     });
+  }
+
+  /** A point with its latitude and longitude taken to an earlier import's edge when it is near one on screen. */
+  private snap(ll: L.LatLng): L.LatLng {
+    const map = this.map;
+    if (!map || this.earlier.length === 0) return ll;
+    const at = map.latLngToContainerPoint(ll);
+    let lat = ll.lat;
+    let lng = ll.lng;
+    let bestY = SNAP_PX;
+    let bestX = SNAP_PX;
+    for (const b of this.earlier) {
+      for (const edge of [b.south, b.north]) {
+        const d = Math.abs(map.latLngToContainerPoint([edge, ll.lng]).y - at.y);
+        if (d < bestY) {
+          bestY = d;
+          lat = edge;
+        }
+      }
+      for (const edge of [b.west, b.east]) {
+        const d = Math.abs(map.latLngToContainerPoint([ll.lat, edge]).x - at.x);
+        if (d < bestX) {
+          bestX = d;
+          lng = edge;
+        }
+      }
+    }
+    return L.latLng(lat, lng);
   }
 
   private setDrawing(on: boolean): void {
@@ -329,7 +402,7 @@ class SiteContextDialog {
     this.showRect(box);
     const { width, height } = boxSizeM(box);
     this.updateAreaText(width, height);
-    this.setWarning(warningFor(box));
+    this.setWarning(this.warningFor(box));
   }
 
   /** Takes the rectangle off the map (no area is chosen). */
@@ -422,11 +495,22 @@ class SiteContextDialog {
       }
       if (this.drawButton) this.drawButton.textContent = area ? "Redraw Area" : "Draw Area";
     }
-    this.setWarning(this.settings.kinds.size === 0 ? "Choose at least one kind of context." : area ? warningFor(area) : "");
+    this.setWarning(this.settings.kinds.size === 0 ? "Choose at least one kind of context." : area ? this.warningFor(area) : "");
     if (this.intervalSelect) this.intervalSelect.disabled = !this.settings.kinds.has("terrain");
     if (this.labelBox) this.labelBox.disabled = !this.settings.kinds.has("buildings");
     if (this.centreBox) this.centreBox.disabled = !this.settings.kinds.has("roads");
     if (this.importButton) this.importButton.disabled = !this.canImport() || this.run !== null;
+  }
+
+  /** What is wrong with an area, or "" when it can be imported as it is. */
+  private warningFor(box: GeoBox): string {
+    if (boxTooLarge(box)) {
+      return `The area is larger than ${MAX_SIDE_M / 1000} km × ${MAX_SIDE_M / 1000} km. Draw a smaller one: import a bigger place in parts, and they line up.`;
+    }
+    if (this.earlier.some((e) => overlapping(e, box))) {
+      return "Part of this area was imported before: its buildings, trees and facilities are left out there, but its terrain, roads and water come in again. Start it at the earlier area's edge to avoid that.";
+    }
+    return "";
   }
 
   private setWarning(message: string): void {
@@ -454,7 +538,11 @@ class SiteContextDialog {
     this.refresh();
 
     try {
-      const offset = this.origin();
+      const georef = this.georefFor(area);
+      const place: Placement = {
+        toDrawing: (p) => geoToDrawing(georef, p),
+        toGeo: (p) => drawingToGeo(georef, p),
+      };
       const result = await runImport(
         {
           box: area,
@@ -462,24 +550,28 @@ class SiteContextDialog {
           contourInterval: this.settings.contourInterval,
           labelHeights: this.settings.labelHeights,
           centreLines: this.settings.centreLines,
-          offset,
+          place,
+          earlier: this.earlier,
         },
         run.signal,
         (label, sameStep) => this.step(label, sameStep === true),
       );
       if (run.signal.aborted) throw new Error("cancelled");
-      if (result.features.length === 0) {
-        this.setError("Nothing to import: this area has none of the chosen kinds in OpenStreetMap or a flat terrain. Try a larger area or more kinds.");
+      if (result.features.length === 0 && (result.terrain === null || result.terrain.points.length < 3)) {
+        this.setError("Nothing to import: this area has none of the chosen kinds in OpenStreetMap. Try a larger area or more kinds.");
         this.finishRun();
         return;
       }
       this.step("Writing to the drawing");
-      const written = this.write(area, offset, result);
+      const written = this.write(result, georef, area);
       if (!written) {
         this.finishRun();
         return;
       }
-      siteOverlay.add({ name: written.layerName, layer: written.layerId, ...result.context });
+      // the drawing is placed on the Earth from now on: the next import lines up with this one
+      if (!documentGeoref()) setDocumentGeoref(georef);
+      const { area: _area, ...choices } = this.settings;
+      remembered = { ...choices, kinds: new Set(choices.kinds) };
       setActiveLayer(written.layerId);
       appContext()?.fit();
       this.close();
@@ -504,14 +596,35 @@ class SiteContextDialog {
     return { x: 0, y: 0 };
   }
 
+  /**
+   * The georeferencing that places the import: the drawing's, else a local one through the area's
+   * centre at the origin or the view's centre, true north up.
+   */
+  private georefFor(area: GeoBox): Georef {
+    if (this.known) return this.known;
+    const c = boxCentre(area);
+    const at = this.origin();
+    const base: Georef = { system: "local", lat: c.lat, lon: c.lon, north: 0 };
+    return at.x === 0 && at.y === 0 ? base : georefThrough(base, at, c);
+  }
+
   /** Writes the import in one undo step; the report says what was placed. */
-  private write(area: GeoBox, offset: Pt, result: ImportResult): WriteReport | null {
-    const proj = projectionAt(boxCentre(area));
-    const sw = toMetres(proj, { lat: area.south, lon: area.west });
-    const corner = { x: offset.x + sw.x * 1000, y: offset.y + sw.y * 1000 };
+  private write(result: ImportResult, georef: Georef, area: GeoBox): WriteReport | null {
+    const corner = { x: result.area.x0, y: result.area.y0 };
     const fallbackClass = store.activeClassIndex;
+    const layerPerKind = this.settings.layerPerKind;
     const r = attempt("Import Site Context", (s) =>
-      s.batch(() => writeSiteContext(s, result.features, { layerName: "Site Context", corner, fallbackClass })),
+      s.batch(() => {
+        const report = writeSiteContext(s, result.features, result.terrain, {
+          layerName: "Site Context",
+          corner,
+          fallbackClass,
+          layerPerKind,
+          siteModel: (s2, layerId, classIndex, points, interval) => addSiteModelFrom(s2, layerId, points, { name: "Site Model", classIndex, interval }),
+        });
+        if (report.creditId) keepAnchor(s, report.creditId, georef, area);
+        return report;
+      }),
     );
     if (r) return r.value;
     this.setError("The drawing could not take the context. Nothing was imported.");
@@ -565,18 +678,70 @@ class SiteContextDialog {
   }
 }
 
-/** What is wrong with an area, or "" when it can be imported. */
-function warningFor(box: GeoBox): string {
-  return boxTooLarge(box) ? `The area is larger than ${MAX_SIDE_M / 1000} km × ${MAX_SIDE_M / 1000} km. Draw a smaller one.` : "";
+/** True when two boxes share more than an edge. */
+function overlapping(a: GeoBox, b: GeoBox): boolean {
+  const eps = 1e-9;
+  return a.west < b.east - eps && b.west < a.east - eps && a.south < b.north - eps && b.south < a.north - eps;
 }
 
-/** The toast after an import: what went in, and what had to be simplified. */
+/** What earlier imports wrote into the drawing: the georeferencing they were placed by, and their areas. */
+function storedImports(doc: VwxDocument): { georef: Georef | null; areas: GeoBox[] } {
+  const out: { georef: Georef | null; areas: GeoBox[] } = { georef: null, areas: [] };
+  if (!doc.recordFormats().some((f) => f.name === ANCHOR_FORMAT)) return out;
+  for (const layer of doc.layers()) {
+    for (const o of doc.objects(layer.id)) {
+      const record = doc.records(o.id).find((r) => r.name === ANCHOR_FORMAT);
+      if (!record) continue;
+      const value = (name: string): string | null => {
+        const v = record.fields.find((f) => f.name === name)?.value;
+        return typeof v === "string" ? v : null;
+      };
+      const g = anchorOf(value(ANCHOR_FIELD) ?? "");
+      if (g && !out.georef) out.georef = g;
+      const area = areaOfText(value(AREA_FIELD) ?? "");
+      if (area) out.areas.push(area);
+    }
+  }
+  return out;
+}
+
+/** Writes the georeferencing and the area into a record on the import's credit, for later imports, in any browser, to meet. */
+function keepAnchor(s: EditSession, id: string, g: Georef, area: GeoBox): void {
+  try {
+    const format =
+      s.doc.recordFormats().find((f) => f.name === ANCHOR_FORMAT)?.format ??
+      s.createRecordFormat(ANCHOR_FORMAT, [
+        { name: ANCHOR_FIELD, kind: "text", value: "" },
+        { name: AREA_FIELD, kind: "text", value: "" },
+      ]);
+    s.attachRecords([{ id, format, fields: { [ANCHOR_FIELD]: anchorText(g), [AREA_FIELD]: areaText(area) } }]);
+  } catch {
+    // a drawing that can't take the record keeps its georeferencing in this browser only
+  }
+}
+
+/**
+ * The toast after an import: what went in, and what had to be simplified, as parts joined by "; ",
+ * each translated here: shown whole, "Imported {0} objects{1}{2}" would take it as one text.
+ */
 function summary(r: WriteReport): string {
   const placed = Object.values(r.placed).reduce((n, v) => n + (v ?? 0), 0);
-  const parts = [`Imported ${placed} ${placed === 1 ? "object" : "objects"} onto "${r.layerName}".`];
-  if (r.circlesAsPolygons > 0) parts.push(`${r.circlesAsPolygons} tree circles drawn as polygons (no circle in this file).`);
-  if (r.outlinesSimplified > 0) parts.push("Some outlines drawn as lines (no polygon in this file).");
-  if (r.skipped > 0) parts.push(`${r.skipped} skipped.`);
-  return parts.join(" ");
+  const parts = [
+    r.layers.length > 1
+      ? `Imported ${placed} ${placed === 1 ? "object" : "objects"} onto ${r.layers.length} layers`
+      : `Imported ${placed} ${placed === 1 ? "object" : "objects"} onto "${r.layerName}"`,
+  ];
+  const built = r.buildings3d;
+  if (built > 0) parts.push(`${built} ${built === 1 ? "building stands" : "buildings stand"} in 3D on the ground`);
+  const guessed = r.heightsGuessed;
+  if (guessed > 0) parts.push(`${guessed} ${guessed === 1 ? "has" : "have"} no height in OpenStreetMap, so ${guessed === 1 ? "it is" : "they are"} ${DEFAULT_BUILDING_M} m tall`);
+  const flat = r.buildingsFlat;
+  if (flat > 0) parts.push(`${flat} ${flat === 1 ? "building stays" : "buildings stay"} flat: this drawing can't make extrudes`);
+  if (r.terrain === "site model") parts.push("the terrain is a site model");
+  if (r.terrain === "contours") parts.push("the terrain is drawn as contour lines: this drawing can't take a site model");
+  if (r.circlesAsPolygons > 0) parts.push(`${r.circlesAsPolygons} tree circles drawn as polygons (no circle in this file)`);
+  if (r.outlinesSimplified > 0) parts.push("some outlines drawn as lines (no polygon in this file)");
+  if (r.skipped > 0) parts.push(`${r.skipped} skipped`);
+  return tJoined(parts);
 }
 

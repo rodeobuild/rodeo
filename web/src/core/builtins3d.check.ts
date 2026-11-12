@@ -77,6 +77,15 @@ function run(label: string, bytes: Uint8Array): void {
   s.moveObjects3D([hole], 0, 0, 900);
   const cut = s.combineSolids([wall, hole], true);
   const [ring] = s.sweepObjects([s.addObject(layer, { kind: "rect", x0: 6000, y0: 0, x1: 6500, y1: 1000 })], 360, 15);
+  // two blocks in one change, each with its own height and the ground it stands on
+  const pair = [
+    s.addObject(layer, { kind: "rect", x0: 12000, y0: 0, x1: 13000, y1: 1000 }),
+    s.addObject(layer, { kind: "polygon", points: [{ x: 14000, y: 0 }, { x: 15000, y: 0 }, { x: 15000, y: 1000 }], closed: true }),
+  ];
+  const [tall, low] = s.extrudeObjects(pair, 1000, new Map([
+    [pair[0], { height: 9600, base: 1500 }],
+    [pair[1], { height: 3200, base: -400 }],
+  ]));
 
   const again = openVwx(s.doc.toBytes(), `${label}-saved.vwx`);
   const m = extent(again, mesh);
@@ -96,6 +105,10 @@ function run(label: string, bytes: Uint8Array): void {
   const c = extent(again, cut);
   check(!!c && near(c.lo, [0, 3000, elevation]) && near(c.hi, [4000, 3300, elevation + 2500]), `${label}: the wall with its window cut reopens where it was`);
   check(!!c && c.triangles > 12, `${label}: the window hole shows in 3D (${c?.triangles} triangles)`);
+  const t = extent(again, tall);
+  check(!!t && near(t.lo, [12000, 0, elevation + 1500]) && near(t.hi, [13000, 1000, elevation + 11100]), `${label}: an extrude made with its own height and base reopens there`);
+  const l = extent(again, low);
+  check(!!l && near(l.lo, [14000, 0, elevation - 400]) && near(l.hi, [15000, 1000, elevation + 2800]), `${label}: and the other with its own`);
   const r = extent(again, ring);
   check(!!r && r.triangles > 0 && Math.abs(r.hi[2] - r.lo[2] - 1000) < 1e-3, `${label}: the sweep reopens and shows in 3D (${r?.triangles} triangles)`);
 }

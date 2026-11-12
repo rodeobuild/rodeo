@@ -1,10 +1,9 @@
 // Site Context: File > Import Site Context… (a map dialog that brings real-world context into the
-// drawing at true scale), View > Show Site Context in 3D (the imported buildings and terrain over the
-// 3D view, kept in memory and never saved), and the per-drawing reset of that overlay.
+// drawing at true scale, placed by the drawing's georeferencing): buildings standing in 3D, the
+// terrain as a site model, and roads, paths, rail, water, green spaces, trees and facilities.
 
-import { documentSource, on3d, onDocument, registerMenu } from "../../app/ext.ts";
+import { documentSource, registerMenu } from "../../app/ext.ts";
 import { store } from "../../app/state.ts";
-import { siteOverlay } from "./overlay3d.ts";
 
 registerMenu("File › Import", () => [
   {
@@ -14,17 +13,3 @@ registerMenu("File › Import", () => [
     run: () => void import("./dialog.ts").then((m) => m.openSiteContextDialog()),
   },
 ]);
-
-registerMenu("View", () => [
-  {
-    label: "Show Site Context in 3D",
-    enabled: () => store.session !== null,
-    checked: () => siteOverlay.on,
-    run: () => siteOverlay.setShown(!siteOverlay.on),
-  },
-], { after: "Set Lighting Options…" });
-
-on3d((v) => siteOverlay.attach(v));
-
-// the imported context belongs to the drawing it was imported into
-onDocument(() => siteOverlay.reset());

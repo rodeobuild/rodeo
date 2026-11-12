@@ -808,15 +808,37 @@ export function uniqueName(doc: VwxDocument, wanted: string, own?: string): stri
   for (let n = 2; ; n++) if (!taken.has(`${wanted} ${n}`)) return `${wanted} ${n}`;
 }
 
-function addModel(s: EditSession, layerId: string, asked: Asked, source: readonly Pt3[], border: readonly Pt[] | null): string {
+function addModel(s: EditSession, layerId: string, asked: Asked, source: readonly Pt3[], border: readonly Pt[] | null, classIndex = store.activeClassIndex): string {
   const specs = specsOf(asked.values, packPoints(source), border ? packPoints(border.map((p) => [p.x, p.y])) : "");
-  const id = s.addPluginObject(layerId, SITE_MODEL, specs, Object.fromEntries(specs.map((f) => [f.name, f.value])), { x: 0, y: 0 }, 0, store.activeClassIndex);
+  const id = s.addPluginObject(layerId, SITE_MODEL, specs, Object.fromEntries(specs.map((f) => [f.name, f.value])), { x: 0, y: 0 }, 0, classIndex);
   const m = modelOf(s.doc, id, layerId);
   if (!m) throw new Error("The site model couldn't be made.");
   s.setObjectName(id, uniqueName(s.doc, asked.name || "Site Model", id));
   // it starts with the modifiers already in the drawing
   bringUp(s, m);
   return id;
+}
+
+/**
+ * A site model through `source` (x, y, z in mm, z above the layer) with the settings Site Model from
+ * Source Data starts with, for File › Import Site Context: named `name`, in class `classIndex`, its
+ * minor contours every `interval` mm when given. Call it inside a batch. Its id; throws when the
+ * points make no surface.
+ */
+export function addSiteModelFrom(s: EditSession, layerId: string, source: readonly Pt3[], options: { name: string; classIndex: number; interval?: number }): string {
+  const surface = surfaceOf(source);
+  if (!surface) throw new Error("A site model takes at least three points, not all in a line.");
+  const values = defaults(s, surface);
+  const interval = options.interval;
+  if (interval !== undefined && interval > 0) {
+    const range = heightRange(surface);
+    const min = Math.floor(range.min / interval) * interval - interval;
+    values[FIELD.interval] = interval;
+    values[FIELD.min] = min;
+    values[FIELD.max] = Math.ceil(range.max / interval) * interval;
+    values[FIELD.datum] = Math.min(0, min);
+  }
+  return addModel(s, layerId, { name: options.name, keep: true, values }, source, null, options.classIndex);
 }
 
 export function selectedTop(doc: VwxDocument): ObjectInfo[] {

@@ -7603,20 +7603,25 @@ export class Session implements EditSession {
     return { head: tpl.data.slice(0, MESH_VERTS), face: plainFace(tpl)!.data.slice(0, FACE_CORNERS), term: tpl.children.at(-1)!.data.slice() };
   }
 
-  extrudeObjects(ids: string[], height: number): string[] {
+  extrudeObjects(ids: string[], height: number, each?: ReadonlyMap<string, { readonly height: number; readonly base: number }>): string[] {
     if (!Number.isFinite(height) || height <= 0) throw new Error("the extrusion must be more than 0");
+    for (const e of each?.values() ?? []) {
+      if (!Number.isFinite(e.height) || e.height <= 0) throw new Error("the extrusion must be more than 0");
+      if (!Number.isFinite(e.base)) throw new Error("the extrusion's base must be a finite number");
+    }
     const recs = this.topmost(ids).filter((r) => extrudable(r));
     if (!recs.length) throw new Error("only rectangles, polygons, polylines, circles and ellipses can be extruded");
     const shell = this.extrudeShell();
     const p = this.plan();
     const out: string[] = [];
     for (const r of recs) {
+      const own = each?.get(r.guid);
       const made = this.instantiate(shell, r.owner);
       const d = made[0];
       const term = made[made.length - 1];
-      standExtrude(made, r, decodeShape(r)!.bbox!, height);
-      // standing on its layer, at its elevation
-      liftRecord(d, EXTRUDE, layerElevationOf(r));
+      standExtrude(made, r, decodeShape(r)!.bbox!, own?.height ?? height);
+      // standing on its layer, at its elevation, or its own base above that
+      liftRecord(d, EXTRUDE, layerElevationOf(r) + (own?.base ?? 0));
       if (!r.hasNext) setNext(d, false);
       const profile = p.cur(r.index).slice();
       setOwner(profile, u64(term, 0x26));

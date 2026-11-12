@@ -22,6 +22,18 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-11T12:40:00Z",
+    "site-context-3d",
+    "Site Context in 3D, saved with the drawing",
+    `File › Import › Import Site Context… now puts real 3D into the drawing, and bigger places come in as parts that line up.
+- Buildings stand as extrudes at their height from OpenStreetMap, each on the ground under it. The message at the end says how many have no height there and stand at 6 m.
+- The terrain is a site model, with its contours every 1, 2, 5 or 10 m in metres above sea level, in plan and in 3D.
+- Choose one layer with a class for each kind, or a layer for each kind: terrain, buildings, roads, paths, rail, water, green spaces, trees and facilities.
+- The drawing's georeferencing places each import, and the first one sets it. Earlier imports show on the map and a new area snaps to their edges, so a place bigger than 2 km comes in as parts that meet, each building once.
+- What was a 3D preview that left with the page is now in the file, so it saves, opens again and renders like the rest of the drawing.`,
+    "site",
+  ),
+  release(
     "2026-11-11T12:30:00Z",
     "feedback-fixes",
     "Keys in fields, textures on stands, files that wouldn't open",

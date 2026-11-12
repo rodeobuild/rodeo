@@ -43,7 +43,7 @@ export async function fetchOverpass(query: string, signal: AbortSignal): Promise
   });
   if (!res.ok) {
     throw new Error(
-      res.status === 429 || res.status === 504
+      res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504
         ? `The OpenStreetMap server is busy (HTTP ${res.status}). Try again in a minute, or pick a smaller area.`
         : `OpenStreetMap data could not be fetched (HTTP ${res.status}).`,
     );

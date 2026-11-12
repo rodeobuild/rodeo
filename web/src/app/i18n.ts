@@ -256,6 +256,17 @@ export function t(text: string): string {
   return translated(text) ?? text;
 }
 
+/**
+ * A message of `parts` joined by "; " with a full stop, each part in the interface's language and joined
+ * as its messages are ("；" and "。" where its colon is wide). For a message whose start an older, looser
+ * pattern would take whole ("Imported {0} objects{1}{2}" would swallow the parts after it).
+ */
+export function tJoined(parts: readonly string[]): string {
+  const wide = current.colon === "：";
+  const each = parts.map((part) => t(part).replace(/。$|(?<!\.)\.$/, ""));
+  return `${each.join(wide ? "；" : "; ")}${wide ? "。" : "."}`;
+}
+
 /** in development, the text the language had nothing for, as the page showed it: openvwxMissingText() lists it */
 const missed = import.meta.env.DEV ? new Set<string>() : null;
 if (missed) (globalThis as { openvwxMissingText?: () => string[] }).openvwxMissingText = () => [...missed];

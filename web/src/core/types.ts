@@ -2111,10 +2111,11 @@ export interface EditSession {
    * Model > Extrude: each rectangle, rounded rectangle, polygon, polyline, circle or ellipse becomes
    * an extrude `height` (mm) tall standing on its layer, holding the shape as its profile and taking
    * its class, attributes and material; other objects stay as they are. A drawing with no extrude
-   * of its own to copy settings from gets a built-in one. The extrudes' ids; throws when none of
-   * them can be extruded.
+   * of its own to copy settings from gets a built-in one. `each` gives a shape (by id) its own
+   * height and a base (mm above its layer) to stand on instead, so many heights are one change.
+   * The extrudes' ids; throws when none of them can be extruded.
    */
-  extrudeObjects(ids: string[], height: number): string[];
+  extrudeObjects(ids: string[], height: number, each?: ReadonlyMap<string, { readonly height: number; readonly base: number }>): string[];
   /**
    * Model > Tapered Extrude: each rectangle, rounded rectangle, polygon, polyline, circle or ellipse
    * replaced by a mesh `height` (mm) tall standing on its layer, its sides leaning in by `taper`

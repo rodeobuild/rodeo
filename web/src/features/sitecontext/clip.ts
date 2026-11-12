@@ -1,10 +1,14 @@
 // Trims the OpenStreetMap features to the chosen area. Overpass answers with every way that
 // touches the box, whole: a river or a long road can run on for kilometres past it. Areas
 // (water, green space) and lines are cut at the box's edge; buildings stay whole, since half a
-// building is no use as context; trees, facilities and labels outside it are dropped.
+// building is no use as context; trees, facilities and labels outside it are dropped. Which
+// buildings and points are the area's own can be decided by `owns` (by latitude and longitude, so
+// two areas side by side share out the buildings on their edge, and one drawn over an earlier
+// import leaves out what that brought in).
 
 import type { Pt } from "../../core/index.ts";
 import type { SiteFeature, SiteGeom } from "./model.ts";
+import { polygonCentroid } from "./shapes.ts";
 
 export interface Rect {
   readonly x0: number;
@@ -92,7 +96,7 @@ export function clipPolyline(points: readonly Pt[], r: Rect): Pt[][] {
   return pieces;
 }
 
-function clipGeom(geom: SiteGeom, r: Rect): SiteGeom[] {
+function clipGeom(geom: SiteGeom, r: Rect, owns: (p: Pt) => boolean): SiteGeom[] {
   switch (geom.kind) {
     case "polygon": {
       const points = clipPolygon(geom.points, r);
@@ -106,19 +110,24 @@ function clipGeom(geom: SiteGeom, r: Rect): SiteGeom[] {
     }
     case "circle":
     case "label":
-      return inside(r, geom.at) ? [geom] : [];
+      return inside(r, geom.at) && owns(geom.at) ? [geom] : [];
   }
 }
 
-/** The features cut to the rectangle (world millimetres). */
-export function clipFeatures(features: readonly SiteFeature[], r: Rect): SiteFeature[] {
+/**
+ * The features cut to the rectangle (world millimetres). A building is kept whole when its centre
+ * is in the rectangle and `owns` it; a point when it is in the rectangle and `owns` it.
+ */
+export function clipFeatures(features: readonly SiteFeature[], r: Rect, owns: (p: Pt) => boolean = () => true): SiteFeature[] {
   const out: SiteFeature[] = [];
   for (const f of features) {
     if (f.cat === "buildings") {
-      out.push(f);
+      const g = f.geom;
+      const centre = g.kind === "polygon" ? polygonCentroid(g.points) : g.kind === "polyline" ? g.points[0] : g.at;
+      if (centre && inside(r, centre) && owns(centre)) out.push(f);
       continue;
     }
-    for (const geom of clipGeom(f.geom, r)) out.push({ ...f, geom });
+    for (const geom of clipGeom(f.geom, r, owns)) out.push({ ...f, geom });
   }
   return out;
 }
