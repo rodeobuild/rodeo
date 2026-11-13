@@ -9624,7 +9624,7 @@
   "Palettes": "Paletler",
   "Palettes (ticked ones show in the colour pickers)": "Paletler (işaretli olanlar renk seçicilerde görünür)",
   "Palettes and views that work the way newer versions of Vectorworks do.": "Vectorworks'ün yeni sürümlerindeki gibi çalışan paletler ve görünümler.",
-  "Pan": "Tava başlı",
+  "Pan": "Kaydır",
   "Pan Head": "Tava baş",
   "Pan Head Machine Screw": "Tava başlı makine vidası",
   "Pan Left/Right": "Sola/sağa kaydırma",
@@ -18536,5 +18536,17 @@
   "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Çizgi, Dikdörtgen, Daire, Yay, Çokgen ve diğer 2B araçlar, 3B görünümde tıkladığınız yerde etkin katmanın düzlemine önizleme, yakalama ve veri çubuğuyla çizer.",
   "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Ekstrüze dikdörtgen, Silindir, Küre ve Koni de tabanlarını orada çizer; İt/çek çizdiğinizi yükseltir.",
   "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Bir çizim aracı seçiliyken orta düğme görünümü döndürür ve 2B nesneler katmanlarının düzleminde çizgi olarak görünür.",
-  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "SketchUp görünümü bir çizimi gökyüzü ve eksenleriyle tek bir perspektif 3B görünümde açar; 3 plana gider ve geri döner."
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "SketchUp görünümü bir çizimi gökyüzü ve eksenleriyle tek bir perspektif 3B görünümde açar; 3 plana gider ve geri döner.",
+  "Click an element or draw a selection area.": "Bir öğeye tıklayın veya bir seçim alanı çizin.",
+  "Enter first node of PolyWall": "PolyWall için ilk düğümü girin",
+  "Enter next node of PolyWall": "PolyWall için sonraki düğümü girin",
+  "Click to select, TAB for alternates, CTRL adds, SHIFT unselects.": "Seçmek için tıklayın, alternatifler için TAB, eklemek için CTRL, seçimi kaldırmak için SHIFT.",
+  "Click on Wall to place Door (Space bar to flip the instance left/right)": "Kapı yerleştirmek için duvara tıklayın (Boşluk tuşu öğeyi sola/sağa çevirir)",
+  "Work Like: each application's words, in your language too": "Gibi çalış: her uygulamanın kendi sözcükleri, dilinizde de",
+  "The looks now use more of each application's own words, and in other languages the words that application's own version uses.": "Modlar artık her uygulamanın kendi sözcüklerini daha çok kullanıyor; diğer dillerde ise o uygulamanın kendi sürümünün kullandığı sözcükleri kullanıyor.",
+  "AutoCAD's command-line prompts and status bar come out as its German, French, Spanish, Italian, Japanese, Korean, Polish, Portuguese, Russian and Chinese versions write them (French \"Choix des objets:\", Japanese \"基点を指定:\").": "AutoCAD'in komut satırı istemleri ve durum çubuğu, Almanca, Fransızca, İspanyolca, İtalyanca, Japonca, Korece, Lehçe, Portekizce, Rusça ve Çince sürümlerinin yazdığı şekilde görünür (Fransızca \"Choix des objets:\", Japonca \"基点を指定:\").",
+  "Revit's ribbon and SketchUp's tools and status bar use their own localised words where their help gives them (German Revit \"Erstellen\", German SketchUp \"Hand\").": "Revit'in şeridi ile SketchUp'ın araçları ve durum çubuğu, yardımlarının verdiği yerlerde kendi yerelleştirilmiş sözcüklerini kullanır (Almanca Revit \"Erstellen\", Almanca SketchUp \"Hand\").",
+  "Revit's status bar says \"Click to select, TAB for alternates, CTRL adds, SHIFT unselects.\" and its door prompt; Archicad's says \"Click an element or draw a selection area.\" and \"Enter first node of PolyWall\", and writes the other steps as sentences.": "Revit'in durum çubuğu \"Seçmek için tıklayın, alternatifler için TAB, eklemek için CTRL, seçimi kaldırmak için SHIFT.\" diyor ve kapı istemi; Archicad'inki \"Bir öğeye tıklayın veya bir seçim alanı çizin.\" ve \"PolyWall için ilk düğümü girin\" diyor, diğer adımları ise cümle olarak yazıyor.",
+  "Pan now reads as the view tool in every language (it read as a screw head); the screw tools call that head Pan Head.": "Kaydır artık her dilde görünüm aracı olarak okunuyor (daha önce vida başı gibi okunuyordu); vida araçları o başa Tava baş adını veriyor.",
+  "Rhino's status bar and OSnap panel use the words of its German, French, Spanish, Italian, Japanese, Korean and Chinese versions (German \"Ofang\", \"Punkt\", Japanese \"作業平面\").": "Rhino'nun durum çubuğu ve OSnap paneli; Almanca, Fransızca, İspanyolca, İtalyanca, Japonca, Korece ve Çince sürümlerindeki sözcükleri kullanır (Almanca \"Ofang\", \"Punkt\", Japonca \"作業平面\")."
 }

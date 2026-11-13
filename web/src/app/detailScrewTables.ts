@@ -737,7 +737,7 @@ export type WoodHead = "flat" | "oval" | "pan" | "round";
 export const WOOD_HEADS: readonly { readonly value: WoodHead; readonly label: string }[] = [
   { value: "flat", label: "Flat Countersunk" },
   { value: "oval", label: "Oval Countersunk" },
-  { value: "pan", label: "Pan" },
+  { value: "pan", label: "Pan Head" },
   { value: "round", label: "Round" },
 ];
 
@@ -871,7 +871,7 @@ export const TAP_HEADS: readonly { readonly value: TapHead; readonly label: stri
   { value: "flat", label: "Flat" },
   { value: "oval", label: "Oval" },
   { value: "truss", label: "Truss" },
-  { value: "pan", label: "Pan" },
+  { value: "pan", label: "Pan Head" },
   { value: "hex", label: "Hex" },
   { value: "hexWasher", label: "Hex Washer" },
 ];

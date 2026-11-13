@@ -196,21 +196,33 @@ function load(entries: Record<string, string>): void {
  * View › Work Like's words (looks/looks.ts): the application a look works like calls some of Rodeo's
  * texts otherwise ("Object Info" is Revit's "Properties"), and its word shows in their place, in
  * English or, where the language's file has it, in the language (else the language's word for
- * Rodeo's text). Whole texts only, as the language's words are.
+ * Rodeo's text). Whole texts only, as the language's words are. In a language, a look's own word
+ * is first looked up under its name ("Revit › Build": Revit's word for a Rodeo text, as the
+ * application words it in that language, from the language's file), and then the language's own word.
  */
 let terms = new Map<string, string>();
+/** the look's display name ("Revit"), null for Rodeo's own look: the prefix of its words in the language's file */
+let termsName: string | null = null;
 
 /** A text's word: a look's, in the language where it can be, else the language's own. */
 function entry(key: string): string | undefined {
   const term = terms.get(key);
+  if (current.code !== "en" && termsName !== null) {
+    const own = words.get(`${termsName} › ${term ?? key}`);
+    if (own !== undefined) return own;
+  }
   if (term === undefined) return words.get(key);
   return current.code === "en" ? term : (words.get(term) ?? words.get(key) ?? term);
 }
 
-/** Swaps in a look's words for Rodeo's (null: Rodeo's own again), on the page now and from now on. */
-export function setTerms(next: Readonly<Record<string, string>> | null): void {
+/**
+ * Swaps in a look's words for Rodeo's (null: Rodeo's own again), on the page now and from now on.
+ * `name` is the look's display name ("Revit"), which its words in a language are filed under; null for Rodeo's own look.
+ */
+export function setTerms(next: Readonly<Record<string, string>> | null, name: string | null = null): void {
   const had = terms.size > 0;
   terms = new Map(Object.entries(next ?? {}));
+  termsName = name;
   memo = new Map();
   if (current.code !== "en") {
     retranslateTree(document.body);

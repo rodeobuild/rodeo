@@ -155,7 +155,10 @@ export type StatusItem =
   | {
       readonly kind: "hint";
       readonly style?: "sentences";
-      /** the application's own words for a step, by the hint's first part (before " · "): Revit's "Click to enter wall start point." */
+      /**
+       * the application's own words for a step, by the hint's first part (before " · "): Revit's "Click to enter wall start point.";
+       * a * in a key stands for any words ("Click a * wall where the door's middle goes")
+       */
       readonly prompts?: Readonly<Record<string, string>>;
     }
   /** the cursor's position in the drawing */

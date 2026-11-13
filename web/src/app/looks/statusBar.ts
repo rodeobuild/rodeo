@@ -67,13 +67,26 @@ export function mountStatusBar(into: HTMLElement, spec: StatusBarSpec, modeBar: 
   };
 }
 
+/** A look's own words for a hint's first part: its key as it is, else a key whose * stands for any words ("Click a * wall where…"). */
+function promptFor(prompts: Readonly<Record<string, string>> | undefined, first: string): string | undefined {
+  if (!prompts) return undefined;
+  const exact = prompts[first];
+  if (exact !== undefined) return exact;
+  for (const [key, value] of Object.entries(prompts)) {
+    if (!key.includes("*")) continue;
+    const pattern = key.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".+");
+    if (new RegExp(`^${pattern}$`).test(first)) return value;
+  }
+  return undefined;
+}
+
 /** One status item, kept current by the store topics it reads; its off-calls go into `offs`. Exported for side panels (sidePanel.ts). */
 export function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
   switch (it.kind) {
     case "hint": {
       const el = h("span", { cls: "lk-st-hint" });
       const show = (): void => {
-        const own = it.prompts?.[store.hint.split(" · ")[0]];
+        const own = promptFor(it.prompts, store.hint.split(" · ")[0]);
         const text = own ?? (it.style === "sentences" ? sentences(store.hint) : store.hint);
         el.textContent = text;
         el.title = text;

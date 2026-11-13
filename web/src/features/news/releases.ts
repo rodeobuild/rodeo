@@ -22,6 +22,18 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T21:30:00Z",
+    "work-like-words",
+    "Work Like: each application's words, in your language too",
+    `The looks now use more of each application's own words, and in other languages the words that application's own version uses.
+- AutoCAD's command-line prompts and status bar come out as its German, French, Spanish, Italian, Japanese, Korean, Polish, Portuguese, Russian and Chinese versions write them (French "Choix des objets:", Japanese "基点を指定:").
+- Revit's ribbon and SketchUp's tools and status bar use their own localised words where their help gives them (German Revit "Erstellen", German SketchUp "Hand").
+- Rhino's status bar and OSnap panel use the words of its German, French, Spanish, Italian, Japanese, Korean and Chinese versions (German "Ofang", "Punkt", Japanese "作業平面").
+- Revit's status bar says "Click to select, TAB for alternates, CTRL adds, SHIFT unselects." and its door prompt; Archicad's says "Click an element or draw a selection area." and "Enter first node of PolyWall", and writes the other steps as sentences.
+- Pan now reads as the view tool in every language (it read as a screw head); the screw tools call that head Pan Head.`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T20:30:00Z",
     "draw-in-3d",
     "Draw in the 3D view",

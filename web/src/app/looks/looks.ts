@@ -314,7 +314,7 @@ async function putUp(chosen: LookSpec): Promise<void> {
   // AutoCAD's document tabs begin with a Start tab (docTabs.ts draws it while this is set)
   if (look.startTab) root.dataset.lkStartTab = "on";
   else delete root.dataset.lkStartTab;
-  setTerms(look.id === "rodeo" ? null : look.terms);
+  setTerms(look.id === "rodeo" ? null : look.terms, look.id === "rodeo" ? null : look.name);
   setLookMenus(menusOf(look));
   window.dispatchEvent(new Event("rodeo:menus"));
   h0.palettes.setRails(look.rails);

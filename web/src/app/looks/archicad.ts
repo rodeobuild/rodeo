@@ -13,6 +13,13 @@ function button(label: string, c: Command, icon?: string): LookButton {
   return icon ? { label, do: c, icon } : { label, do: c };
 }
 
+/** Archicad's status bar words for the steps of the tools it shares with Rodeo, by Rodeo's hint's first part. */
+const ARCHICAD_PROMPTS: Readonly<Record<string, string>> = {
+  "Click or drag a box to select": "Click an element or draw a selection area.",
+  "Click the wall's start, or a wall's end or side to join it": "Enter first node of PolyWall",
+  "Click the next corner, or a wall to join": "Enter next node of PolyWall",
+};
+
 export const look: LookSpec = {
   id: "archicad",
   name: "Archicad",
@@ -313,7 +320,7 @@ export const look: LookSpec = {
   // the Info Box: captioned panels (Main, then each of the tool's mode groups)
   modeFields: "panels",
   // the status bar at the window's foot, where Archicad prompts the next step ("Enter First Node of PolyWall")
-  statusBar: { rows: [[{ kind: "hint" }, { kind: "spacer" }]] },
+  statusBar: { rows: [[{ kind: "hint", style: "sentences", prompts: ARCHICAD_PROMPTS }, { kind: "spacer" }]] },
   // the Quick Options under the drawing in place of Rodeo's view bar
   viewBar: "hidden",
   viewControl: "archicad",

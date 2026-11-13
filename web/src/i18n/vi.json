@@ -9579,7 +9579,7 @@
   "Palettes": "Bảng",
   "Palettes (ticked ones show in the colour pickers)": "Bảng màu (bảng được chọn sẽ hiện trong bộ chọn màu)",
   "Palettes and views that work the way newer versions of Vectorworks do.": "Bảng và góc nhìn hoạt động như trong các phiên bản Vectorworks mới hơn.",
-  "Pan": "Đầu dù",
+  "Pan": "Kéo khung nhìn",
   "Pan Head": "Đầu tròn dẹt",
   "Pan Head Machine Screw": "Vít máy đầu chảo",
   "Pan Left/Right": "Pan trái/phải",
@@ -18461,5 +18461,17 @@
   "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Đường thẳng, Hình chữ nhật, Đường tròn, Cung tròn, Đa giác và các công cụ 2D khác vẽ trên mặt phẳng của layer đang hoạt động tại chỗ bạn nhấp trong khung nhìn 3D, kèm bản xem trước, bắt điểm và thanh dữ liệu.",
   "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Hình chữ nhật đùn, Hình trụ, Hình cầu và Hình nón cũng vẽ đáy của chúng ở đó, và Đẩy/Kéo nâng những gì bạn đã vẽ lên.",
   "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Khi một công cụ vẽ đang được chọn, nút giữa xoay quanh khung nhìn và các đối tượng 2D hiện thành đường trên mặt phẳng của layer chứa chúng.",
-  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Giao diện SketchUp mở bản vẽ trong một khung nhìn 3D phối cảnh duy nhất, có bầu trời và các trục; phím 3 chuyển sang mặt bằng và quay lại."
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Giao diện SketchUp mở bản vẽ trong một khung nhìn 3D phối cảnh duy nhất, có bầu trời và các trục; phím 3 chuyển sang mặt bằng và quay lại.",
+  "Click an element or draw a selection area.": "Nhấp vào phần tử hoặc vẽ vùng chọn.",
+  "Enter first node of PolyWall": "Nhập nút đầu tiên của PolyWall",
+  "Enter next node of PolyWall": "Nhập nút tiếp theo của PolyWall",
+  "Click to select, TAB for alternates, CTRL adds, SHIFT unselects.": "Nhấp để chọn, TAB để xem phương án khác, CTRL để thêm, SHIFT để bỏ chọn.",
+  "Click on Wall to place Door (Space bar to flip the instance left/right)": "Nhấp vào tường để đặt cửa đi (phím cách để lật thể hiện trái/phải)",
+  "Work Like: each application's words, in your language too": "Làm việc như: từ ngữ riêng của từng ứng dụng, cả bằng ngôn ngữ của bạn",
+  "The looks now use more of each application's own words, and in other languages the words that application's own version uses.": "Các kiểu làm việc nay dùng nhiều từ riêng của từng ứng dụng hơn, và ở các ngôn ngữ khác thì dùng những từ mà bản địa hóa của ứng dụng đó dùng.",
+  "AutoCAD's command-line prompts and status bar come out as its German, French, Spanish, Italian, Japanese, Korean, Polish, Portuguese, Russian and Chinese versions write them (French \"Choix des objets:\", Japanese \"基点を指定:\").": "Dòng lệnh và thanh trạng thái AutoCAD hiển thị như cách các phiên bản tiếng Đức, Pháp, Tây Ban Nha, Ý, Nhật, Hàn, Ba Lan, Bồ Đào Nha, Nga và Trung viết (tiếng Pháp \"Choix des objets:\", tiếng Nhật \"基点を指定:\").",
+  "Revit's ribbon and SketchUp's tools and status bar use their own localised words where their help gives them (German Revit \"Erstellen\", German SketchUp \"Hand\").": "Ruy-băng của Revit và công cụ cùng thanh trạng thái của SketchUp dùng từ bản địa hóa riêng ở những chỗ trợ giúp của chúng có đưa ra (Revit tiếng Đức \"Erstellen\", SketchUp tiếng Đức \"Hand\").",
+  "Revit's status bar says \"Click to select, TAB for alternates, CTRL adds, SHIFT unselects.\" and its door prompt; Archicad's says \"Click an element or draw a selection area.\" and \"Enter first node of PolyWall\", and writes the other steps as sentences.": "Thanh trạng thái của Revit ghi \"Click to select, TAB for alternates, CTRL adds, SHIFT unselects.\" và lời nhắc cửa; của Archicad ghi \"Click an element or draw a selection area.\" và \"Enter first node of PolyWall\", còn các bước khác được viết thành câu.",
+  "Pan now reads as the view tool in every language (it read as a screw head); the screw tools call that head Pan Head.": "«Kéo khung nhìn» giờ được hiểu là công cụ xem trong mọi ngôn ngữ (trước đây bị hiểu là đầu vít); các công cụ vít gọi đầu đó là «Đầu tròn dẹt».",
+  "Rhino's status bar and OSnap panel use the words of its German, French, Spanish, Italian, Japanese, Korean and Chinese versions (German \"Ofang\", \"Punkt\", Japanese \"作業平面\").": "Thanh trạng thái và bảng OSnap của Rhino dùng các từ trong bản tiếng Đức, Pháp, Tây Ban Nha, Ý, Nhật, Hàn và Trung của phần mềm (tiếng Đức \"Ofang\", \"Punkt\", tiếng Nhật \"作業平面\")."
 }

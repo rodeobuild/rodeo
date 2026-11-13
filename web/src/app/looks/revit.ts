@@ -399,6 +399,8 @@ const REVIT_PROMPTS: Readonly<Record<string, string>> = {
   "Click the wall's start, or a wall's end or side to join it": "Click to enter wall start point.",
   "Click the next corner, or a wall to join": "Click to enter wall end point.",
   "Click or drag to draw a line": "Click to enter line start point.",
+  "Click or drag a box to select": "Click to select, TAB for alternates, CTRL adds, SHIFT unselects.",
+  "Click a * wall where the door's middle goes": "Click on Wall to place Door (Space bar to flip the instance left/right)",
   "Click the point to move from": "Click to enter move start point.",
   "Click the point to move to": "Click to enter move end point.",
 };

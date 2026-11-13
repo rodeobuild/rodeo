@@ -9654,7 +9654,7 @@
   "Palettes": "Палітри",
   "Palettes (ticked ones show in the colour pickers)": "Палітри (позначені показуються у виборі кольору)",
   "Palettes and views that work the way newer versions of Vectorworks do.": "Палітри й вигляди працюють так, як у новіших версіях Vectorworks.",
-  "Pan": "Напівкругла",
+  "Pan": "Панорамування",
   "Pan Head": "Циліндрична голівка",
   "Pan Head Machine Screw": "Машинний гвинт із плоскою округленою головкою",
   "Pan Left/Right": "Панорамування ліворуч/праворуч",
@@ -18599,5 +18599,17 @@
   "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Лінія, Прямокутник, Коло, Дуга, Багатокутник та інші 2D-інструменти малюють на площині активного шару там, де ви клацаєте в 3D-вигляді, з попереднім переглядом, прив'язкою та рядком даних.",
   "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Видавлений прямокутник, Циліндр, Куля та Конус теж малюють там свої основи, а Тягни/штовхай піднімає намальоване.",
   "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Поки вибрано інструмент малювання, середня кнопка обертає вигляд, а 2D-об'єкти показуються лініями на площині свого шару.",
-  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Вигляд SketchUp відкриває креслення в одному 3D-вигляді в перспективі, з небом і осями; клавіша 3 перемикає на план і назад."
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Вигляд SketchUp відкриває креслення в одному 3D-вигляді в перспективі, з небом і осями; клавіша 3 перемикає на план і назад.",
+  "Click an element or draw a selection area.": "Клацніть елемент або проведіть область вибору.",
+  "Enter first node of PolyWall": "Введіть перший вузол PolyWall",
+  "Enter next node of PolyWall": "Введіть наступний вузол PolyWall",
+  "Click to select, TAB for alternates, CTRL adds, SHIFT unselects.": "Клацніть, щоб вибрати, TAB для інших варіантів, CTRL додає, SHIFT знімає вибір.",
+  "Click on Wall to place Door (Space bar to flip the instance left/right)": "Клацніть стіну, щоб розмістити двері (пробіл — відобразити екземпляр ліворуч/праворуч)",
+  "Work Like: each application's words, in your language too": "Працювати як: слова кожного застосунку, зокрема вашою мовою",
+  "The looks now use more of each application's own words, and in other languages the words that application's own version uses.": "Режими тепер використовують більше власних слів кожного застосунку, а в інших мовах — слова, які вживає його локалізована версія.",
+  "AutoCAD's command-line prompts and status bar come out as its German, French, Spanish, Italian, Japanese, Korean, Polish, Portuguese, Russian and Chinese versions write them (French \"Choix des objets:\", Japanese \"基点を指定:\").": "Командні рядки й рядок стану AutoCAD виводяться так, як їх пишуть німецька, французька, іспанська, італійська, японська, корейська, польська, португальська, російська та китайська версії (французьке \"Choix des objets:\", японське \"基点を指定:\").",
+  "Revit's ribbon and SketchUp's tools and status bar use their own localised words where their help gives them (German Revit \"Erstellen\", German SketchUp \"Hand\").": "Стрічка Revit і інструменти та рядок стану SketchUp використовують власні локалізовані слова там, де їх подає довідка (німецький Revit \"Erstellen\", німецький SketchUp \"Hand\").",
+  "Revit's status bar says \"Click to select, TAB for alternates, CTRL adds, SHIFT unselects.\" and its door prompt; Archicad's says \"Click an element or draw a selection area.\" and \"Enter first node of PolyWall\", and writes the other steps as sentences.": "Рядок стану Revit показує \"Click to select, TAB for alternates, CTRL adds, SHIFT unselects.\" і підказку про двері; Archicad показує \"Click an element or draw a selection area.\" і \"Enter first node of PolyWall\", а решту кроків пише реченнями.",
+  "Pan now reads as the view tool in every language (it read as a screw head); the screw tools call that head Pan Head.": "«Панорамування» тепер читається як інструмент виду в усіх мовах (раніше читалося як головка гвинта); гвинтові інструменти називають цю головку «Циліндрична голівка».",
+  "Rhino's status bar and OSnap panel use the words of its German, French, Spanish, Italian, Japanese, Korean and Chinese versions (German \"Ofang\", \"Punkt\", Japanese \"作業平面\").": "Рядок стану та панель OSnap у Rhino використовують слова його німецької, французької, іспанської, італійської, японської, корейської та китайської версій (німецькою \"Ofang\", \"Punkt\", японською \"作業平面\")."
 }

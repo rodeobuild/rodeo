@@ -500,6 +500,12 @@ The AutoCAD look opens, as AutoCAD does, with no palettes: Ctrl+1 (or PROPERTIES
 
 Revit, Archicad and SketchUp have no Mode bar. Revit's Options Bar, under the ribbon, shows the tool's modes as labelled drop-downs (Marquee: Rectangle) and its status bar says what to do next. Archicad's Info Box shows them as captioned panels: Main (Default Settings, or how many objects are selected and how many of them can be changed, with the tool's settings button), then each of the tool's choices as a row of buttons; its status bar at the foot of the window says what to do next. SketchUp's status bar has the Geo-location button (it imports the site context), Credits and Sign in (greyed), and the Instructor (the user guide), then what to do next in sentences, and the Measurements box at the right; a tool's modes are its keys, said there, or its own buttons (Lasso beside Select).
 
+Revit's and Archicad's status bars use the applications' own words where Rodeo has the same step: Revit's "Click to select, TAB for alternates, CTRL adds, SHIFT unselects." with nothing running, its wall, line, move and door prompts; Archicad's "Click an element or draw a selection area." and "Enter first node of PolyWall". Other steps show Rodeo's words, written as sentences in Archicad's.
+
+### Each application's words in your language
+
+With Rodeo in another language, a look shows the words that application uses in that language where they are known: AutoCAD's command-line prompts and status bar in the words of its own German, French, Spanish, Italian, Japanese, Korean, Polish, Portuguese, Russian and Chinese versions (French "Choix des objets:", Spanish "Designe objetos:", Japanese "基点を指定:"), Revit's ribbon (German "Erstellen", "Ändern") and SketchUp's tools and status bar (German "Hand", "Rotieren", "Abmessungen"), Rhino's status bar and OSnap panel (German "Konstruktionsebene", "Ofang", "Punkt"; Japanese "作業平面", "端点"), taken from each company's help in that language. Words not found there are Rodeo's own translation. Rodeo's own look keeps Rodeo's words.
+
 ### Reports in the command line
 
 AutoCAD's **AREA** and **LIST** and Rhino's **Area**, **Length** and **What** print what they find in the command line, beside it over the drawing until the next command or Escape: the area and perimeter of each closed object (and the total), the length of each curve, and what each object is, its layer and class and where it lies. **REGEN** and **Redraw** draw everything again.
