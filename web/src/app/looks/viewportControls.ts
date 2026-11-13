@@ -142,8 +142,11 @@ function styleRows(): Row[] {
  */
 export function mountViewportControls(into: HTMLElement): () => void {
   const minus = h("button", { cls: "vpc-btn", text: "[-]", attrs: { type: "button", "aria-label": "Viewport", title: "Viewport" } });
-  const view = h("button", { cls: "vpc-btn", text: "[Top]", attrs: { type: "button", "aria-label": "View", title: "View" } });
-  const style = h("button", { cls: "vpc-btn", text: "[2D Wireframe]", attrs: { type: "button", "aria-label": "Visual style", title: "Visual style" } });
+  // the name in a span of its own inside the brackets, so a language's word ("[2D-Drahtkörper]") takes its place
+  const viewText = h("span", { text: "Top" });
+  const styleText = h("span", { text: "2D Wireframe" });
+  const view = h("button", { cls: "vpc-btn", attrs: { type: "button", "aria-label": "View", title: "View" } }, "[", viewText, "]");
+  const style = h("button", { cls: "vpc-btn", attrs: { type: "button", "aria-label": "Visual style", title: "Visual style" } }, "[", styleText, "]");
   const words = h("div", { cls: "vpc-words" }, minus, view, style);
 
   const nav = h("div", { cls: "vpc-nav", attrs: { role: "toolbar", "aria-label": "Navigation" } });
@@ -169,11 +172,14 @@ export function mountViewportControls(into: HTMLElement): () => void {
   into.append(root);
 
   // the names read again: when the view or the rendering changes, and while the 3D view turns
+  // set only when the name changes: the shown text may be a language's word for it
+  let shownView = "Top";
+  let shownStyle = "2D Wireframe";
   const refresh = (): void => {
     const v = viewName();
     const r = renderingName();
-    if (view.textContent !== `[${v}]`) view.textContent = `[${v}]`;
-    if (style.textContent !== `[${r}]`) style.textContent = `[${r}]`;
+    if (shownView !== v) viewText.textContent = shownView = v;
+    if (shownStyle !== r) styleText.textContent = shownStyle = r;
   };
   refresh();
   const offs = [store.on(["view3d", "viz3d", "session", "view"], refresh)];

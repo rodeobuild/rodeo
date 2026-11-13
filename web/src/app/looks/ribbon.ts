@@ -46,7 +46,9 @@ function panelEl(panel: RibbonPanel): HTMLElement {
     "div",
     { cls: "lk-ribbon-panel" },
     h("div", { cls: "lk-ribbon-items" }, ...panel.items.map((item) => itemEl(item))),
-    h("div", { cls: "lk-ribbon-panel-title", text: panel.title, title: panel.title }),
+    // keyed by its sense: a panel and a tab of one English name can be two words in a language (AutoCAD's
+    // Japanese View tab 表示, its View panel ビュー)
+    h("div", { cls: "lk-ribbon-panel-title", text: panel.title, title: panel.title, attrs: { "data-i18n": `Ribbon panel › ${panel.title}` } }),
   );
 }
 
@@ -97,7 +99,7 @@ export function mountRibbon(into: HTMLElement, spec: RibbonSpec): () => void {
     }
     const el = h("button", {
       cls: `lk-ribbon-tab${tab.contextual ? " lk-ribbon-ctx" : ""}`,
-      attrs: { type: "button", role: "tab" },
+      attrs: tab.contextual ? { type: "button", role: "tab" } : { type: "button", role: "tab", "data-i18n": `Ribbon tab › ${tab.title}` },
     });
     el.addEventListener("click", () => {
       front = tab;

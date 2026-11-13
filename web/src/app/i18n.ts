@@ -350,7 +350,8 @@ function translateText(node: Text, inside = false): void {
   if (!inside && kept(node.parentElement)) return;
   const en = node.data;
   const key = node.parentElement?.getAttribute("data-i18n");
-  const keyed = key && current.code !== "en" ? words.get(key) : undefined;
+  // a look's own word for that sense first ("AutoCAD › Ribbon tab › View"), then Rodeo's ("Menu › View")
+  const keyed = key && current.code !== "en" ? ((termsName !== null ? words.get(`${termsName} › ${key}`) : undefined) ?? words.get(key)) : undefined;
   const to = keyed !== undefined && en.trim() ? en.replace(en.trim(), keyed) : translated(en);
   if (to === null || to === en) {
     textShown.delete(node);

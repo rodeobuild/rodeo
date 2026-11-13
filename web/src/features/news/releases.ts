@@ -22,6 +22,18 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T23:30:00Z",
+    "work-like-ribbons",
+    "Work Like: ribbons, toolboxes and menus in your language",
+    `In a language other than English, the looks' ribbons, toolboxes, tools and menus now use the words of that application's own version in your language.
+- AutoCAD's and Revit's ribbon tabs, panels and buttons come from Autodesk's help in German, French, Spanish, Italian, Japanese, Korean, Polish, Portuguese, Russian and Chinese (German AutoCAD "Start", "Zeichnen", "Linie"; Japanese "ホーム", "作成", "線分"; German Revit "Architektur", "Ingenieurbau", "Geschossdecke").
+- AutoCAD's viewport label names the visual style as that version does ("[2D-Drahtkörper]").
+- Archicad's Toolbox and menus, SketchUp's tools and menus and Rhino's commands and menus use their localised words (Japanese Archicad "壁", "スラブ"; German SketchUp "Radiergummi"; French Rhino "Polyligne").
+- A word with two senses keeps both: Japanese AutoCAD's View tab is "表示" and its View panel "ビュー"; Archicad's Window tool is "窓" while its Window menu keeps its menu word.
+- Leader in the AutoCAD and Rhino looks is a leader line in every language (in seven it read as the text before a note).`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T21:30:00Z",
     "work-like-words",
     "Work Like: each application's words, in your language too",
