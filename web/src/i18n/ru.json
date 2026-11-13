@@ -17862,5 +17862,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "«Цвета материалов» и «Цвета объектов» дают каждому материалу или объекту свой сплошной цвет, чтобы волшебная палочка выделяла его одним щелчком.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "«Тени», «Рассеянное затенение» и «Линии» накладываются на изображение в режиме «Умножение»; есть также «Базовый цвет», «Глубина», «Нормали» и «Маска неба».",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "В PSD изображение внизу, а слои над ним скрыты: включите нужные.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Просмотрщик рендеров показывает каждый слой (L — перейти к следующему) и сохраняет их кнопкой «Сохранить слои»."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Просмотрщик рендеров показывает каждый слой (L — перейти к следующему) и сохраняет их кнопкой «Сохранить слои».",
+  "Flat surfaces in Rhino": "Плоские поверхности в Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Экспорт Rhino 3DM теперь записывает всё, что лежит в одной плоскости, как плоскую поверхность, и Rhino показывает её контур, а не каждый треугольник.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Вода, зелёные зоны, дорожки и дороги из импорта окружения участка с выключенным рельефом выводятся как плоские поверхности, вместе с отверстиями.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Другие плоские части, например 3D-многоугольники, выводятся так же, по поверхности на каждую отдельную часть.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "С включённым рельефом земля, дороги и вода следуют рельефу, поэтому по-прежнему выводятся как полигональные сетки."
 }

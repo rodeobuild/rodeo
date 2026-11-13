@@ -17904,5 +17904,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Cores de material e Cores de objeto dão a cada material ou objeto uma cor chapada própria, para a varinha mágica selecioná-lo com um clique.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Sombras, Oclusão de ambiente e Linhas vão sobre a imagem no modo Multiplicação; Cor base, Profundidade, Normais e uma Máscara do céu também estão lá.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "No PSD a imagem fica embaixo e as camadas por cima ficam ocultas: ative as que quiser.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "O visualizador de renders mostra cada camada (pressione L para passar por elas) e as salva com Salvar camadas."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "O visualizador de renders mostra cada camada (pressione L para passar por elas) e as salva com Salvar camadas.",
+  "Flat surfaces in Rhino": "Superfícies planas no Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Exportar Rhino 3DM agora grava tudo o que está plano como uma superfície plana, para que o Rhino mostre o contorno e não cada triângulo.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Água, áreas verdes, caminhos e vias de Importar contexto do terreno com Terreno desligado saem como superfícies planas, com furos e tudo.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Outras peças planas, como polígonos 3D, saem do mesmo jeito, uma superfície para cada parte separada.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Com Terreno ligado, o solo, as vias e a água acompanham o relevo, por isso continuam saindo como malhas."
 }

@@ -2,8 +2,10 @@
 // rhino3dm (openNURBS compiled to WebAssembly; the app loads it and passes it in): a Rhino layer per design
 // layer, with a sublayer per class its objects use ("Layer::Class"); each 3D object piece that is an upright
 // prism (an extrude, a slab, a plain wall, an imported building: prism.ts) as a capped extrusion with its holes,
-// a closed solid whose faces show only their edges, and each other piece as a mesh, its coplanar triangle pairs
-// as quads and its normals split where faces meet at a crease, so neither shows the diagonals of the triangles
+// a closed solid whose faces show only their edges, each flat piece (one plane, facing one way: a floor, Site
+// Context's water and paths on flat ground: flat.ts) as a trimmed planar surface for each of its parts, with its
+// holes, and each other piece as a mesh, its coplanar triangle pairs
+// as quads and its normals split where faces meet at a crease, so none shows the diagonals of the triangles
 // the 3D view draws (each extrusion keeps that mesh as its render mesh, for readers that only read meshes); each
 // named after its object and coloured by it; each symbol as a block definition of its objects' solids and
 // meshes (and the blocks placed in it), on the sublayers of the first layer that places it, and each instance as
@@ -14,12 +16,14 @@
 // text's in points (its world size over its layer's scale), whole and at least 3, and it keeps no rotation.
 // Imports nothing from rhino3dm at run time, so it can be checked under Node.
 
+import earcut from "earcut";
 import { arcPoint } from "./svg.ts";
 import type { Pt, Shape } from "../core/types.ts";
 import type { FlatObject, Model3D, ModelObject, ModelPiece } from "./scene3d.ts";
+import { flatOf, type Flat, type FlatRegion } from "./flat.ts";
 import { prismOf, type Prism } from "./prism.ts";
 import type { Rhino } from "../import/rhino.ts";
-import type { Extrusion, File3dm, GeometryBase, InstanceReference, Mesh, ObjectAttributes, Plane, Transform } from "rhino3dm";
+import type { Brep, Extrusion, File3dm, GeometryBase, InstanceReference, Mesh, ObjectAttributes, Plane, Transform } from "rhino3dm";
 
 /** Segments a sampled ellipse or elliptical arc takes. */
 const ELLIPSE_SEGMENTS = 64;
@@ -85,16 +89,21 @@ export function export3dm(model: Model3D, flat: readonly FlatObject[], layerName
           continue;
         }
         for (const piece of obj.pieces) {
-          const geometry = pieceGeometry(rhino, piece);
-          if (!geometry) continue;
-          const attrs = attributes(rhino, index(layer.id, obj.className), piece.color, obj.name);
-          for (const g of obj.groups ?? []) attrs.addToGroup(groupOf(g));
+          const made = pieceGeometry(rhino, piece);
           try {
-            if (geometry instanceof rhino.Extrusion) objects.addExtrusion(geometry, attrs);
-            else objects.addMesh(geometry, attrs);
+            for (const geometry of made) {
+              const attrs = attributes(rhino, index(layer.id, obj.className), piece.color, obj.name);
+              for (const g of obj.groups ?? []) attrs.addToGroup(groupOf(g));
+              try {
+                if (geometry instanceof rhino.Extrusion) objects.addExtrusion(geometry, attrs);
+                else if (geometry instanceof rhino.Brep) objects.addBrep(geometry, attrs);
+                else objects.addMesh(geometry as Mesh, attrs);
+              } finally {
+                free(attrs);
+              }
+            }
           } finally {
-            free(geometry);
-            free(attrs);
+            for (const geometry of made) free(geometry);
           }
         }
       }
@@ -144,10 +153,10 @@ function addBlocks(file: File3dm, rhino: Rhino, model: Model3D, layerOf: (symbol
           continue;
         }
         for (const piece of obj.pieces) {
-          const g = pieceGeometry(rhino, piece);
-          if (!g) continue;
-          geometry.push(g);
-          attrs.push(attributes(rhino, layerOf(k, obj.className), piece.color, obj.name));
+          for (const g of pieceGeometry(rhino, piece)) {
+            geometry.push(g);
+            attrs.push(attributes(rhino, layerOf(k, obj.className), piece.color, obj.name));
+          }
         }
       }
       const i = geometry.length ? table.add(uniqueName(symbol.name, "Block", taken), "", "", "", [0, 0, 0], geometry, attrs) : -1;
@@ -263,24 +272,209 @@ function uniqueName(raw: string, fallback: string, taken: Set<string>): string {
 }
 
 /**
- * Meshes given to an extrusion as its render mesh. rhino3dm's Extrusion.setMesh gives the extrusion a second owner
- * of the mesh (a shared_ptr round the pointer the mesh's handle owns), so the mesh is freed with the extrusion, and
- * deleting its handle as well, or letting it be collected, would free it again: a handle given away is kept here
- * for good. What stays is each handle's small wrapper, not the mesh.
+ * Meshes given to an extrusion or a Brep face as its render mesh. rhino3dm's Extrusion.setMesh and BrepFace.setMesh
+ * give the solid a second owner of the mesh (a shared_ptr round the pointer the mesh's handle owns), so the mesh is
+ * freed with the solid, and deleting its handle as well, or letting it be collected, would free it again: a handle
+ * given away is kept here for good. What stays is each handle's small wrapper, not the mesh.
  */
 const givenAway: Mesh[] = [];
 
-/** A piece as Rhino geometry: an extrusion when it is an upright prism, else a mesh; null when it has no faces. */
-function pieceGeometry(rhino: Rhino, piece: ModelPiece): Extrusion | Mesh | null {
-  const mesh = pieceMesh(rhino, piece);
-  if (!mesh) return null;
+/**
+ * A piece as Rhino geometry: an extrusion when it is an upright prism, a trimmed planar surface for each of its parts
+ * when it is flat (flat.ts), else a mesh; none when it has no faces.
+ */
+function pieceGeometry(rhino: Rhino, piece: ModelPiece): (Extrusion | Brep | Mesh)[] {
   const prism = prismOf(piece.triangles);
+  if (!prism) {
+    const flat = flatOf(piece.triangles);
+    const faces = flat ? flatFaces(rhino, flat) : null;
+    if (faces) return faces;
+  }
+  const mesh = pieceMesh(rhino, piece);
+  if (!mesh) return [];
   const solid = prism ? prismExtrusion(rhino, prism) : null;
-  if (!solid) return mesh;
+  if (!solid) return [mesh];
   // the triangles stay as its render mesh, for readers that draw only what a file has meshed
   solid.setMesh(mesh, rhino.MeshType.Render);
   givenAway.push(mesh);
-  return solid;
+  return [solid];
+}
+
+/** A flat surface's parts, each a trimmed planar surface with its holes and a render mesh; null if rhino3dm refuses one. */
+function flatFaces(rhino: Rhino, flat: Flat): Brep[] | null {
+  const out: Brep[] = [];
+  for (const region of flat.regions) {
+    const face = flatFace(rhino, flat, region);
+    if (!face) {
+      for (const f of out) free(f);
+      return null;
+    }
+    out.push(face);
+  }
+  return out;
+}
+
+/**
+ * One part of a flat surface as a Brep of one planar face facing as the part does, its holes as inner loops, as
+ * Rhino's PlanarSrf makes, with its triangles (earcut, on the plane) as the face's render mesh; null if rhino3dm
+ * refuses it. Without holes, the face is a trimmed plane whose outline is one edge (a degree-1 curve through its
+ * corners), a seventh of the size of an edge for each side. rhino3dm makes a face with holes only as an
+ * extrusion's cap, an edge for each side: the part is extruded away from the side it faces and the cap on its
+ * plane is taken.
+ */
+function flatFace(rhino: Rhino, flat: Flat, region: FlatRegion): Brep | null {
+  const world = (p: Pt): number[] => [...flat.at(p)];
+  const ring = (pts: readonly Pt[], at: (p: Pt) => number[]): number[][] => {
+    const out = pts.map(at);
+    out.push([...out[0]]);
+    return out;
+  };
+  const face = region.holes.length ? cappedFace(rhino, flat, region, ring, world) : trimmedPlane(rhino, flat, ring(region.outer, world));
+  if (!face) return null;
+  const mesh = regionMesh(rhino, flat, region, world);
+  if (mesh) {
+    const faces = face.faces();
+    const first = faces.get(0);
+    try {
+      // rhino3dm's setMesh takes the mesh first, whatever its typings say
+      (first as unknown as { setMesh(mesh: Mesh, type: unknown): boolean }).setMesh(mesh, rhino.MeshType.Render);
+      givenAway.push(mesh);
+    } finally {
+      free(first);
+      free(faces);
+    }
+  }
+  return face;
+}
+
+/** A trimmed plane through a flat surface's plane (facing n), its outline `points` (closed, world mm) one edge. */
+function trimmedPlane(rhino: Rhino, flat: Flat, points: number[][]): Brep | null {
+  const plane = { origin: [...flat.origin], xAxis: [...flat.u], yAxis: [...flat.v], zAxis: [...flat.n] } as unknown as Plane;
+  const outline = rhino.NurbsCurve.create(false, 1, points);
+  try {
+    const brep = outline ? rhino.Brep.createTrimmedPlane(plane, outline) : null;
+    if (brep && !brep.isValid) {
+      free(brep);
+      return null;
+    }
+    return brep ?? null;
+  } finally {
+    free(outline);
+  }
+}
+
+/** A flat part with holes as the cap of an extrusion away from the side it faces: the face on its plane. */
+function cappedFace(
+  rhino: Rhino,
+  flat: Flat,
+  region: FlatRegion,
+  ring: (pts: readonly Pt[], at: (p: Pt) => number[]) => number[][],
+  world: (p: Pt) => number[],
+): Brep | null {
+  // extruding along -n, its axes u, -v and -n; an inner profile is in those axes, from the origin
+  const plane = { origin: [...flat.origin], xAxis: [...flat.u], yAxis: flat.v.map((x) => -x), zAxis: flat.n.map((x) => -x) } as unknown as Plane;
+  const outline = new rhino.PolylineCurve(ring(region.outer, world));
+  let solid: Extrusion | null = null;
+  let brep: Brep | null = null;
+  try {
+    solid = rhino.Extrusion.createWithPlane(outline, plane, EXTRUDE_MM, true);
+    if (!solid) return null;
+    for (const hole of region.holes) {
+      const curve = new rhino.PolylineCurve(ring(hole, (p) => [p.x, -p.y, 0]));
+      try {
+        if (!solid.addInnerProfile(curve)) return null;
+      } finally {
+        free(curve);
+      }
+    }
+    brep = solid.toBrep(false);
+    if (!brep) return null;
+    // the cap whose every edge lies on the plane
+    const faces = brep.faces();
+    try {
+      for (let i = 0; i < faces.count; i++) {
+        const face = faces.get(i);
+        try {
+          const one = face.duplicateFace(false);
+          if (one && one.isValid && edgesOnPlane(one, flat)) return one;
+          free(one);
+        } finally {
+          free(face);
+        }
+      }
+    } finally {
+      free(faces);
+    }
+    return null;
+  } finally {
+    free(outline);
+    free(solid);
+    free(brep);
+  }
+}
+
+/** How far a flat part with holes is extruded to take its cap (any length does). */
+const EXTRUDE_MM = 1;
+
+/** Whether every edge of a Brep starts and ends on a flat surface's plane (a tenth of EXTRUDE_MM off at most). */
+function edgesOnPlane(brep: Brep, flat: Flat): boolean {
+  const edges = brep.edges();
+  try {
+    if (edges.count === 0) return false;
+    const off = (p: number[]): number => Math.abs((p[0] - flat.origin[0]) * flat.n[0] + (p[1] - flat.origin[1]) * flat.n[1] + (p[2] - flat.origin[2]) * flat.n[2]);
+    for (let i = 0; i < edges.count; i++) {
+      const edge = edges.get(i);
+      try {
+        if (off(edge.pointAtStart) > EXTRUDE_MM / 10 || off(edge.pointAtEnd) > EXTRUDE_MM / 10) return false;
+      } finally {
+        free(edge);
+      }
+    }
+    return true;
+  } finally {
+    free(edges);
+  }
+}
+
+/** A flat part's triangles (earcut of its outline and holes) on its plane, facing as it does, as a mesh; null for none. */
+function regionMesh(rhino: Rhino, flat: Flat, region: FlatRegion, world: (p: Pt) => number[]): Mesh | null {
+  const rings = [region.outer, ...region.holes];
+  const pts = rings.flat();
+  const starts: number[] = [];
+  let at = region.outer.length;
+  for (const h of region.holes) {
+    starts.push(at);
+    at += h.length;
+  }
+  const tri = earcut(
+    pts.flatMap((p) => [p.x, p.y]),
+    starts.length ? starts : undefined,
+    2,
+  );
+  if (!tri.length) return null;
+  const mesh = new rhino.Mesh();
+  const verts = mesh.vertices();
+  const normals = mesh.normals();
+  const faces = mesh.faces();
+  try {
+    for (const p of pts) {
+      const [x, y, z] = world(p);
+      verts.add(x, y, z);
+      normals.add(flat.n[0], flat.n[1], flat.n[2]);
+    }
+    for (let k = 0; k + 2 < tri.length; k += 3) {
+      const [a, b, c] = [tri[k], tri[k + 1], tri[k + 2]];
+      // anticlockwise in the plane, so facing n
+      const turn = (pts[b].x - pts[a].x) * (pts[c].y - pts[a].y) - (pts[b].y - pts[a].y) * (pts[c].x - pts[a].x);
+      if (turn >= 0) faces.addTriFace(a, b, c);
+      else faces.addTriFace(a, c, b);
+    }
+  } finally {
+    free(verts);
+    free(normals);
+    free(faces);
+  }
+  return mesh;
 }
 
 /**

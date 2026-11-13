@@ -17887,5 +17887,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "재질 색상과 오브젝트 색상은 재질이나 오브젝트마다 고유한 단색을 주므로 자동 선택 도구로 한 번에 고를 수 있습니다.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "그림자, 앰비언트 오클루전, 선은 곱하기 모드로 이미지 위에 겹칩니다. 기본 색상, 깊이, 법선, 하늘 마스크도 있습니다.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "PSD에서는 이미지가 맨 아래에 있고 그 위의 레이어는 숨겨져 있습니다. 원하는 레이어를 켜세요.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "렌더 뷰어는 각 레이어를 보여 주고(L을 눌러 차례로 보기) 레이어 저장으로 저장합니다."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "렌더 뷰어는 각 레이어를 보여 주고(L을 눌러 차례로 보기) 레이어 저장으로 저장합니다.",
+  "Flat surfaces in Rhino": "Rhino에서 평평한 표면",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Rhino 3DM 내보내기가 이제 평평하게 놓인 것을 평면 표면으로 기록하므로, Rhino에서 모든 삼각형 대신 윤곽선만 표시됩니다.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "지형을 끄고 대지 현황 가져오기로 가져온 물, 녹지, 보도, 도로는 구멍까지 포함해 평면 표면으로 내보내집니다.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "3D 다각형 같은 다른 평평한 조각도 같은 방식으로 내보내지며, 떨어진 부분마다 표면 하나가 됩니다.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "지형을 켜면 지면, 도로, 물이 땅의 높낮이를 따르므로 계속 메시로 내보내집니다."
 }

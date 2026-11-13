@@ -17912,5 +17912,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "マテリアルカラーとオブジェクトカラーは、マテリアルやオブジェクトごとに専用のフラットカラーを付けるので、自動選択ツールの1クリックで選べます。",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "シャドウ、アンビエントオクルージョン、線は乗算で画像に重ねます。ベースカラー、深さ、法線、空のマスクもあります。",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "PSD では画像が一番下、その上のレイヤは非表示です。必要なものを表示してください。",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "レンダービューアは各レイヤを表示し（L で順に切り替え）、「レイヤを保存」で保存します。"
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "レンダービューアは各レイヤを表示し（L で順に切り替え）、「レイヤを保存」で保存します。",
+  "Flat surfaces in Rhino": "Rhinoで平らなサーフェスに",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Rhino 3DMを書き出しで、平らなものが平面サーフェスとして書き出されるようになり、Rhinoでは三角形ごとではなく輪郭だけが表示されます。",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "地形をオフにして周辺環境を読み込みで取り込んだ水面、緑地、歩道、道路は、穴も含めて平面サーフェスとして書き出されます。",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "3D多角形など、その他の平らな部分も同じように書き出され、離れた部分ごとに1つのサーフェスになります。",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "地形をオンにすると、地面、道路、水面は土地の起伏に沿うため、これまでどおりメッシュとして書き出されます。"
 }

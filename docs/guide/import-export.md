@@ -291,6 +291,7 @@ The reader is `web/src/import/rvt.ts`, with `cfb.ts` for the compound file aroun
 **Export Rhino 3DM** writes a Rhino file in millimetres: a Rhino layer per design layer with a sublayer per class, and each object's pieces in their colours, named after the object.
 
 - A piece that stands upright with a flat top and bottom (an extrude, a slab, a wall without openings, a building from **Import Site Context**) becomes a closed extrusion, courtyards and all. Rhino shows only its real edges, and it can be edited, booleaned and filleted as a solid.
+- A piece whose triangles all lie in one plane (a lawn, a pond, a path, a floor, a roof plane) becomes a trimmed flat surface, holes and all, so Rhino shows its outline and holes and not its triangles. Roads, paths, water and green spaces from **Import Site Context** with Terrain off come out this way. A piece in up to 16 separate parts becomes a surface per part.
 - Other pieces become meshes. Triangles that lie flat together are joined into four-sided faces, and edges sharper than 30° stay sharp in the shading, so flat faces don't show triangle diagonals.
 - Each symbol becomes a block, placed where the drawing places it.
 - The 2D linework that stands for nothing in 3D (lines, rectangles, polygons, polylines, arcs, circles, and text as text dots sized in points by its layer's scale) goes at its layer's elevation. A fill with holes goes out as its outline and each hole, without the cuts between them. 2D drawn in a group beside a 3D object is that object's plan drawing and is left out.
@@ -298,7 +299,8 @@ The reader is `web/src/import/rvt.ts`, with `cfb.ts` for the compound file aroun
 **Limits:**
 
 - A piece whose outline touches itself at a corner stays a mesh.
-- Ground, roads and water from Site Context follow the terrain, so they stay meshes, and Rhino draws a mesh's edges.
+- Ground, roads and water from Site Context imported with Terrain on follow the ground, so they stay meshes, and Rhino draws a mesh's edges.
+- A flat piece in more than 16 separate parts, or one of more than 500 triangles that overlap each other, stays a mesh.
 
 ### FBX
 

@@ -5,8 +5,11 @@
 // its layer's path as its group; each line, polyline, circle, arc, ellipse, text and point comes back as a shape
 // of its kind with its millimetre coordinates. Upright prisms (a box, a building round a courtyard, one with a
 // corner on a straight run) are written as closed, capped extrusions that keep their faces as a closed render
-// mesh; other pieces stay meshes, coplanar triangle pairs joined into quads and corners split at creases only;
-// a fill's outline round a hole comes back as its two rings, without the cut. Files built in metres and inches read in millimetres. A Brep
+// mesh; flat pieces (a triangle, a lawn round a pond, a path folding over itself, two pads, a ceiling facing
+// down, a roof plane at 30°) as planar surfaces facing as they do, a surface for each part, the outline of the
+// union where triangles overlap, read back from their render meshes at their areas; other pieces stay meshes,
+// coplanar triangle pairs joined into quads and corners split at creases only; a fill's outline round a hole
+// comes back as its two rings, without the cut. Files built in metres and inches read in millimetres. A Brep
 // made in code has no render mesh and is counted; a meshed face reads; an extrusion with no mesh is counted; a
 // block is placed by its transform and coloured by its instance; a mirrored block turns over; blocks nested past
 // eight deep are left out; objects on hidden layers and hidden objects are counted, not read; bytes that aren't
@@ -34,6 +37,10 @@ function check(ok: boolean, what: string): void {
 const near = (a: number, b: number, tol = 1e-3): boolean => Math.abs(a - b) <= tol;
 const nearPt = (p: Pt | undefined, x: number, y: number): boolean => !!p && near(p.x, x) && near(p.y, y);
 const samePts = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && a.every((v, i) => near(v, b[i]));
+
+/** A face's corners: the same as `corners` (x, y, z each), the same way round, from any of them. */
+const sameTurn = (face: readonly number[], corners: readonly number[]): boolean =>
+  face.length === corners.length && Array.from({ length: corners.length / 3 }, (_, k) => k).some((k) => samePts([...face.slice(3 * k), ...face.slice(0, 3 * k)], corners));
 
 /** Two triangles' corners, the same numbers in the same order. */
 const sameTriangles = (faces: readonly number[][], tris: Float32Array): boolean =>
@@ -221,7 +228,8 @@ check(
   check(g instanceof rhino.Extrusion && g.isSolid && g.isCappedAtBottom && g.isCappedAtTop && g.profileCount === 1, "Wall A: written as a capped extrusion, a closed solid");
   const m = g instanceof rhino.Extrusion ? g.getMesh(rhino.MeshType.Any) : null;
   check(!!m && m.isClosed && m.normals().count === m.vertices().count, "Wall A: its render mesh closed, with a normal at each vertex");
-  check(rawGeometry(bytes, "Door") instanceof rhino.Mesh, "Door: one triangle, written as a mesh");
+  const doorGeo = rawGeometry(bytes, "Door");
+  check(doorGeo instanceof rhino.Brep && doorGeo.faces().count === 1 && doorGeo.edges().count === 1, "Door: one flat triangle, written as a planar surface whose outline is one edge");
 }
 check(wallA.length === 1 && wallA[0].group === "Ground::Walls", "Wall A: its layer's class path as its group");
 check(
@@ -231,8 +239,8 @@ check(
 
 const door = partNamed(out, "Door");
 check(
-  door.length === 1 && door[0].faces.length === 1 && sameTriangles(door[0].faces, tri([100, 0, 0], [900, 0, 0], [900, 0, 2100])),
-  "Door: one face, its corners in mm",
+  door.length === 1 && door[0].faces.length === 1 && sameTurn(door[0].faces[0], [100, 0, 0, 900, 0, 0, 900, 0, 2100]),
+  "Door: one face (its render mesh), its corners in mm, facing the same way",
 );
 check(door.length === 1 && door[0].group === "Ground::Doors" && door[0].color !== undefined && near(door[0].color.g, 1), "Door: group Ground::Doors, green");
 
@@ -387,6 +395,89 @@ check(
     rings.length === 2 && rings.every((x) => (x.kind === "polygon" || x.kind === "polyline") && x.points.length >= 4 && x.points.length <= 5),
     `a fill's outline round a hole: its two rings, without the cut (${rings.map((x) => ("points" in x ? x.points.length : 0)).join(", ")} points)`,
   );
+}
+
+{
+  // flat pieces: a lawn round a pond (the ring between them in two triangles a side), a path whose strip folds over
+  // itself, two pads in one piece, a ceiling facing down and a roof plane at 30°
+  const lawn: number[] = [];
+  const outer = [[0, 0], [10000, 0], [10000, 10000], [0, 10000]];
+  const pond = [[4000, 4000], [6000, 4000], [6000, 6000], [4000, 6000]];
+  for (let k = 0; k < 4; k++) {
+    const [o0, o1, i0, i1] = [outer[k], outer[(k + 1) % 4], pond[k], pond[(k + 1) % 4]];
+    lawn.push(...[o0, o1, i1, o0, i1, i0].flatMap(([x, y]) => [x, y, 200]));
+  }
+  const square = (x: number, y: number, z: number, size: number, down = false): number[] => {
+    const [a, b, c, d] = [[x, y], [x + size, y], [x + size, y + size], [x, y + size]].map(([px, py]) => [px, py, z]);
+    return down ? [...a, ...c, ...b, ...a, ...d, ...c] : [...a, ...b, ...c, ...a, ...c, ...d];
+  };
+  // the square and a triangle over its corner: their union is 1,375,000 mm²
+  const path = [...square(0, 0, 300, 1000), ...[500, 500, 300, 1500, 500, 300, 1500, 1500, 300]];
+  const c30 = Math.cos(Math.PI / 6);
+  const s30 = Math.sin(Math.PI / 6);
+  const slope = [0, 0, 0, 4000, 0, 0, 4000, 3000 * c30, 3000 * s30, 0, 0, 0, 4000, 3000 * c30, 3000 * s30, 0, 3000 * c30, 3000 * s30];
+  const piece = (triangles: number[]) => [{ color: "#3a8f3a", opacity: 1, triangles: new Float32Array(triangles) }];
+  const flats: Model3D = {
+    layers: [
+      {
+        id: "g",
+        name: "Ground",
+        elevation: 0,
+        objects: [
+          { id: "lawn", name: "Lawn", className: "None", pieces: piece(lawn) },
+          { id: "path", name: "Path", className: "None", pieces: piece(path) },
+          { id: "pads", name: "Pads", className: "None", pieces: piece([...square(0, 0, 0, 1000), ...square(3000, 0, 0, 1000)]) },
+          { id: "ceiling", name: "Ceiling", className: "None", pieces: piece(square(0, 0, 3000, 2000, true)) },
+          { id: "slope", name: "Slope", className: "None", pieces: piece(slope) },
+        ],
+      },
+    ],
+  };
+  const flatBytes = export3dm(flats, [], new Map([["g", "Ground"]]), rhino);
+  const read = parse3dm(flatBytes, rhino);
+  /** Every object's geometry named `name`. */
+  const named = (name: string): unknown[] => {
+    const f = rhino.File3dm.fromByteArray(flatBytes);
+    const out: unknown[] = [];
+    for (let i = 0; i < f.objects().count; i++) if (f.objects().get(i).attributes().name === name) out.push(f.objects().get(i).geometry());
+    return out;
+  };
+  /** The way a Brep's first face faces: its surface's normal, turned when the face is reversed. */
+  const facing = (b: unknown): number[] | null => {
+    if (!(b instanceof rhino.Brep)) return null;
+    const face = b.faces().get(0) as unknown as { domain(d: number): number[]; normalAt(u: number, v: number): number[]; orientationIsReversed: boolean };
+    const [u0, u1] = face.domain(0);
+    const [v0, v1] = face.domain(1);
+    const n = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2);
+    return face.orientationIsReversed ? n.map((x) => -x) : n;
+  };
+  const faces = (b: unknown): number => (b instanceof rhino.Brep ? b.faces().count : 0);
+  const area = (name: string): number => partNamed(read, name).reduce((s, p) => s + p.faces.reduce((a, f) => a + faceArea(f), 0), 0);
+  const meshed = (b: unknown): boolean => {
+    if (!(b instanceof rhino.Brep)) return false;
+    const m = (b.faces().get(0) as unknown as { getMesh(t: unknown): Mesh | null }).getMesh(rhino.MeshType.Any);
+    return !!m && m.normals().count === m.vertices().count;
+  };
+
+  const [lawnGeo] = named("Lawn");
+  const up = facing(lawnGeo);
+  check(lawnGeo instanceof rhino.Brep && faces(lawnGeo) === 1 && lawnGeo.edges().count === 8 && lawnGeo.isValid, "a lawn round a pond: one planar face, its outline and the pond's (an edge a side), valid");
+  check(!!up && near(up[2], 1) && meshed(lawnGeo), "a lawn round a pond: facing up, its render mesh with normals");
+  check(near(area("Lawn"), 10000 * 10000 - 2000 * 2000, 1), `a lawn round a pond: reads back as its area less the pond's (${area("Lawn")})`);
+
+  const [pathGeo] = named("Path");
+  check(pathGeo instanceof rhino.Brep && faces(pathGeo) === 1 && pathGeo.edges().count === 1 && pathGeo.isValid, "a path folding over itself: one planar face, the outline of the union one edge");
+  check(near(area("Path"), 1375000, 1), `a path folding over itself: reads back as the union's area (${area("Path")})`);
+
+  const pads = named("Pads");
+  check(pads.length === 2 && pads.every((b) => faces(b) === 1), "two pads in one piece: two planar surfaces, both named after it");
+
+  const down = facing(named("Ceiling")[0]);
+  check(!!down && near(down[2], -1), "a ceiling: a planar surface facing down, as its triangles do");
+
+  const tilted = facing(named("Slope")[0]);
+  check(!!tilted && near(tilted[1], -s30) && near(tilted[2], c30), "a roof plane at 30°: a planar surface facing up the slope's way");
+  check(near(area("Slope"), 4000 * 3000, 1), `a roof plane at 30°: reads back at its area (${area("Slope")})`);
 }
 
 // ---- units ------------------------------------------------------------------------------------------------

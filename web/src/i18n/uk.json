@@ -17996,5 +17996,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "«Кольори матеріалів» і «Кольори об'єктів» дають кожному матеріалу чи об'єкту власний суцільний колір, тож чарівна паличка виділяє його одним клацанням.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "«Тіні», «Оклюзія навколишнього світла» і «Лінії» накладаються на зображення в режимі «Множення»; є також «Базовий колір», «Глибина», «Нормалі» й «Маска неба».",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "У PSD зображення внизу, а шари над ним приховані: увімкніть потрібні.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Переглядач рендерів показує кожен шар (L — перейти до наступного) і зберігає їх кнопкою «Зберегти шари»."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Переглядач рендерів показує кожен шар (L — перейти до наступного) і зберігає їх кнопкою «Зберегти шари».",
+  "Flat surfaces in Rhino": "Плоскі поверхні в Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Експорт Rhino 3DM тепер записує все, що лежить пласко, як плоску поверхню, тож Rhino показує її контур, а не кожен трикутник.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Вода, зелені зони, доріжки й дороги з «Імпорту оточення ділянки» з вимкненим рельєфом виводяться як плоскі поверхні, разом з отворами.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Інші плоскі частини, як-от 3D-багатокутники, виводяться так само, по поверхні на кожну окрему частину.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "З увімкненим рельєфом ґрунт, дороги й вода йдуть за рельєфом, тож і далі виводяться як полігональні сітки."
 }

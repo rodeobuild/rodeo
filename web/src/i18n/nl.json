@@ -17849,5 +17849,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Materiaalkleuren en Objectkleuren geven elk materiaal of object een eigen egale kleur, zodat de toverstaf het met één klik selecteert.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Schaduwen, Ambient occlusion en Lijnen gaan in Vermenigvuldigen over de afbeelding; Basiskleur, Diepte, Normalen en een Luchtmasker zijn er ook.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "In de PSD staat de afbeelding onderaan en zijn de lagen erboven verborgen: zet de lagen aan die je wilt.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "De renderviewer toont elke laag (druk op L om erdoorheen te gaan) en slaat ze op met Lagen opslaan."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "De renderviewer toont elke laag (druk op L om erdoorheen te gaan) en slaat ze op met Lagen opslaan.",
+  "Flat surfaces in Rhino": "Vlakke oppervlakken in Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Rhino 3DM exporteren schrijft alles wat plat ligt nu als een vlak oppervlak, zodat Rhino de omtrek toont en niet elke driehoek.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Water, groengebieden, paden en wegen uit Terreincontext importeren met Terrein uit gaan mee als vlakke oppervlakken, inclusief gaten.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Andere vlakke delen, zoals 3D-veelhoeken, gaan op dezelfde manier mee, één oppervlak per los deel.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Met Terrein aan volgen grond, wegen en water het land, dus gaan ze nog steeds als meshes mee."
 }

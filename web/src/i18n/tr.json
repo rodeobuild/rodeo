@@ -17934,5 +17934,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Malzeme renkleri ve Nesne renkleri her malzemeye ya da nesneye kendine ait düz bir renk verir; sihirli değnek onu tek tıkla seçer.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Gölgeler, Ortam gölgelemesi ve Çizgiler resmin üstüne Çoğalt modunda gelir; Temel renk, Derinlik, Normaller ve bir Gökyüzü maskesi de vardır.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "PSD'de resim en alttadır, üstündeki katmanlar gizlidir: istediklerinizi açın.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Render görüntüleyici her katmanı gösterir (aralarında gezinmek için L'ye basın) ve Katmanları kaydet ile kaydeder."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Render görüntüleyici her katmanı gösterir (aralarında gezinmek için L'ye basın) ve Katmanları kaydet ile kaydeder.",
+  "Flat surfaces in Rhino": "Rhino'da düz yüzeyler",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Rhino 3DM dışa aktar artık düz duran her şeyi düz bir yüzey olarak yazıyor; böylece Rhino her üçgeni değil, dış hattını gösteriyor.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Topografya kapalıyken Arazi çevresini içe aktar ile gelen su, yeşil alanlar, patikalar ve yollar delikleriyle birlikte düz yüzeyler olarak çıkar.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "3B çokgenler gibi diğer düz parçalar da aynı şekilde, ayrı her parça için bir yüzey olarak çıkar.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Topografya açıkken zemin, yollar ve su araziyi izler, bu yüzden yine poligon ağı olarak çıkar."
 }

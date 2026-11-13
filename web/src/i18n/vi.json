@@ -17858,5 +17858,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Màu vật liệu và Màu đối tượng cho mỗi vật liệu hoặc đối tượng một màu phẳng riêng, để công cụ magic wand chọn nó chỉ với một cú nhấp.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Vùng tối, Che khuất môi trường và Đường được chồng lên ảnh ở chế độ Multiply; còn có Màu gốc, Độ sâu, Pháp tuyến và Mặt nạ bầu trời.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "Trong PSD, ảnh nằm dưới cùng và các layer phía trên đang ẩn: bật những layer bạn cần.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Trình xem render hiển thị từng layer (nhấn L để chuyển qua lại) và lưu chúng bằng Lưu layer."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Trình xem render hiển thị từng layer (nhấn L để chuyển qua lại) và lưu chúng bằng Lưu layer.",
+  "Flat surfaces in Rhino": "Bề mặt phẳng trong Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Xuất Rhino 3DM giờ ghi mọi thứ nằm phẳng thành một bề mặt phẳng, nên Rhino hiển thị đường bao của nó thay vì từng tam giác.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Mặt nước, không gian xanh, lối đi và đường giao thông từ Nhập bối cảnh khu đất khi tắt Địa hình được xuất thành bề mặt phẳng, kể cả các lỗ.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Các phần phẳng khác, như đa giác 3D, cũng được xuất như vậy, mỗi phần tách rời là một bề mặt.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Khi bật Địa hình, mặt đất, đường và mặt nước bám theo địa hình, nên vẫn được xuất thành mesh."
 }

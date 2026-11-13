@@ -17892,5 +17892,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "材質顏色與物件顏色為每種材質或每個物件賦予各自的純色，用魔術棒點一下即可選取。",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "陰影、環境遮蔽與線以色彩增值疊加在圖片上；另有基本色、深度、法線與天空遮色片。",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "在 PSD 中，圖片位於最底層，其上的圖層已隱藏：開啟需要的圖層即可。",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "彩現檢視器可顯示每個圖層（按 L 逐一切換），並以「儲存圖層」儲存。"
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "彩現檢視器可顯示每個圖層（按 L 逐一切換），並以「儲存圖層」儲存。",
+  "Flat surfaces in Rhino": "Rhino 中的平面曲面",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "匯出 Rhino 3DM 現在把平放的東西寫成平面曲面，Rhino 只顯示它的輪廓，而不是每個三角形。",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "關閉地形時，匯入基地周邊環境取得的水體、綠地、步道和道路匯出為帶孔洞的平面曲面。",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "其他平的部件（如 3D 多邊形）也這樣匯出，每個分開的部分一個曲面。",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "開啟地形時，地面、道路和水體隨地勢起伏，因此仍匯出為網格。"
 }

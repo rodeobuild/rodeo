@@ -22,6 +22,16 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T12:00:00Z",
+    "rhino-flat-surfaces",
+    "Flat surfaces in Rhino",
+    `Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.
+- Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.
+- Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.
+- With Terrain on, ground, roads and water follow the land, so they still go out as meshes.`,
+    "site",
+  ),
+  release(
     "2026-11-12T12:30:00Z",
     "render-layers",
     "Renders in layers, for Photoshop",

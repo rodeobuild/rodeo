@@ -17878,5 +17878,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Materialfarben und Objektfarben geben jedem Material oder Objekt eine eigene flache Farbe, sodass der Zauberstab es mit einem Klick auswählt.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Schatten, Umgebungsverdeckung und Linien liegen im Modus „Multiplizieren“ über dem Bild; Grundfarbe, Tiefe, Normalen und eine Himmelsmaske gibt es auch.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "In der PSD liegt das Bild unten, die Ebenen darüber sind ausgeblendet: Blenden Sie die gewünschten ein.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Der Render-Viewer zeigt jede Ebene (L blättert durch sie) und sichert sie mit „Ebenen sichern“."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Der Render-Viewer zeigt jede Ebene (L blättert durch sie) und sichert sie mit „Ebenen sichern“.",
+  "Flat surfaces in Rhino": "Ebene Flächen in Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Rhino-3DM exportieren schreibt alles, was eben liegt, jetzt als ebene Fläche, sodass Rhino ihren Umriss zeigt und nicht jedes Dreieck.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Wasser, Grünflächen, Wege und Straßen aus Standortumgebung importieren mit ausgeschaltetem Gelände werden als ebene Flächen exportiert, samt Löchern.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Andere ebene Teile wie 3D-Polygone werden genauso exportiert, eine Fläche je getrenntem Teil.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Mit eingeschaltetem Gelände folgen Boden, Straßen und Wasser dem Gelände und werden daher weiterhin als Netze exportiert."
 }

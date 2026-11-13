@@ -17878,5 +17878,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Couleurs de matériau et Couleurs d’objet donnent à chaque matériau ou objet une couleur unie à lui, pour que la baguette magique le sélectionne d’un clic.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Ombres, Occlusion ambiante et Lignes se superposent à l’image en mode Produit ; Couleur de base, Profondeur, Normales et un Masque du ciel sont aussi là.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "Dans le PSD, l’image est en bas et les calques au-dessus sont masqués : affichez ceux que vous voulez.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "La visionneuse de rendus montre chaque calque (L pour les parcourir) et les enregistre avec Enregistrer les calques."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "La visionneuse de rendus montre chaque calque (L pour les parcourir) et les enregistre avec Enregistrer les calques.",
+  "Flat surfaces in Rhino": "Des surfaces planes dans Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Exporter en Rhino 3DM écrit désormais tout ce qui est à plat comme une surface plane, que Rhino affiche par son contour et non triangle par triangle.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "L'eau, les espaces verts, les chemins et les routes d'Importer le contexte du site avec Terrain désactivé sortent comme des surfaces planes, trous compris.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Les autres pièces planes, comme les polygones 3D, sortent de la même façon, une surface par partie séparée.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Avec Terrain activé, le sol, les routes et l'eau suivent le relief : ils sortent donc toujours comme des maillages."
 }

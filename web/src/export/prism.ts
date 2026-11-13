@@ -195,7 +195,7 @@ function area3(t: Float32Array, i: number): number {
 }
 
 /** A closed ring's signed area, positive anticlockwise. */
-function ringArea(r: readonly Pt[]): number {
+export function ringArea(r: readonly Pt[]): number {
   let s = 0;
   for (let i = 0; i < r.length; i++) {
     const a = r[i];
@@ -206,7 +206,7 @@ function ringArea(r: readonly Pt[]): number {
 }
 
 /** A closed ring without its points on a straight run (within `tol` of the line through their neighbours). */
-function straightened(r: readonly Pt[], tol: number): Pt[] {
+export function straightened(r: readonly Pt[], tol: number): Pt[] {
   const out = [...r];
   for (let changed = true; changed && out.length > 3; ) {
     changed = false;

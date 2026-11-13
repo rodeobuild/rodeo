@@ -17883,5 +17883,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Kolory materiałów i Kolory obiektów dają każdemu materiałowi lub obiektowi własny jednolity kolor, więc różdżka zaznacza go jednym kliknięciem.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Cienie, Okluzja otoczenia i Linie nakłada się na obraz w trybie Mnożenie; są też Kolor bazowy, Głębokość, Normalne i Maska nieba.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "W PSD obraz jest na dole, a warstwy nad nim są ukryte: włącz te, których potrzebujesz.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Przeglądarka renderów pokazuje każdą warstwę (L przełącza między nimi) i zapisuje je przyciskiem Zapisz warstwy."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Przeglądarka renderów pokazuje każdą warstwę (L przełącza między nimi) i zapisuje je przyciskiem Zapisz warstwy.",
+  "Flat surfaces in Rhino": "Płaskie powierzchnie w Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Eksportuj Rhino 3DM zapisuje teraz wszystko, co leży płasko, jako płaską powierzchnię, więc Rhino pokazuje jej obrys, a nie każdy trójkąt.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Woda, tereny zielone, ścieżki i drogi z Importuj otoczenie terenu z wyłączonym Terenem trafiają do pliku jako płaskie powierzchnie, razem z otworami.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Inne płaskie elementy, takie jak wielokąty 3D, trafiają do pliku tak samo, jedna powierzchnia na każdą osobną część.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Z włączonym Terenem grunt, drogi i woda podążają za ukształtowaniem terenu, więc nadal trafiają do pliku jako siatki poligonowe."
 }

@@ -17862,5 +17862,10 @@
   "Material colours and Object colours give every material or object a flat colour of its own, so the magic wand picks it out in one click.": "Warna material dan Warna objek memberi tiap material atau objek warna rata sendiri, sehingga magic wand memilihnya dengan satu klik.",
   "Shadows, Ambient occlusion and Lines go over the picture in Multiply; Base colour, Depth, Normals and a Sky mask are there too.": "Bayangan, Ambient occlusion, dan Garis ditumpuk di atas gambar dengan mode Multiply; Warna dasar, Kedalaman, Normal, dan Mask langit juga tersedia.",
   "In the PSD the picture is at the bottom and the layers over it are hidden: turn on the ones you want.": "Di PSD, gambar ada di bawah dan layer di atasnya tersembunyi: tampilkan yang Anda inginkan.",
-  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Penampil render menampilkan tiap layer (tekan L untuk berpindah) dan menyimpannya dengan Simpan layer."
+  "The render viewer shows each layer (press L to go through them) and saves them with Save layers.": "Penampil render menampilkan tiap layer (tekan L untuk berpindah) dan menyimpannya dengan Simpan layer.",
+  "Flat surfaces in Rhino": "Permukaan datar di Rhino",
+  "Export Rhino 3DM now writes anything that lies flat as a flat surface, so Rhino shows its outline and not every triangle.": "Ekspor Rhino 3DM kini menulis apa pun yang datar sebagai permukaan datar, sehingga Rhino menampilkan garis luarnya, bukan setiap segitiga.",
+  "Water, green spaces, paths and roads from Import Site Context with Terrain off go out as flat surfaces, holes and all.": "Air, ruang hijau, jalan setapak, dan jalan dari Impor konteks tapak dengan Medan nonaktif diekspor sebagai permukaan datar, lengkap dengan lubangnya.",
+  "Other flat pieces, such as 3D polygons, go out the same way, a surface for each separate part.": "Bagian datar lain, seperti poligon 3D, diekspor dengan cara yang sama, satu permukaan untuk setiap bagian yang terpisah.",
+  "With Terrain on, ground, roads and water follow the land, so they still go out as meshes.": "Dengan Medan aktif, tanah, jalan, dan air mengikuti kontur lahan, jadi tetap diekspor sebagai mesh."
 }
