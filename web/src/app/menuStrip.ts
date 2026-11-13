@@ -60,6 +60,8 @@ export function mountMenuStrip(strip: HTMLElement, menus: () => readonly { reado
   });
   // menus a feature adds once it knows it can (the cloud's, say) show as the pointer comes
   strip.addEventListener("pointerenter", render);
+  // a look (View › Work Like) changes the menus' titles
+  window.addEventListener("rodeo:menus", render);
   window.addEventListener("focus", render);
   render();
 }

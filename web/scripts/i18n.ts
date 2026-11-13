@@ -48,6 +48,9 @@ const PLURAL_PAIR = /^\s*"([^"\n]+)":\s*"([^"\n]+)",?$/gm;
 /** A tool's description, which only the language model reads (its label shows in the chat). */
 const MODEL_ONLY = /\bdescription\s*:\s*$/;
 
+/** A Rodeo menu command's path, which View › Work Like's looks name commands by and never show. */
+const MENU_PATH = /^(File|Edit|View|Modify|Model|AEC|Tools|Text|Plug-ins|Stage|Window|Help) › \S/;
+
 function sourceFiles(dir: string, root = dir, tag = ""): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -272,10 +275,12 @@ export function interfaceText(): Map<string, string> {
   for (const file of [...sourceFiles(SRC), ...sourceFiles(SERVER, SERVER, "server:")]) {
     const src = readFileSync(file, "utf8");
     const tools = file.endsWith(join("agents", "tools.ts"));
+    const look = file.includes(join("app", "looks") + "/");
     // What's new shows a release's body a line at a time, its "- " lines as a list
     const releases = file.endsWith(join("news", "releases.ts"));
     for (const { text, line, before } of literals(src)) {
       if (tools && MODEL_ONLY.test(before)) continue;
+      if (look && MENU_PATH.test(text)) continue;
       for (const part of releases ? text.split("\n").map((l) => l.replace(/^- /, "")) : [text]) {
         const t = part.trim();
         if (isInterfaceText(t, before) && !found.has(t)) found.set(t, `${relative(WEB, file)}:${line}`);

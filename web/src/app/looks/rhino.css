@@ -1,0 +1,386 @@
+/* View › Work Like › Rhino: Rhino 8's light Windows chrome. Flat grey bars, a white command field, the
+   tabs of a toolbar lifting their front tab to white, square menus, and the drawing's pane labels as
+   small dark text at each pane's top-left. Every rule is scoped to the look, so Rodeo keeps its own. */
+
+:root[data-look="rhino"] {
+  /* Rodeo's tokens in Rhino's light chrome */
+  --chrome: #f0f0f0;
+  --chrome-border: #c8c8c8;
+  --surface: #fafafa;
+  --surface-2: #f5f5f5;
+  --divider: #d6d6d6;
+  --text: #1e1e1e;
+  --text-soft: #333333;
+  --text-2: #4a4a4a;
+  --text-3: #7a7a7a;
+  --fill: rgba(0, 0, 0, 0.04);
+  --fill-hover: rgba(0, 0, 0, 0.08);
+  --fill-strong: rgba(0, 0, 0, 0.12);
+  --select: rgba(59, 125, 221, 0.18);
+  --accent: #3b7ddd;
+  --accent-text: #ffffff;
+  --font: "Segoe UI", system-ui, sans-serif;
+
+  /* the look's own rows */
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 12px;
+  --lk-bar: #f0f0f0;
+  --lk-bar-text: #1e1e1e;
+  --lk-bar-border: #c8c8c8;
+  --lk-title: #f0f0f0;
+  --lk-title-text: #1e1e1e;
+  --lk-tabs: #f0f0f0;
+  --lk-tab-text: #3a3a3a;
+  --lk-tab-active: #ffffff;
+  --lk-tab-active-text: #1e1e1e;
+  --lk-panel: #fafafa;
+  --lk-panel-title: #4a4a4a;
+  --lk-panel-sep: #c8c8c8;
+  --lk-accent: #3b7ddd;
+  --lk-accent-text: #ffffff;
+  --lk-btn-hover: #dcdcdc;
+  --lk-btn-hover-border: #b8b8b8;
+  --lk-btn-on: #cde0f7;
+  --lk-btn-on-border: #7fa9e0;
+  --lk-btn-text: #1e1e1e;
+  --lk-icon-size: 16px;
+  --lk-icon-large: 28px;
+  --lk-radius: 2px;
+  --lk-field: #ffffff;
+  --lk-field-text: #1e1e1e;
+  --lk-field-border: #b4b4b4;
+  --lk-status: #f0f0f0;
+  --lk-status-text: #3a3a3a;
+  --lk-status-on: #1e1e1e;
+  --lk-status-on-bg: #d2d2d2;
+  --lk-toolbox: #ededed;
+  --lk-toolbox-border: #c8c8c8;
+
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-bar-text);
+}
+
+/* ---- the menu bar: Windows' 22 px strip of square titles ----------------------------------- */
+
+:root[data-look="rhino"] .menu-strip {
+  height: 22px;
+  padding: 0 2px;
+  gap: 0;
+  background: #f0f0f0;
+  border-bottom: 1px solid #c8c8c8;
+  font-family: var(--lk-font);
+}
+
+:root[data-look="rhino"] .menu-strip-title {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 0;
+  color: #1e1e1e;
+  font-family: var(--lk-font);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+:root[data-look="rhino"] .menu-strip-title:hover,
+:root[data-look="rhino"] .menu-strip-title.open {
+  background: #dcdcdc;
+  color: #1e1e1e;
+}
+
+/* ---- drop-down menus: square, light, flat rows --------------------------------------------- */
+
+:root[data-look="rhino"] .menu-panel {
+  background: #ffffff;
+  border: 1px solid #b4b4b4;
+  border-radius: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  font-family: var(--lk-font);
+  font-size: 12px;
+}
+
+:root[data-look="rhino"] .menu-item {
+  height: 24px;
+  padding: 0 8px 0 6px;
+  border-radius: 0;
+  color: #1e1e1e;
+}
+
+:root[data-look="rhino"] .menu-item:hover:not([aria-disabled="true"]),
+:root[data-look="rhino"] .menu-item.checked {
+  background: #dbe9f9;
+}
+
+:root[data-look="rhino"] .menu-sep {
+  margin: 3px 0;
+  background: #d6d6d6;
+}
+
+:root[data-look="rhino"] .menu-keys {
+  font-family: var(--lk-font);
+  color: #5a5a5a;
+}
+
+/* ---- the command line: a white field with a thin border ------------------------------------ */
+
+:root[data-look="rhino"] .lk-cmd {
+  background: #ffffff;
+  border: 1px solid #b4b4b4;
+  color: #1e1e1e;
+  font-family: var(--lk-font);
+  font-size: 12px;
+  cursor: default;
+}
+
+:root[data-look="rhino"] .lk-cmd-history,
+:root[data-look="rhino"] .lk-cmd-row,
+:root[data-look="rhino"] .lk-cmd-prompt {
+  color: #1e1e1e;
+}
+
+:root[data-look="rhino"] .lk-cmd-input {
+  background: transparent;
+  color: #1e1e1e;
+  font-family: var(--lk-font);
+  font-size: 12px;
+}
+
+:root[data-look="rhino"] .lk-cmd-suggest {
+  background: #ffffff;
+  border: 1px solid #b4b4b4;
+  border-radius: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-look="rhino"] .lk-cmd-option.active {
+  background: #dbe9f9;
+}
+
+/* ---- toolbars: flat tabs, the front one white ---------------------------------------------- */
+
+:root[data-look="rhino"] .lk-toolbars {
+  background: #f0f0f0;
+  border-bottom: 1px solid #c8c8c8;
+}
+
+:root[data-look="rhino"] .lk-toolbar-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0 4px;
+  border-bottom: 1px solid #c8c8c8;
+  background: #f0f0f0;
+}
+
+:root[data-look="rhino"] .lk-toolbar-tab {
+  height: 20px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #3a3a3a;
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+}
+
+:root[data-look="rhino"] .lk-toolbar-tab:hover:not(.active) {
+  background: #e2e2e2;
+}
+
+:root[data-look="rhino"] .lk-toolbar-tab.active {
+  background: #ffffff;
+  border-color: #c8c8c8;
+  color: #1e1e1e;
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+}
+
+:root[data-look="rhino"] .lk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 4px;
+  background: #ffffff;
+}
+
+:root[data-look="rhino"] .lk-toolbar .lk-btn {
+  padding: 2px;
+}
+
+:root[data-look="rhino"] .lk-toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: #d0d0d0;
+}
+
+/* ---- the sidebar of tools: light grey, two across, tight buttons --------------------------- */
+
+:root[data-look="rhino"] .lk-toolbox {
+  background: #ededed;
+  border-right: 1px solid #c8c8c8;
+  padding: 4px 3px;
+  font-family: var(--lk-font);
+  font-size: 12px;
+  cursor: default;
+}
+
+:root[data-look="rhino"] .lk-toolbox-title {
+  padding: 2px 4px 4px;
+  color: #3a3a3a;
+  font-size: 11px;
+}
+
+:root[data-look="rhino"] .lk-toolbox-group + .lk-toolbox-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #d0d0d0;
+}
+
+:root[data-look="rhino"] .lk-toolbox-group-title {
+  padding: 0 2px 2px;
+  color: #5a5a5a;
+  font-size: 11px;
+}
+
+:root[data-look="rhino"] .lk-toolbox-grid .lk-btn {
+  padding: 3px;
+  border-radius: 2px;
+}
+
+:root[data-look="rhino"] .lk-toolbox-grid .lk-btn:hover:not(.off) {
+  background: #d8d8d8;
+}
+
+/* ---- the docked palettes: flat grey title bars, square panels ------------------------------ */
+
+:root[data-look="rhino"] .dock {
+  font-family: var(--lk-font);
+  font-size: 12px;
+}
+
+:root[data-look="rhino"] .pal {
+  border-radius: 0;
+  box-shadow: none;
+  background: #fafafa;
+}
+
+:root[data-look="rhino"] .pal-head {
+  height: 24px;
+  padding: 0 4px 0 8px;
+  background: #e2e2e2;
+  border-bottom: 1px solid #c8c8c8;
+  color: #1e1e1e;
+}
+
+:root[data-look="rhino"] .pal-title {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+:root[data-look="rhino"] .pal.tabbed .pal-head {
+  padding-left: 4px;
+}
+
+:root[data-look="rhino"] .pal-tab {
+  border-radius: 0;
+  font-size: 12px;
+}
+
+:root[data-look="rhino"] .pal-tab.active {
+  background: #fafafa;
+}
+
+/* ---- the status bar: one or more rows of flat items ---------------------------------------- */
+
+:root[data-look="rhino"] .lk-statusbar {
+  background: #f0f0f0;
+  border-top: 1px solid #c8c8c8;
+  color: #3a3a3a;
+  font-family: var(--lk-font);
+  font-size: 12px;
+  cursor: default;
+}
+
+:root[data-look="rhino"] .lk-status-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+  padding: 0 4px;
+}
+
+:root[data-look="rhino"] .lk-status-row + .lk-status-row {
+  border-top: 1px solid #d6d6d6;
+}
+
+:root[data-look="rhino"] .lk-st-toggle {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: #3a3a3a;
+}
+
+:root[data-look="rhino"] .lk-st-toggle:hover {
+  background: #dcdcdc;
+}
+
+:root[data-look="rhino"] .lk-st-toggle.on {
+  background: #d2d2d2;
+  border-color: #b4b4b4;
+  color: #1e1e1e;
+}
+
+:root[data-look="rhino"] .lk-st-coords,
+:root[data-look="rhino"] .lk-st-layer,
+:root[data-look="rhino"] .lk-st-hint {
+  padding: 0 6px;
+  color: #1e1e1e;
+}
+
+:root[data-look="rhino"] .lk-st-text {
+  padding: 0 4px;
+}
+
+/* ---- the drawing's pane labels: small dark text at each pane's top-left -------------------- */
+
+:root[data-look="rhino"] .pane-chip {
+  height: 18px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #1e1e1e;
+  font-family: var(--lk-font);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+:root[data-look="rhino"] .pane-chip:hover,
+:root[data-look="rhino"] .pane-chip.active {
+  border: 0;
+  color: #1e1e1e;
+  font-weight: 600;
+}
+
+:root[data-look="rhino"] .pane-chip svg {
+  display: none;
+}
+
+:root[data-look="rhino"] .pane-chip-view::before {
+  color: #5a5a5a;
+}
+
+/* ---- every button a look draws keeps the arrow cursor -------------------------------------- */
+
+:root[data-look="rhino"] .lk-btn,
+:root[data-look="rhino"] .lk-btn-more,
+:root[data-look="rhino"] .lk-app-btn,
+:root[data-look="rhino"] .lk-toolbar-tab,
+:root[data-look="rhino"] .lk-ribbon-tab {
+  cursor: default;
+}

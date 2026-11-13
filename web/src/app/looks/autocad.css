@@ -1,0 +1,193 @@
+/* View › Work Like › AutoCAD: its dark Drafting & Annotation chrome. Every rule sits under
+   :root[data-look="autocad"], so Rodeo's own look and the other applications are untouched. */
+
+:root[data-look="autocad"] {
+  /* the type: Windows' Segoe UI at 12px, as the application's rows set it */
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 12px;
+  /* the title bar, toolbars and the command line's and status bar's rows */
+  --lk-bar: #2b3240;
+  --lk-bar-text: #d6dce6;
+  --lk-bar-border: #1b2029;
+  --lk-title: #2b3240;
+  --lk-title-text: #c4cbd6;
+  /* the ribbon: the tabs' row, the front tab, and the panels under it */
+  --lk-tabs: #3b4453;
+  --lk-tab-text: #c4cbd6;
+  --lk-tab-active: #4a5466;
+  --lk-tab-active-text: #ffffff;
+  --lk-panel: #4a5466;
+  --lk-panel-title: #aeb6c4;
+  --lk-panel-title-bar: #3f4858;
+  --lk-panel-sep: #3b4453;
+  /* the application button: AutoCAD's red */
+  --lk-accent: #b8322e;
+  --lk-accent-text: #ffffff;
+  /* buttons: a lighter hover, a blue-lit one while its command is on */
+  --lk-btn-hover: #5a6578;
+  --lk-btn-hover-border: transparent;
+  --lk-btn-on: #3d5b80;
+  --lk-btn-on-border: transparent;
+  --lk-btn-text: #e4e9f1;
+  --lk-radius: 2px;
+  /* the command line's field */
+  --lk-field: #1c212b;
+  --lk-field-text: #e4e9f1;
+  --lk-field-border: #5a6578;
+  /* the status bar: grey icons, lit ones in light blue */
+  --lk-status: #2b3240;
+  --lk-status-text: #aeb6c4;
+  --lk-status-on: #9fd3ff;
+  --lk-status-on-bg: #34445a;
+  /* the toolbox (unused here) */
+  --lk-toolbox: #2b3240;
+  --lk-toolbox-border: #1b2029;
+}
+
+/* the drawing: the paper is set light in the look (paper in autocad.ts) and inverted here, so its
+   black lines show light on the dark model space; the colours keep their hues */
+:root[data-look="autocad"] #canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+:root[data-look="autocad"] .canvas-wrap {
+  background: #212830;
+}
+
+/* the title bar: the application button, the Quick Access Toolbar, the file's name */
+:root[data-look="autocad"] .lk-titlebar {
+  border-bottom: 0;
+}
+
+:root[data-look="autocad"] .lk-app-btn {
+  color: #ffffff;
+}
+
+:root[data-look="autocad"] .lk-file-name {
+  font-size: 12px;
+  color: #d6dce6;
+}
+
+:root[data-look="autocad"] .lk-qat .lk-btn {
+  color: #d6dce6;
+}
+
+/* the ribbon: tabs in a row, the front tab lifted, panel names on a darker strip */
+:root[data-look="autocad"] .lk-ribbon-tabs {
+  background: #3b4453;
+  border-bottom: 1px solid #1b2029;
+}
+
+:root[data-look="autocad"] .lk-ribbon-tab {
+  color: #c4cbd6;
+  cursor: default;
+}
+
+:root[data-look="autocad"] .lk-ribbon-tab.active {
+  background: #4a5466;
+  color: #ffffff;
+}
+
+:root[data-look="autocad"] .lk-ribbon-body {
+  background: #4a5466;
+  border-bottom: 1px solid #1b2029;
+}
+
+:root[data-look="autocad"] .lk-ribbon-panel {
+  border-right: 1px solid #3b4453;
+}
+
+:root[data-look="autocad"] .lk-ribbon-panel-title {
+  background: #3f4858;
+  color: #aeb6c4;
+  letter-spacing: 0;
+}
+
+:root[data-look="autocad"] .lk-ribbon-stack .lk-btn {
+  color: #e4e9f1;
+}
+
+/* the command line: a dark field floating full width above the status bar */
+:root[data-look="autocad"] .lk-cmd-at-bottom {
+  background: #2b3240;
+  border-top: 1px solid #1b2029;
+  border-bottom: 1px solid #1b2029;
+}
+
+:root[data-look="autocad"] .lk-cmd-history,
+:root[data-look="autocad"] .lk-cmd-line {
+  color: #c4cbd6;
+}
+
+:root[data-look="autocad"] .lk-cmd-prompt {
+  color: #d6dce6;
+}
+
+:root[data-look="autocad"] .lk-cmd-input {
+  color: #ffffff;
+  background: transparent;
+}
+
+:root[data-look="autocad"] .lk-cmd-suggest {
+  background: #1c212b;
+  border: 1px solid #5a6578;
+  color: #e4e9f1;
+}
+
+/* the status bar: dark, grey toggles, a lit one in light blue */
+:root[data-look="autocad"] .lk-statusbar {
+  background: #2b3240;
+  border-top: 1px solid #1b2029;
+}
+
+:root[data-look="autocad"] .lk-st-toggle {
+  color: #aeb6c4;
+  cursor: default;
+}
+
+:root[data-look="autocad"] .lk-st-toggle.on {
+  color: #9fd3ff;
+  background: #34445a;
+}
+
+:root[data-look="autocad"] .lk-st-text {
+  color: #aeb6c4;
+}
+
+/* the Properties palette: a dark grey dock on the left */
+:root[data-look="autocad"] .dock {
+  background: #353d4d;
+  color: #d6dce6;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+/* the on-screen view cube sits at the drawing's top right, as AutoCAD's ViewCube does */
+:root[data-look="autocad"] .ovc {
+  top: calc(12px + var(--pane-top, 0px));
+  right: calc(16px + var(--pane-right, 0px));
+  bottom: auto;
+  left: auto;
+}
+
+/* the menus: the application button's menu and the right-click menus, dark */
+:root[data-look="autocad"] .menu-panel {
+  background: #2b3240;
+  border-color: #1b2029;
+  color: #e4e9f1;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-look="autocad"] .menu-item {
+  color: #e4e9f1;
+  cursor: default;
+}
+
+:root[data-look="autocad"] .menu-item:hover:not([aria-disabled="true"]),
+:root[data-look="autocad"] .menu-item.checked {
+  background: #3d4b60;
+}
+
+:root[data-look="autocad"] .menu-sep {
+  border-color: #3b4453;
+}

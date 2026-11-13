@@ -1,0 +1,225 @@
+/* A look's status bar (statusBar.ts): rows along the foot of the window, each a flex line of
+   small items in the look's status colours. Items are flat, with no glass or blur. */
+
+.lk-statusbar {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-status-text);
+  background: var(--lk-status);
+  user-select: none;
+}
+
+.lk-status-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 6px;
+  border-top: 1px solid var(--lk-bar-border);
+  background: var(--lk-status);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* the Mode bar is flat in the first row; its own rules are in looks.css */
+.lk-status-row #modebar {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.lk-st-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lk-st-coords {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lk-st-coords-value {
+  display: inline-block;
+  min-width: 16ch;
+}
+
+.lk-st-label {
+  color: var(--lk-status-text);
+}
+
+.lk-st-text {
+  padding: 0 6px;
+}
+
+/* ---- toggles and buttons ------------------------------------------------------------------ */
+
+.lk-st-toggle,
+.lk-st-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.lk-st-toggle:hover,
+.lk-st-button:hover {
+  color: var(--lk-status-on);
+}
+
+.lk-st-toggle:focus-visible,
+.lk-st-button:focus-visible,
+.lk-st-layer select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* the word alone: lit as a brighter word on a filled ground */
+.lk-st-toggle.lk-st-text.on {
+  color: var(--lk-status-on);
+  background: var(--lk-status-on-bg);
+}
+
+/* a small square check box, then the word (Rhino's Osnap row) */
+.lk-st-toggle.lk-st-check {
+  padding: 0 4px 0 2px;
+}
+
+.lk-st-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 2px;
+  background: var(--lk-field);
+  color: var(--lk-status-on);
+}
+
+.lk-st-box svg {
+  visibility: hidden;
+}
+
+.lk-st-toggle.lk-st-check.on .lk-st-box svg {
+  visibility: visible;
+}
+
+/* an icon alone, with the word as its tooltip */
+.lk-st-toggle.lk-st-icon {
+  width: 22px;
+  padding: 0;
+  justify-content: center;
+}
+
+.lk-st-toggle.lk-st-icon.on {
+  color: var(--lk-status-on);
+  background: var(--lk-status-on-bg);
+}
+
+.lk-st-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lk-st-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.lk-st-toggle.off,
+.lk-st-button.off {
+  opacity: 0.45;
+}
+
+/* ---- layers ----------------------------------------------------------------------------------- */
+
+.lk-st-layer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.lk-st-layer select {
+  box-sizing: border-box;
+  max-width: 180px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 3px;
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+  font: inherit;
+  cursor: default;
+}
+
+.lk-st-layer select:disabled {
+  opacity: 0.5;
+}
+
+/* ---- selection count ---------------------------------------------------------------------- */
+
+.lk-st-selection {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lk-st-selection .lk-st-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ---- measurements ------------------------------------------------------------------------- */
+
+.lk-st-measure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.lk-st-measure-box {
+  box-sizing: border-box;
+  display: inline-block;
+  width: 140px;
+  height: 18px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 3px;
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.lk-st-spacer {
+  flex: 1 1 auto;
+}

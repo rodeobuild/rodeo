@@ -1,0 +1,308 @@
+/* View › Work Like › Archicad: a light Windows chrome with a blue accent, a grey Toolbox column,
+   an Info Box row under the menus and a flat Navigator. Every rule is scoped to the look's root so
+   Rodeo's own chrome is untouched when another look, or Rodeo, is on. */
+
+:root[data-look="archicad"] {
+  /* the type of the look's rows */
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 12px;
+  /* Rodeo's shared tokens, so every menu, palette and field takes the same light chrome */
+  --chrome: #ececec;
+  --surface: #f7f7f7;
+  --surface-2: #ffffff;
+  --chrome-border: #c6c6c6;
+  --divider: #c6c6c6;
+  --text: #1b1b1b;
+  --text-soft: #303030;
+  --text-2: #4a4a4a;
+  --text-3: #6b6b6b;
+  --accent: #1f5fb4;
+  --accent-text: #ffffff;
+  --select: #cfe2f7;
+  --fill-hover: rgba(0, 0, 0, 0.06);
+  --fill-strong: rgba(0, 0, 0, 0.1);
+  --warn: #c98a00;
+  /* the look's own rows */
+  --lk-bar: var(--chrome);
+  --lk-bar-text: var(--text);
+  --lk-bar-border: var(--chrome-border);
+  --lk-title: var(--chrome);
+  --lk-title-text: var(--text-2);
+  --lk-accent: var(--accent);
+  --lk-accent-text: #ffffff;
+  --lk-btn-hover: rgba(0, 0, 0, 0.07);
+  --lk-btn-hover-border: #b9b9b9;
+  --lk-btn-on: #c9dcf5;
+  --lk-btn-on-border: #7fa6dc;
+  --lk-btn-text: var(--text);
+  --lk-icon-size: 16px;
+  --lk-radius: 2px;
+  --lk-field: #ffffff;
+  --lk-field-text: var(--text);
+  --lk-field-border: #b5b5b5;
+  --lk-status: var(--chrome);
+  --lk-status-text: var(--text-2);
+  --lk-status-on: var(--text);
+  --lk-status-on-bg: #d4d4d4;
+  --lk-toolbox: #e9e9e9;
+  --lk-toolbox-border: #c6c6c6;
+  color: var(--text);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+}
+
+/* ---- the menu bar: a 22px Windows strip ----------------------------------------------------- */
+
+:root[data-look="archicad"] .menu-strip {
+  height: 22px;
+  padding: 0 3px;
+  gap: 0;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-border);
+  font-family: var(--lk-font);
+}
+
+:root[data-look="archicad"] .menu-strip-title {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: default;
+}
+
+:root[data-look="archicad"] .menu-strip-title:hover,
+:root[data-look="archicad"] .menu-strip-title.open {
+  background: #d3e2f4;
+  color: var(--text);
+}
+
+/* the drop-down menus: light, square, a grey edge */
+
+:root[data-look="archicad"] .menu-panel {
+  background: #fbfbfb;
+  border: 1px solid #9f9f9f;
+  border-radius: 0;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+  padding: 2px 0;
+  font-family: var(--lk-font);
+  font-size: 12px;
+  color: var(--text);
+}
+
+:root[data-look="archicad"] .menu-item {
+  min-height: 22px;
+  padding: 0 10px 0 4px;
+  border-radius: 0;
+  color: var(--text);
+  cursor: default;
+}
+
+:root[data-look="archicad"] .menu-item:hover,
+:root[data-look="archicad"] .menu-item:focus-visible {
+  background: #cce4f7;
+  color: var(--text);
+}
+
+:root[data-look="archicad"] .menu-sep {
+  margin: 3px 2px;
+  background: #d2d2d2;
+}
+
+:root[data-look="archicad"] .menu-keys {
+  color: var(--text-3);
+}
+
+/* ---- the title bar (not used by this look; kept plain if a look above it turns one on) ---------- */
+
+:root[data-look="archicad"] .lk-titlebar {
+  height: 28px;
+  background: var(--chrome);
+  color: var(--text-2);
+}
+
+/* ---- the Standard toolbar under the menus ---------------------------------------------------------- */
+
+:root[data-look="archicad"] .lk-toolbars {
+  display: flex;
+  align-items: stretch;
+  min-height: 28px;
+  padding: 2px 4px;
+  gap: 2px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+:root[data-look="archicad"] .lk-toolbar {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
+}
+
+:root[data-look="archicad"] .lk-toolbar .lk-btn {
+  padding: 2px 3px;
+  border-radius: 2px;
+}
+
+:root[data-look="archicad"] .lk-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--chrome-border);
+}
+
+/* ---- the Info Box: a light row with a thin bottom border -------------------------------------------- */
+
+:root[data-look="archicad"] .lk-options-slot {
+  min-height: 26px;
+  padding: 0 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--chrome-border);
+  font-size: 11.5px;
+}
+
+:root[data-look="archicad"] .lk-options-slot .lk-btn {
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* ---- the Toolbox: a light grey column of 22-24px rows, icon and name, small captions ------------- */
+
+:root[data-look="archicad"] .lk-toolbox {
+  width: 122px;
+  padding: 3px 3px 6px;
+  background: var(--lk-toolbox);
+  border-right: 1px solid var(--lk-toolbox-border);
+  font-family: var(--lk-font);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+:root[data-look="archicad"] .lk-toolbox-title {
+  padding: 3px 4px 4px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--lk-toolbox-border);
+  margin-bottom: 2px;
+}
+
+:root[data-look="archicad"] .lk-toolbox-group {
+  margin-bottom: 4px;
+}
+
+:root[data-look="archicad"] .lk-toolbox-group-title {
+  padding: 4px 4px 1px;
+  color: var(--text-3);
+  font-size: 10px;
+  letter-spacing: 0.01em;
+}
+
+:root[data-look="archicad"] .lk-toolbox-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+:root[data-look="archicad"] .lk-toolbox .lk-btn {
+  width: 100%;
+  min-height: 23px;
+  padding: 2px 4px;
+  gap: 6px;
+  justify-content: flex-start;
+  border-radius: 2px;
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+
+:root[data-look="archicad"] .lk-toolbox .lk-btn-icon {
+  width: 16px;
+  height: 16px;
+}
+
+:root[data-look="archicad"] .lk-toolbox .lk-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-look="archicad"] .lk-toolbox .lk-btn.on {
+  background: #bfd6f2;
+  border-color: #7fa6dc;
+}
+
+/* ---- the Quick Options strip along the foot of the drawing: small and light grey ---------------- */
+
+:root[data-look="archicad"][data-lk-viewbar="foot"] #viewbar {
+  height: 24px;
+  background: #e6e6e6;
+  border-top: 1px solid var(--chrome-border);
+  color: var(--text-2);
+  font-family: var(--lk-font);
+  font-size: 11px;
+}
+
+:root[data-look="archicad"][data-lk-viewbar="foot"] #viewbar button {
+  font-size: 11px;
+  cursor: default;
+}
+
+/* ---- the palettes as Archicad's: flat headers, a light body, tree-like rows ---------------------- */
+
+:root[data-look="archicad"] .dock {
+  font-family: var(--lk-font);
+}
+
+:root[data-look="archicad"] .pal-head {
+  min-height: 22px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+:root[data-look="archicad"] .pal-title {
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+:root[data-look="archicad"] .pal-body {
+  background: var(--surface);
+  font-size: 11.5px;
+}
+
+/* the Navigator's rows: flat and indented as a tree, with no rounded highlight */
+:root[data-look="archicad"] .pal-body [role="tree"] {
+  padding: 2px 0;
+}
+
+:root[data-look="archicad"] .pal-body [role="treeitem"] {
+  min-height: 20px;
+  padding: 1px 4px;
+  border-radius: 0;
+  color: var(--text);
+  cursor: default;
+}
+
+:root[data-look="archicad"] .pal-body [role="treeitem"]:hover {
+  background: var(--fill-hover);
+}
+
+:root[data-look="archicad"] .pal-body [role="treeitem"][aria-selected="true"] {
+  background: #cfe2f7;
+}
+
+/* the palette tabs, Library beside the Navigator */
+:root[data-look="archicad"] .pal-tabs {
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+/* ---- buttons: the arrow cursor everywhere, as Archicad shows it ------------------------------------ */
+
+:root[data-look="archicad"] .lk-btn,
+:root[data-look="archicad"] .lk-btn-more,
+:root[data-look="archicad"] .lk-app-btn {
+  cursor: default;
+}

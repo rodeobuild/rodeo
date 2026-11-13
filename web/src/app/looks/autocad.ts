@@ -1,0 +1,655 @@
+// View › Work Like › AutoCAD: the Drafting & Annotation workspace of AutoCAD 2025 for Windows. A
+// dark title bar with the application button and Quick Access Toolbar, a ribbon of tabs, a command
+// line along the foot of the window that takes AutoCAD's command names and their short aliases, a
+// status bar of toggles, the Properties palette docked left, and the drawing with Rodeo's
+// function keys and mouse. Every button and command runs one of Rodeo's own tools or menu commands.
+
+import type { ToolId } from "../state.ts";
+import type { Command, CommandLineSpec, LookButton, LookSpec, RibbonTab, StatusBarSpec } from "./types.ts";
+import { lookIcon } from "./commands.ts";
+import { WORK_LIKE } from "./looks.ts";
+import "./autocad.css";
+
+/** A tool as a command. */
+const t = (id: ToolId): Command => ({ tool: id });
+/** A menu command by its path as Rodeo builds its menus. */
+const m = (path: string): Command => ({ menu: path });
+/** A palette shown or hidden. */
+const p = (id: string): Command => ({ palette: id });
+
+/** A button, with the key its tooltip shows and any drop-down of more. */
+const b = (label: string, use: Command, keys?: string, more?: readonly LookButton[]): LookButton => ({
+  label,
+  do: use,
+  ...(keys ? { keys } : {}),
+  ...(more ? { more } : {}),
+});
+
+/** A large ribbon button: its icon over its label. */
+const big = (label: string, use: Command, keys?: string, more?: readonly LookButton[]): LookButton => ({ ...b(label, use, keys, more), size: "large" });
+
+// the status bar's toggles: original line icons, a dot grid, corner brackets, a target and a thick line
+const GRID_ICON = lookIcon('<path d="M5 5h0M12 5h0M19 5h0M5 12h0M12 12h0M19 12h0M5 19h0M12 19h0M19 19h0" stroke-width="2.8"/>');
+const SNAP_ICON = lookIcon('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="M9 9h6v6H9z"/>');
+const OSNAP_ICON = lookIcon('<circle cx="12" cy="12" r="5.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>');
+const LWT_ICON = lookIcon('<path d="M4 12h16" stroke-width="3.4"/>');
+
+const GEAR_ICON = lookIcon('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>');
+
+const statusBar: StatusBarSpec = {
+  rows: [
+    [
+      { kind: "text", text: "MODEL" },
+      { kind: "spacer" },
+      { kind: "toggle", label: "Grid", do: m("View › Show Grid"), style: "icon", icon: GRID_ICON },
+      { kind: "toggle", label: "Snap Mode", do: m("View › Snap to Grid"), style: "icon", icon: SNAP_ICON },
+      { kind: "toggle", label: "Object Snap", do: m("View › Snap to Objects"), style: "icon", icon: OSNAP_ICON },
+      { kind: "toggle", label: "Lineweight", do: m("View › Zoom Line Thickness"), style: "icon", icon: LWT_ICON },
+      { kind: "text", text: "1:1" },
+      // the workspace gear: switches to another look, or back to Rodeo's own
+      { kind: "toggle", label: "Workspace Switching", do: WORK_LIKE, style: "icon", icon: GEAR_ICON },
+    ],
+  ],
+};
+
+const commandLine: CommandLineSpec = {
+  where: "bottom",
+  prompt: "Type a command",
+  history: 3,
+  upper: true,
+  commands: {
+    LINE: t("line"),
+    PLINE: t("polyline"),
+    CIRCLE: t("circle"),
+    ARC: t("arc"),
+    RECTANG: t("rect"),
+    POLYGON: t("regpoly"),
+    ELLIPSE: t("oval"),
+    SPLINE: t("freehand"),
+    HATCH: m("Modify › Hatch…"),
+    MTEXT: t("text"),
+    TEXT: t("text"),
+    MOVE: t("moveby"),
+    COPY: m("Edit › Duplicate"),
+    ROTATE: t("rotate"),
+    SCALE: m("Modify › Scale Objects…"),
+    MIRROR: t("mirror"),
+    OFFSET: t("offset"),
+    TRIM: t("trim"),
+    FILLET: t("fillet"),
+    CHAMFER: t("chamfer"),
+    EXPLODE: m("Modify › Decompose"),
+    JOIN: m("Modify › Join › Join"),
+    BREAK: t("split"),
+    ARRAY: m("Edit › Duplicate Array…"),
+    STRETCH: t("reshape"),
+    ERASE: m("Edit › Delete"),
+    LAYER: p("navigation"),
+    DIST: t("measure"),
+    DIMLINEAR: t("dimension"),
+    DIMALIGNED: t("dimension"),
+    BLOCK: m("Modify › Create Symbol…"),
+    INSERT: t("symbol"),
+    ZOOM: t("zoom"),
+    PAN: t("pan"),
+    UNDO: m("Edit › Undo"),
+    REDO: m("Edit › Redo"),
+    MATCHPROP: t("eyedropper"),
+    PROPERTIES: p("objectInfo"),
+    MEASURE: t("measure"),
+    DIVIDE: m("Modify › Drafting Aids › Even Divide…"),
+    MLEADER: t("callout"),
+    OSNAP: m("View › Snap to Objects"),
+    EXTRUDE: m("Model › Extrude…"),
+    PRESSPULL: t("pushpull"),
+    UNION: m("Model › Add Solids"),
+    SUBTRACT: m("Model › Subtract Solids"),
+    INTERSECT: m("Model › Intersect Solids"),
+    "3DORBIT": m("View › Rotate 3D View…"),
+    GROUP: m("Modify › Group"),
+    UNGROUP: m("Modify › Ungroup"),
+    PLOT: m("File › Print…"),
+    QSAVE: m("File › Save"),
+    SAVEAS: m("File › Save As…"),
+    OPEN: m("File › Open…"),
+    NEW: m("File › New"),
+    CLOSE: m("File › Close"),
+    PDFIMPORT: m("File › Import › Import PDF…"),
+    BOX: t("extrect"),
+    SPHERE: t("sphere"),
+    CONE: t("cone"),
+    SWEEP: m("Model › Sweep…"),
+    LOFT: t("loftsurface"),
+    SECTIONPLANE: m("Model › Section Solids…"),
+    POINT: t("locus"),
+    REVCLOUD: t("cloud"),
+    TABLE: m("Tools › Reports › Create Report…"),
+    HIDE: m("View › Rendering › Hidden Line"),
+    ISOLATEOBJECTS: m("View › Show Selected Objects Only"),
+    UNISOLATEOBJECTS: m("View › Unhide Objects"),
+    PURGE: m("Tools › Utilities › Purge…"),
+    AUDIT: m("Tools › Check File Health…"),
+    UNITS: m("File › Document Settings › Units…"),
+  },
+  // short names from AutoCAD's acad.pgp, only where the full name above is in the commands
+  aliases: {
+    L: "LINE",
+    PL: "PLINE",
+    C: "CIRCLE",
+    A: "ARC",
+    REC: "RECTANG",
+    POL: "POLYGON",
+    EL: "ELLIPSE",
+    SPL: "SPLINE",
+    H: "HATCH",
+    T: "MTEXT",
+    MT: "MTEXT",
+    DT: "TEXT",
+    M: "MOVE",
+    CO: "COPY",
+    CP: "COPY",
+    RO: "ROTATE",
+    SC: "SCALE",
+    MI: "MIRROR",
+    O: "OFFSET",
+    TR: "TRIM",
+    F: "FILLET",
+    CHA: "CHAMFER",
+    X: "EXPLODE",
+    J: "JOIN",
+    BR: "BREAK",
+    AR: "ARRAY",
+    S: "STRETCH",
+    E: "ERASE",
+    LA: "LAYER",
+    DI: "DIST",
+    DLI: "DIMLINEAR",
+    DAL: "DIMALIGNED",
+    B: "BLOCK",
+    I: "INSERT",
+    Z: "ZOOM",
+    P: "PAN",
+    U: "UNDO",
+    MA: "MATCHPROP",
+    PR: "PROPERTIES",
+    CH: "PROPERTIES",
+    ME: "MEASURE",
+    DIV: "DIVIDE",
+    MLD: "MLEADER",
+    OS: "OSNAP",
+    EXT: "EXTRUDE",
+    UNI: "UNION",
+    SU: "SUBTRACT",
+    IN: "INTERSECT",
+    "3DO": "3DORBIT",
+    G: "GROUP",
+  },
+};
+
+const home: RibbonTab = {
+  title: "Home",
+  panels: [
+    {
+      title: "Draw",
+      items: [
+        big("Line", t("line"), "L"),
+        big("Polyline", t("polyline"), "PL"),
+        big("Circle", t("circle"), "C"),
+        big("Arc", t("arc"), "A", [b("Quarter Arc", t("quarterarc"))]),
+        [b("Rectangle", t("rect"), "REC"), b("Polygon", t("regpoly"), "POL"), b("Point", t("locus"), "PO")],
+        [b("Hatch", m("Modify › Hatch…"), "H"), b("Ellipse", t("oval"), "EL"), b("Spline", t("freehand"), "SPL")],
+        [b("Revision Cloud", t("cloud"), "REVCLOUD")],
+      ],
+    },
+    {
+      title: "Modify",
+      items: [
+        [b("Move", t("moveby"), "M"), b("Rotate", t("rotate"), "RO"), b("Trim", t("trim"), "TR")],
+        [b("Erase", m("Edit › Delete"), "E"), b("Copy", m("Edit › Duplicate"), "CO"), b("Mirror", t("mirror"), "MI")],
+        [b("Fillet", t("fillet"), "F", [b("Chamfer", t("chamfer"), "CHA")]), b("Explode", m("Modify › Decompose"), "X"), b("Stretch", t("reshape"), "S")],
+        [b("Scale", m("Modify › Scale Objects…"), "SC"), b("Array", m("Edit › Duplicate Array…"), "AR"), b("Offset", t("offset"), "O")],
+      ],
+    },
+    {
+      title: "Annotation",
+      items: [
+        big("Text", t("text"), "DT"),
+        big("Dimension", t("dimension"), "DLI", [b("Arc Length", t("arclength")), b("Slope", t("slopedim")), b("Dimension Tape", t("dimtape"))]),
+        [b("Leader", t("callout")), b("Table", m("Tools › Reports › Create Report…"))],
+      ],
+    },
+    {
+      title: "Layers",
+      items: [
+        big("Layer Properties", p("navigation"), "LA"),
+        [b("Isolate", m("View › Show Selected Objects Only")), b("Unisolate", m("View › Unhide Objects")), b("Active Only", m("View › Layer Options › Active Only"))],
+      ],
+    },
+    {
+      title: "Block",
+      items: [
+        big("Insert", t("symbol"), "I"),
+        [b("Create", m("Modify › Create Symbol…"), "B"), b("Block Editor", m("Modify › Edit Symbol")), b("Exit Block", m("Modify › Exit Symbol"))],
+      ],
+    },
+    {
+      title: "Properties",
+      items: [big("Match Properties", t("eyedropper"), "MA"), [b("Properties", p("objectInfo"), "PR")]],
+    },
+    {
+      title: "Groups",
+      items: [[b("Group", m("Modify › Group"), "G"), b("Ungroup", m("Modify › Ungroup"))]],
+    },
+    {
+      title: "Utilities",
+      items: [big("Measure", t("measure"), "ME"), [b("Divide", m("Modify › Drafting Aids › Even Divide…"), "DIV"), b("Protractor", t("protractor"))]],
+    },
+    {
+      title: "Clipboard",
+      items: [big("Paste", m("Edit › Paste"), "Ctrl+V"), [b("Cut", m("Edit › Cut"), "Ctrl+X"), b("Copy", m("Edit › Copy"), "Ctrl+C")]],
+    },
+    {
+      title: "View",
+      items: [big("Top", m("View › Standard Views › Top"), ""), [b("Front", m("View › Standard Views › Front")), b("Right", m("View › Standard Views › Right")), b("Right Iso", m("View › Standard Views › Right Isometric"))]],
+    },
+  ],
+};
+
+const insert: RibbonTab = {
+  title: "Insert",
+  panels: [
+    {
+      title: "Block",
+      items: [big("Insert", t("symbol"), "I"), [b("Create", m("Modify › Create Symbol…"), "B"), b("Block Editor", m("Modify › Edit Symbol"))]],
+    },
+    {
+      title: "Reference",
+      items: [big("Attach", m("File › Import › Import DWG…")), [b("Attach Image", m("File › Import › Import Image File(s)…")), b("Attach PDF", m("File › Import › Import PDF…"))]],
+    },
+    {
+      title: "Import",
+      items: [big("PDF Import", m("File › Import › Import PDF…"), "PDFIMPORT"), [b("Import DWG", m("File › Import › Import DWG…")), b("Import DXF", m("File › Import › Import DXF…"))]],
+    },
+    {
+      title: "Data",
+      items: [big("Attach Data", m("Tools › Records › Attach Record…")), [b("Detach Data", m("Tools › Records › Detach Record…"))]],
+    },
+  ],
+};
+
+const annotate: RibbonTab = {
+  title: "Annotate",
+  panels: [
+    {
+      title: "Text",
+      items: [big("Text", t("text"), "DT"), [b("Check Spelling", m("Text › Check Spelling…")), b("Find and Replace", m("Text › Find-Replace Text…"))]],
+    },
+    {
+      title: "Dimensions",
+      items: [big("Linear", t("dimension"), "DLI"), [b("Arc Length", t("arclength")), b("Slope", t("slopedim")), b("Dimension Tape", t("dimtape"))]],
+    },
+    {
+      title: "Leaders",
+      items: [big("Leader", t("callout"), "MLD"), [b("Leader Line", t("leaderline")), b("Simple Leader", t("leadersimple"))]],
+    },
+    {
+      title: "Tables",
+      items: [big("Table", m("Tools › Reports › Create Report…"), "TABLE"), [b("Edit Table", m("Tools › Reports › Edit Worksheet…"))]],
+    },
+    {
+      title: "Markup",
+      items: [big("Revision Cloud", t("cloud"), "REVCLOUD"), [b("Redline", t("redline")), b("Hyperlink", t("hyperlink"))]],
+    },
+  ],
+};
+
+const view: RibbonTab = {
+  title: "View",
+  panels: [
+    {
+      title: "Viewport Tools",
+      items: [[b("Viewport", m("View › Create Viewport…")), b("Multiple Viewports", m("View › Create Multiple Viewports…")), b("Update Viewports", m("View › Update All Viewports"))]],
+    },
+    {
+      title: "Model Viewports",
+      items: [[b("Single Pane", m("View › Multiple View Panes › Single Pane")), b("Two Vertical", m("View › Multiple View Panes › Two Panes Side by Side")), b("Four Panes", m("View › Multiple View Panes › Four Panes"))]],
+    },
+    {
+      title: "Named Views",
+      items: [big("Named Views", m("Window › Palettes › Saved Views")), [b("Previous View", m("View › Previous View")), b("Next View", m("View › Next View")), b("Save View", m("View › Save View…"))]],
+    },
+    {
+      title: "Visual Styles",
+      items: [
+        [b("Wireframe", m("View › Rendering › Wireframe")), b("Hidden", m("View › Rendering › Hidden Line")), b("Shaded", m("View › Rendering › Shaded"))],
+        [b("Realistic", m("View › Rendering › Realistic")), b("Path Traced", m("View › Rendering › Path Traced")), b("Sketch", m("View › Rendering › Sketch"))],
+      ],
+    },
+    {
+      title: "Palettes",
+      items: [[b("Properties", p("objectInfo")), b("Layer Properties", p("navigation")), b("Tool Palettes", p("toolsets"))]],
+    },
+    {
+      title: "Interface",
+      items: [[b("Full Screen", m("Window › Use Full Screen")), b("Compact", m("Window › Compact Interface"))]],
+    },
+  ],
+};
+
+const manage: RibbonTab = {
+  title: "Manage",
+  panels: [
+    {
+      title: "Customization",
+      items: [big("Customize", m("Window › Workspaces › Menus…")), [b("Tool Shortcuts", m("Window › Workspaces › Tool Shortcuts…")), b("Menu Shortcuts", m("Window › Workspaces › Menu Shortcuts…")), b("Save Workspace", m("Window › Workspaces › Save Workspace As…"))]],
+    },
+    {
+      title: "Applications",
+      items: [big("Run Script", m("Tools › Plug-ins › Run Script…")), [b("Script Console", m("Tools › Plug-ins › Script Console…")), b("Plug-in Manager", m("Tools › Plug-ins › Plug-in Manager…"))]],
+    },
+  ],
+};
+
+const output: RibbonTab = {
+  title: "Output",
+  panels: [
+    {
+      title: "Plot",
+      items: [big("Plot", m("File › Print…"), "Ctrl+P"), [b("Page Setup", m("File › Page Setup…")), b("Publish", m("File › Publish…"))]],
+    },
+    {
+      title: "Export",
+      items: [[b("Export PDF…", m("File › Export › Export PDF…")), b("Export DXF", m("File › Export › Export DXF")), b("Export SVG", m("File › Export › Export SVG"))]],
+    },
+  ],
+};
+
+const addIns: RibbonTab = {
+  title: "Add-ins",
+  panels: [
+    {
+      title: "Plug-ins",
+      items: [big("Plug-in Manager", m("Tools › Plug-ins › Plug-in Manager…")), [b("Script Console", m("Tools › Plug-ins › Script Console…")), b("Reset Plug-ins", m("Tools › Utilities › Reset All Plug-Ins"))]],
+    },
+  ],
+};
+
+const collaborate: RibbonTab = {
+  title: "Collaborate",
+  panels: [
+    {
+      title: "Share",
+      items: [big("Collaborators", m("Window › Collaborators")), [b("Publish", m("File › Publish…")), b("Version History", m("Window › Palettes › Version History"))]],
+    },
+  ],
+};
+
+export const look: LookSpec = {
+  id: "autocad",
+  name: "AutoCAD",
+  theme: "dark",
+  // the menus AutoCAD's menu bar has: File is the application button's menu. Each Rodeo menu is
+  // named by exactly one id, so its leftover commands land in a look menu.
+  menus: [
+    {
+      id: "File",
+      title: "File",
+      rows: [
+        "File › New",
+        "File › New from Template…",
+        "File › Open…",
+        "File › Open Recent",
+        "File › Close",
+        "-",
+        "File › Save",
+        "File › Save As…",
+        "File › Save a Copy As…",
+        "File › Save All",
+        "File › Revert",
+        "-",
+        "File › Export",
+        "File › Publish…",
+        "File › Print…",
+        "File › Page Setup…",
+        "-",
+        "File › File Info…",
+      ],
+    },
+    {
+      id: "Edit",
+      title: "Edit",
+      rows: [
+        "Edit › Undo",
+        "Edit › Redo",
+        "Edit › Repeat Last Command",
+        "-",
+        "Edit › Cut",
+        "Edit › Copy",
+        "Edit › Paste",
+        "Edit › Paste in Place",
+        "-",
+        "Edit › Duplicate",
+        "Edit › Duplicate Array…",
+        "Edit › Delete",
+        "-",
+        "Edit › Select All",
+        "Edit › Select Similar",
+        "Edit › Select None",
+        "Edit › Invert Selection",
+        "Edit › Previous Selection",
+        "-",
+        "Edit › Preferences…",
+      ],
+    },
+    {
+      id: "View",
+      title: "View",
+      rows: [
+        "View › Zoom In",
+        "View › Zoom Out",
+        "View › Fit to Window",
+        "View › Fit to Objects",
+        "View › Zoom to Selection",
+        "View › Previous View",
+        "View › Next View",
+        "View › Save View…",
+        "-",
+        "View › 3D View",
+        "View › Standard Views",
+        "View › Set 3D View…",
+        "View › Rotate 3D View…",
+        "View › Projection",
+        "-",
+        "View › Rendering",
+        "View › Multiple View Panes",
+        "View › Onscreen View Control",
+        "-",
+        "View › Show Grid",
+        "View › Snap to Grid",
+        "View › Snap to Objects",
+        "View › Rulers",
+        "View › Zoom Line Thickness",
+        "View › Appearance",
+        "-",
+        "View › Layer Options",
+        "View › Class Options",
+        "View › Unhide Objects",
+        "View › Show Selected Objects Only",
+        "View › Hide Selected Objects",
+        "View › Object Visibility…",
+      ],
+    },
+    {
+      id: "Insert",
+      title: "Insert",
+      rows: ["File › Import", "-", "Modify › Create Symbol…", "Modify › Edit Symbol", "Modify › Exit Symbol", "-", "Tools › Records"],
+    },
+    {
+      id: "Format",
+      title: "Format",
+      rows: [
+        "Text › Format Text…",
+        "Text › Font",
+        "Text › Size",
+        "Text › Style",
+        "Text › Justification",
+        "Text › Vertical Alignment",
+        "Text › Text Style",
+        "-",
+        "Modify › Attributes",
+        "Tools › Options › Line Thickness…",
+        "Tools › Utilities › Color Palette Manager…",
+        "Tools › Utilities › Replace Font…",
+        "-",
+        "File › Document Settings",
+      ],
+    },
+    {
+      id: "Tools|Plug-ins",
+      title: "Tools",
+      rows: [
+        "Tools › Quick Search…",
+        "Tools › Find and Modify…",
+        "Tools › Snap Settings…",
+        "Tools › Smart Point Settings…",
+        "Tools › Origin",
+        "-",
+        "Tools › Options",
+        "Tools › Utilities",
+        "Tools › Check File Health…",
+        "-",
+        "Tools › Plug-ins",
+      ],
+    },
+    {
+      id: "Model|AEC|Stage",
+      title: "Draw",
+      rows: ["Modify › Hatch…", "Modify › Join", "Modify › Convert", "-", "Model › Extrude…"],
+    },
+    {
+      id: "Text",
+      title: "Dimension",
+      rows: ["Modify › Convert › Convert Object to Dimension", "AEC › Dimension Exterior Walls…"],
+    },
+    {
+      id: "Modify",
+      title: "Modify",
+      rows: [
+        "Modify › Move…",
+        "Modify › Rotate…",
+        "Modify › Scale Objects…",
+        "Modify › Flip Horizontal",
+        "Modify › Flip Vertical",
+        "-",
+        "Modify › Decompose",
+        "-",
+        "Modify › Send to Front",
+        "Modify › Send Forward",
+        "Modify › Send Backward",
+        "Modify › Send to Back",
+        "-",
+        "Modify › Group",
+        "Modify › Ungroup",
+        "Modify › Edit Group",
+        "Modify › Exit Group",
+        "-",
+        "Modify › Working Plane",
+        "Modify › Guides",
+      ],
+    },
+    {
+      id: "Parametric",
+      title: "Parametric",
+      rows: ["Modify › Align", "Modify › Distribute"],
+    },
+    {
+      id: "Window",
+      title: "Window",
+      rows: [
+        "Window › Palettes",
+        "Window › Palette Options",
+        "Window › Workspaces",
+        "-",
+        "Window › Drawings",
+        "Window › Show Document Tabs",
+        "-",
+        "Window › Use Full Screen",
+        "Window › Compact Interface",
+        "Window › Reset Palette Layout",
+      ],
+    },
+    {
+      id: "Help",
+      title: "Help",
+      rows: ["Help › User Guide", "Help › Keyboard Shortcuts…", "Help › What's New…", "-", "Help › About Rodeo…", "Help › Plug-in API…"],
+    },
+  ],
+  // the application's words where Rodeo's text shows whole: palette titles, menu rows, tabs
+  terms: {
+    "Object Info": "Properties",
+    Navigation: "Layer Properties",
+    Resources: "DesignCenter",
+    "Resource Manager": "DesignCenter",
+    Symbol: "Block",
+    Symbols: "Blocks",
+    "Create Symbol…": "Create Block…",
+    "Edit Symbol": "Block Editor",
+    "Sheet Layer": "Layout",
+    "Sheet Layers": "Layouts",
+    "Fit to Window": "Zoom Extents",
+    "Duplicate Array…": "Array…",
+    "Print…": "Plot…",
+    "Saved Views": "Named Views",
+    "Move by Points": "Move",
+    "Preferences…": "Options…",
+    "Tool Sets": "Tool Palettes",
+    "Working Planes": "UCS",
+    Snapping: "Object Snap",
+    "Vectorworks Plug-ins": "Plug-ins",
+  },
+  palettes: {
+    objectInfo: { where: "left", order: 0 },
+    basic: { where: "hidden" },
+    toolsets: { where: "hidden" },
+    attributes: { where: "hidden" },
+    navigation: { where: "hidden" },
+    resources: { where: "hidden" },
+    snapping: { where: "hidden" },
+    visualization: { where: "hidden" },
+    workingPlanes: { where: "hidden" },
+    agents: { where: "hidden" },
+  },
+  docks: { left: 280 },
+  topBar: false,
+  menuBar: false,
+  titleBar: true,
+  ribbon: {
+    start: "Home",
+    tabs: [home, insert, annotate, view, manage, output, addIns, collaborate],
+    quickAccess: [
+      b("New", m("File › New"), "Ctrl+N"),
+      b("Open", m("File › Open…"), "Ctrl+O"),
+      b("Save", m("File › Save"), "Ctrl+S"),
+      b("Save As", m("File › Save As…"), "Ctrl+Shift+S"),
+      b("Plot", m("File › Print…"), "Ctrl+P"),
+      b("Undo", m("Edit › Undo"), "Ctrl+Z"),
+      b("Redo", m("Edit › Redo"), "Ctrl+Y"),
+    ],
+  },
+  commandLine,
+  statusBar,
+  modeBar: "status",
+  viewBar: "hidden",
+  snapPill: false,
+  rails: false,
+  keys: {
+    F3: m("View › Snap to Objects"),
+    F7: m("View › Show Grid"),
+    F9: m("View › Snap to Grid"),
+    Delete: m("Edit › Delete"),
+  },
+  mouse: { middle: "pan", right: "menu" },
+  // the drawing is drawn light and inverted in autocad.css, so its black lines show light on a dark model space
+  paper: "#d2d9e1",
+  background3d: "#212830",
+};

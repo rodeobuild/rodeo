@@ -1,0 +1,213 @@
+/* A look's toolbar rows and toolbox column (bars.ts). Their colours come from the --lk-* variables
+   in looks.css, which each look sets under :root[data-look]. */
+
+/* ---- toolbars: tab titles over one row of icon buttons ---------------------------------------- */
+
+.lk-toolbars {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--lk-bar);
+  border-bottom: 1px solid var(--lk-bar-border);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-bar-text);
+}
+
+.lk-toolbar-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 3px 6px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.lk-toolbar-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.lk-toolbar-tab {
+  flex: none;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--lk-radius) var(--lk-radius) 0 0;
+  background: transparent;
+  color: var(--lk-tab-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.lk-toolbar-tab:hover:not(.active) {
+  color: var(--lk-tab-active-text);
+}
+
+.lk-toolbar-tab.active {
+  background: var(--lk-tab-active);
+  border-color: var(--lk-bar-border);
+  color: var(--lk-tab-active-text);
+}
+
+/* the row of buttons runs sideways when it is wider than the window; it never wraps */
+.lk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 30px;
+  padding: 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.lk-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.lk-toolbar > * {
+  flex: none;
+}
+
+.lk-toolbar .lk-btn.lk-icon-only {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+}
+
+.lk-toolbar .lk-btn-more {
+  height: 26px;
+}
+
+.lk-toolbar-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--lk-bar-border);
+}
+
+/* ---- toolbox: a column of tools down one side of the drawing ---------------------------------- */
+
+.lk-toolbox {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  box-sizing: border-box;
+  width: max-content;
+  min-height: 0;
+  padding: 4px 4px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background: var(--lk-toolbox);
+  color: var(--lk-bar-text);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+}
+
+.lk-toolbox.lk-toolbox-left {
+  border-right: 1px solid var(--lk-toolbox-border);
+}
+
+.lk-toolbox.lk-toolbox-right {
+  border-left: 1px solid var(--lk-toolbox-border);
+}
+
+.lk-toolbox.lk-labels {
+  width: 150px;
+}
+
+.lk-toolbox-title {
+  padding: 2px 2px 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lk-toolbox-group + .lk-toolbox-group {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--lk-panel-sep);
+}
+
+.lk-toolbox-group-title {
+  padding: 0 2px 3px;
+  color: var(--lk-panel-title);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lk-toolbox-grid {
+  display: grid;
+  gap: 2px;
+  justify-content: start;
+}
+
+.lk-cols-1 .lk-toolbox-grid {
+  grid-template-columns: 30px;
+}
+
+.lk-cols-2 .lk-toolbox-grid {
+  grid-template-columns: repeat(2, 30px);
+}
+
+.lk-toolbox .lk-btn.lk-icon-only {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* labelled: each button a 24px row with its name beside the icon, filling the column */
+.lk-labels .lk-toolbox-grid {
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  gap: 1px;
+}
+
+.lk-labels.lk-cols-2 .lk-toolbox-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lk-labels .lk-btn {
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+}
+
+.lk-labels .lk-btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lk-labels .lk-split {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.lk-labels .lk-split .lk-btn {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.lk-labels .lk-btn-more {
+  height: 24px;
+}
+
+/* a button with no icon of its own shows its initials: at the 18px icon box's size they need more than the ribbon's small step */
+.lk-toolbar .lk-initials,
+.lk-toolbox .lk-initials {
+  font-size: 8px;
+}

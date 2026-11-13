@@ -22,6 +22,18 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T12:10:00Z",
+    "work-like",
+    "Work like the application you know",
+    `View › Work Like lays Rodeo out as Archicad, AutoCAD, Revit, Rhino, SketchUp or Vectorworks, so you can start in the one you already use.
+- The menu bar, the words for things, the palettes and where they sit follow the application you choose: Properties and the Project Browser in Revit, Entity Info and Tags in SketchUp, Blocks in AutoCAD.
+- Revit and AutoCAD get their ribbon and Quick Access Toolbar, with Revit's Modify tab for what is selected.
+- Rhino and AutoCAD get a command line: type LINE or L, then Enter. Enter again repeats it.
+- SketchUp's single-letter keys, Revit's two-letter shortcuts and the function keys work as they do there, and the mouse orbits and pans the 3D view as each application's does.
+- Every button runs Rodeo's own tools, with Rodeo's icons. View › Work Like › Rodeo goes back.`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T12:00:00Z",
     "rhino-flat-surfaces",
     "Flat surfaces in Rhino",

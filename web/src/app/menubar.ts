@@ -251,6 +251,7 @@ import type { View } from "./view.ts";
 import { preferencesDialog } from "./prefsDialog.ts";
 import { textMenuRows } from "./textMenu.ts";
 import { darkCanvas, setDarkCanvas, themeRows } from "./theme.ts";
+import { workLikeRows } from "./looks/looks.ts";
 import { projectionRows, renderModeRows, standardViewRows, type View3dActions } from "./viewbar.ts";
 import { paneRows } from "./viewPanes.ts";
 import { workingPlaneMenuRows } from "./workingPlanes.ts";
@@ -419,6 +420,11 @@ function commandAt(path: readonly string[]): Item | null {
   }
   const row = rows.find((r): r is Item => r !== "-" && r.label === path.at(-1) && !!r.run);
   return row ?? null;
+}
+
+/** The command at a menu path as Rodeo builds its menus ("Modify › Group"), or null: what a look's buttons and keys run (looks/commands.ts). */
+export function menuItemAt(path: string): Item | null {
+  return commandAt(path.split(SEP));
 }
 
 /** Whether the command at `path` is there and applies now. */
@@ -788,6 +794,7 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
         { label: "Rulers", checked: rulersShown, run: toggleRulers },
         "-",
         { label: "Appearance", items: [...themeRows(), "-", { label: "Dark Canvas", checked: darkCanvas, run: () => setDarkCanvas(!darkCanvas()) }] },
+        { label: "Work Like", items: workLikeRows },
       ],
     },
     {

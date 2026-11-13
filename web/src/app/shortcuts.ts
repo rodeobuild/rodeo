@@ -14,6 +14,7 @@ import { gridStep } from "./snap.ts";
 import { toggleSmartOptions } from "./smartOptions.ts";
 import { dataBar } from "./databar.ts";
 import { runMenuCommand } from "./menubar.ts";
+import { lookKey } from "./looks/looks.ts";
 
 export interface ShortcutActions {
   fit(): void;
@@ -211,6 +212,12 @@ export function installShortcuts(deps: ShortcutDeps): void {
     }
 
     if (deps.controller.handleKey(e)) {
+      e.preventDefault();
+      return;
+    }
+
+    // View › Work Like: the look's own keys, two-key shortcuts and command line, before Rodeo's
+    if (lookKey(e)) {
       e.preventDefault();
       return;
     }

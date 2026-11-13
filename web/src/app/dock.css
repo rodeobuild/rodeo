@@ -1032,3 +1032,8 @@
 .workspace.sheet-drag > .stage {
   transition: none;
 }
+
+/* a look without rails (View › Work Like, dock.ts setRails): the palettes take the dock's whole width */
+.dock.no-rail .dock-rail {
+  display: none;
+}

@@ -451,6 +451,38 @@ The bars over the drawing move and roll up too:
 
 **Menu Shortcuts…** sets the combination of every menu command, pressed with ⌘, and ⇧ or ⌥ if wanted. The menus, tooltips and **Help › Keyboard Shortcuts** follow it.
 
+## Work Like
+
+### Choosing an application
+
+**View › Work Like** lays Rodeo out the way another application is laid out, so you can work in the one you know: **Archicad**, **AutoCAD**, **Revit**, **Rhino**, **SketchUp** or **Vectorworks**. **Rodeo** goes back to Rodeo's own layout. The choice is kept for the next visit.
+
+A look changes:
+
+- the menu bar: the application's menus in its order, each holding the Rodeo commands that do what its commands do. Commands it has no place for go at the end of the nearest menu, after a line, so nothing is lost.
+- its words: Object Info is Properties in Revit, Entity Info in SketchUp; symbols are blocks in AutoCAD, families in Revit, components in SketchUp; classes are layers in Archicad, tags in SketchUp. Menus, palette titles, tabs and labels show them.
+- the rows round the drawing: Revit's and AutoCAD's ribbon and Quick Access Toolbar, Rhino's command line and tabbed toolbars, SketchUp's Getting Started toolbar and Large Tool Set, Archicad's Standard toolbar, Toolbox and Info Box, and each application's status bar.
+- where the palettes sit, and what they are called (Revit's Properties over the Project Browser, Archicad's Navigator, SketchUp's tray).
+- its keys: SketchUp's single letters (L, R, P, M, Q…), Revit's two-letter shortcuts (WA, DR, VV…), AutoCAD's and Rhino's function keys.
+- how the mouse moves the 3D view: SketchUp orbits with the wheel pressed, Rhino with a right drag, the others pan with the wheel pressed; Shift swaps orbit and pan.
+- the colours: light chrome for most, AutoCAD's dark one with its dark model space, Rhino's grey viewports and four view panes.
+
+Every button, key and typed command runs Rodeo's own tool or menu command, and the icons are Rodeo's. Where Rodeo has nothing that does what an application's command does, the look leaves that command out rather than run something else. On a phone Rodeo keeps its touch layout, whatever the look.
+
+### The command line
+
+In the Rhino and AutoCAD looks, typing over the drawing goes to the command line: a command's name or its short name (L for Line, CO for Copy in AutoCAD; M for Move in Rhino), then Enter or Space. As you type, the commands that match show under it (↑ and ↓ go through them, Tab completes). Enter or Space on an empty line runs the last command again; ↑ and ↓ then go back through the commands you ran. While a command runs, the line shows the step it asks for. Escape clears it.
+
+### The ribbon
+
+In the Revit and AutoCAD looks the ribbon's tabs hold the commands in panels. The coloured tab at the start (and the button at the top left) opens the File menu, which ends with **Work Like**. Revit's **Modify | …** tab shows while something is selected, named for what it is (Modify | Walls). Double-click a tab to fold the ribbon to its tabs; a tab then drops its panels over the drawing until you click elsewhere. Double-click again to unfold it.
+
+### Arranging a look and going back
+
+Palettes you move, open or close, the theme and the view panes are kept for each look, so switching away and back finds it as you left it. **View › Work Like › Reset … Layout** puts the look on now back as it starts.
+
+The Revit look's **View › Windows › User Interface** button and the AutoCAD look's workspace gear (at the right of its status bar) drop the Work Like list too.
+
 ## View panes
 
 ### Splitting the drawing area

@@ -1343,9 +1343,49 @@ export class Palettes {
 
   // ---- layout -------------------------------------------------------------
 
-  /** The rail's width at the interface's density. */
+  /** The rail's width at the interface's density; none while a look leaves the rails out (setRails). */
   private rail(): number {
-    return RAIL_WIDTH[this.layout.density];
+    return this.railsOn ? RAIL_WIDTH[this.layout.density] : 0;
+  }
+
+  /** whether the docks show their rails of palette icons: a look (View › Work Like) of an application without them leaves them out */
+  private railsOn = true;
+
+  /** Shows or leaves out the docks' rails; without them a dock with no palette open goes. Not kept: the look sets it as the editor starts. */
+  setRails(on: boolean): void {
+    if (this.railsOn === on) return;
+    this.railsOn = on;
+    if (!on) this.layout.folded = { left: false, right: false };
+    this.commit();
+  }
+
+  /**
+   * View › Work Like: the arrangement of a look (looks/looks.ts), to restore(): the palettes it
+   * places where it places them, as tabs of one another where it says, every other one closed; the
+   * docks' widths and the top bar's groups as it has them.
+   */
+  lookArrangement(
+    place: Readonly<Record<string, { readonly where: DockSide | "float" | "hidden"; readonly tabOf?: string; readonly order?: number; readonly weight?: number; readonly collapsed?: boolean }>>,
+    opts: { readonly width?: { readonly left?: number; readonly right?: number }; readonly top: Partial<Record<TopGroupId, boolean>> },
+  ): unknown {
+    const layout = defaults([...this.specs.values()]);
+    for (const p of Object.values(layout.palettes)) Object.assign(p, { shown: false, group: null, tab: null });
+    let next = 0;
+    for (const [id, at] of Object.entries(place)) {
+      const p = layout.palettes[id];
+      if (!p || at.where === "hidden") continue;
+      Object.assign(p, { where: at.where, shown: true, collapsed: at.collapsed ?? false, order: at.order ?? 100 + next++ });
+      if (at.weight !== undefined) p.weight = at.weight;
+    }
+    for (const [id, at] of Object.entries(place)) {
+      const p = layout.palettes[id];
+      const host = at.tabOf === undefined ? undefined : layout.palettes[at.tabOf];
+      if (!p || !host || at.where === "hidden" || !host.shown || host.group !== null) continue;
+      Object.assign(p, { where: host.where, group: at.tabOf, shown: true });
+    }
+    layout.width = { left: opts.width?.left ?? DEFAULT_WIDTH.left, right: opts.width?.right ?? DEFAULT_WIDTH.right };
+    Object.assign(layout.top, opts.top);
+    return layout;
   }
 
   /** A phone-width window: no docks, and the palettes are one bottom sheet. */
@@ -1827,7 +1867,8 @@ export class Palettes {
       const dock = this.docks[side];
       const narrow = this.narrow(side);
       dock.classList.toggle("folded", narrow);
-      dock.hidden = away || this.sided(side).length === 0;
+      dock.hidden = away || this.sided(side).length === 0 || (!this.railsOn && this.docked(side).length === 0);
+      dock.classList.toggle("no-rail", !this.railsOn);
       this.drawn[side] = this.span(side);
       dock.style.width = `${this.drawn[side]}px`;
       this.fillRail(side);

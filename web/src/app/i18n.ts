@@ -192,15 +192,51 @@ function load(entries: Record<string, string>): void {
   }
 }
 
+/**
+ * View › Work Like's words (looks/looks.ts): the application a look works like calls some of Rodeo's
+ * texts otherwise ("Object Info" is Revit's "Properties"), and its word shows in their place, in
+ * English or, where the language's file has it, in the language (else the language's word for
+ * Rodeo's text). Whole texts only, as the language's words are.
+ */
+let terms = new Map<string, string>();
+
+/** A text's word: a look's, in the language where it can be, else the language's own. */
+function entry(key: string): string | undefined {
+  const term = terms.get(key);
+  if (term === undefined) return words.get(key);
+  return current.code === "en" ? term : (words.get(term) ?? words.get(key) ?? term);
+}
+
+/** Swaps in a look's words for Rodeo's (null: Rodeo's own again), on the page now and from now on. */
+export function setTerms(next: Readonly<Record<string, string>> | null): void {
+  const had = terms.size > 0;
+  terms = new Map(Object.entries(next ?? {}));
+  memo = new Map();
+  if (current.code !== "en") {
+    retranslateTree(document.body);
+    return;
+  }
+  if (terms.size > 0) {
+    observe();
+    if (had) retranslateTree(document.body);
+    else translateTree(document.body);
+  } else if (had) {
+    observer?.disconnect();
+    observer = null;
+    restoreTree(document.body);
+    restoreTitle();
+  }
+}
+
 /** A trimmed text's translation without patterns: as it is, or without a trailing "…" or ":". */
 function word(text: string): string | undefined {
-  const exact = words.get(text);
+  const exact = entry(text);
   if (exact !== undefined) return exact;
   if (text.endsWith("…")) {
-    const bare = words.get(text.slice(0, -1).trimEnd());
+    const bare = entry(text.slice(0, -1).trimEnd());
     if (bare !== undefined) return `${bare}…`;
   } else if (text.endsWith(":")) {
-    const bare = words.get(text.slice(0, -1).trimEnd());
+    const bare = entry(text.slice(0, -1).trimEnd());
     if (bare !== undefined) return `${bare}${current.colon}`;
   }
   return undefined;
@@ -274,7 +310,7 @@ if (missed) (globalThis as { openvwxMissingText?: () => string[] }).openvwxMissi
 /** `text` translated, its spaces at either end kept; null when the language has nothing for it. */
 function translated(text: string): string | null {
   // no words, or the language's own already (Chinese, Japanese or Korean: what this page shows, or code put together from it)
-  if (current.code === "en" || !/[A-Za-z]/.test(text) || /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/.test(text)) return null;
+  if ((current.code === "en" && terms.size === 0) || !/[A-Za-z]/.test(text) || /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/.test(text)) return null;
   const trimmed = text.trim();
   // a translation shown already, copied on by code (a label read back into a tooltip): one that is also English is read as English
   if (shownWords.has(trimmed) && !words.has(trimmed)) return null;
@@ -436,8 +472,11 @@ async function apply(lang: Language): Promise<void> {
   current = lang;
   document.documentElement.lang = lang.code;
   if (lang.code === "en") {
-    observer?.disconnect();
-    observer = null;
+    // a look's words still show in English (setTerms)
+    if (terms.size === 0) {
+      observer?.disconnect();
+      observer = null;
+    }
     if (was.code !== "en") {
       restoreTree(document.body);
       restoreTitle();
@@ -446,6 +485,7 @@ async function apply(lang: Language): Promise<void> {
     shownWords = new Set();
     patterns = noPatterns();
     memo = new Map();
+    if (terms.size > 0) translateTree(document.body);
     for (const fn of listeners) fn(lang);
     return;
   }

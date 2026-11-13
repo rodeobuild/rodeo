@@ -1,0 +1,304 @@
+/* View › Work Like › Vectorworks (vectorworks.ts): Vectorworks 2026's light Windows chrome. Every
+   rule is under :root[data-look="vectorworks"], so nothing leaks into Rodeo or the other looks. The
+   colours are plain greys and one blue, with square corners and no glass. */
+
+:root[data-look="vectorworks"] {
+  /* Rodeo's tokens, set light: the chrome, the palettes' bodies, the text and the fills */
+  --font: "Segoe UI", system-ui, sans-serif;
+  --chrome: #e9e9e9;
+  --chrome-border: #c2c2c2;
+  --surface: #f5f5f5;
+  --surface-2: #ffffff;
+  --text: #1a1a1a;
+  --text-soft: rgba(0, 0, 0, 0.78);
+  --text-2: rgba(0, 0, 0, 0.62);
+  --text-3: rgba(0, 0, 0, 0.45);
+  --divider: rgba(0, 0, 0, 0.1);
+  --fill: rgba(0, 0, 0, 0.035);
+  --fill-hover: rgba(0, 0, 0, 0.07);
+  --fill-strong: rgba(0, 0, 0, 0.11);
+  --ring: rgba(0, 0, 0, 0.1);
+  --select: rgba(52, 120, 212, 0.2);
+  --accent: #3478d4;
+  --accent-text: #ffffff;
+  --pill: #e9e9e9;
+  --pill-border: #c2c2c2;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --row-h: 22px;
+  --glass-bg: var(--chrome);
+  --glass-bg-float: var(--chrome);
+  --glass-bar: var(--chrome);
+  --glass-border: var(--chrome-border);
+  --glass-divider: var(--divider);
+  --glass-chip: var(--fill-strong);
+  --glass-shadow: none;
+  --glass-shadow-float: var(--shadow);
+  --glass-blur: none;
+  --glass-radius: 0;
+  --topbar-h: 0px;
+
+  /* the look's own rows (looks.css) */
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 12px;
+  --lk-bar: #e9e9e9;
+  --lk-bar-text: #1a1a1a;
+  --lk-bar-border: #c2c2c2;
+  --lk-title: #e9e9e9;
+  --lk-title-text: #1a1a1a;
+  --lk-accent: #3478d4;
+  --lk-btn-hover: rgba(0, 0, 0, 0.07);
+  --lk-btn-on: rgba(52, 120, 212, 0.2);
+  --lk-btn-text: #1a1a1a;
+  --lk-radius: 0;
+  --lk-field: #ffffff;
+  --lk-field-text: #1a1a1a;
+  --lk-field-border: #c2c2c2;
+  --lk-status: #e9e9e9;
+  --lk-status-text: rgba(0, 0, 0, 0.62);
+  --lk-status-on: #1a1a1a;
+  --lk-status-on-bg: rgba(0, 0, 0, 0.11);
+  --lk-toolbox: #e9e9e9;
+  --lk-toolbox-border: #c2c2c2;
+
+  color-scheme: light;
+}
+
+/* ---- the menu bar: Windows' 22 px strip of titles ---------------------------------------------- */
+
+:root[data-look="vectorworks"] .menu-strip {
+  height: 22px;
+  padding: 0 2px;
+  gap: 0;
+  background: #e9e9e9;
+  border-bottom: 1px solid #c2c2c2;
+}
+
+:root[data-look="vectorworks"] .menu-strip-title {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 0;
+  color: #1a1a1a;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 22px;
+  cursor: default;
+}
+
+:root[data-look="vectorworks"] .menu-strip-title:hover {
+  background: #d5e6f8;
+  color: #1a1a1a;
+}
+
+:root[data-look="vectorworks"] .menu-strip-title.open {
+  background: #c4dbf3;
+  color: #1a1a1a;
+  box-shadow: inset 0 0 0 1px #8fb6e3;
+}
+
+/* ---- drop-down menus: light, square, with rows of 22 px ----------------------------------------- */
+
+:root[data-look="vectorworks"] .menu-panel {
+  min-width: 180px;
+  padding: 2px;
+  background: #ffffff;
+  border: 1px solid #a6a6a6;
+  border-radius: 0;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  color: #1a1a1a;
+}
+
+:root[data-look="vectorworks"] .menu-item {
+  height: 22px;
+  padding: 0 14px 0 4px;
+  gap: 6px;
+  border-radius: 0;
+  color: #1a1a1a;
+  cursor: default;
+}
+
+:root[data-look="vectorworks"] .menu-item:hover:not([aria-disabled="true"]),
+:root[data-look="vectorworks"] .menu-item.checked {
+  background: #d5e6f8;
+}
+
+:root[data-look="vectorworks"] .menu-item[aria-disabled="true"] {
+  opacity: 0.45;
+}
+
+:root[data-look="vectorworks"] .menu-why {
+  color: #5a5a5a;
+  font-size: 11px;
+}
+
+/* ---- the drawing's top: the View bar, a flat strip over the drawing ----------------------------- */
+
+/* #viewbar is Rodeo's View bar (a .hud-top); it runs the drawing's full width at its top */
+:root[data-look="vectorworks"] #viewbar.hud-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  gap: 0;
+  padding: 0 4px;
+  background: #e9e9e9;
+  border-bottom: 1px solid #c2c2c2;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  align-items: center;
+  overflow: hidden;
+}
+
+:root[data-look="vectorworks"] #viewbar > .pill {
+  height: 28px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  font-size: 12px;
+  color: #1a1a1a;
+}
+
+:root[data-look="vectorworks"] #viewbar .pill-sep {
+  background: #c2c2c2;
+  margin: 0 3px;
+}
+
+/* the Mode bar row: flat under the menu bar, in the options row above the View bar */
+:root[data-look="vectorworks"] .lk-options-slot {
+  min-height: 28px;
+  padding: 0 4px;
+  background: #e9e9e9;
+  border-bottom: 1px solid #c2c2c2;
+}
+
+:root[data-look="vectorworks"] .lk-options-slot #modebar {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 2px;
+  color: #1a1a1a;
+  font-size: 12px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-look="vectorworks"] .lk-options-slot #modebar > .pill {
+  height: 26px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ---- palettes: grey title bars, square, a hairline between them ---------------------------------- */
+
+:root[data-look="vectorworks"] .dock {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #e9e9e9;
+  border-color: #c2c2c2;
+}
+
+:root[data-look="vectorworks"] .pal {
+  background: #f5f5f5;
+  font-size: 12px;
+  border-radius: 0;
+}
+
+:root[data-look="vectorworks"] .dock-col > .pal + .pal {
+  border-top: 1px solid #a6a6a6;
+}
+
+:root[data-look="vectorworks"] .pal.floating {
+  border: 1px solid #a6a6a6;
+  border-radius: 0;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-look="vectorworks"] .pal-head {
+  height: 22px;
+  padding: 0 4px 0 8px;
+  background: linear-gradient(#f3f3f3, #dcdcdc);
+  border-bottom: 1px solid #c2c2c2;
+  color: #1a1a1a;
+}
+
+:root[data-look="vectorworks"] .pal-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:root[data-look="vectorworks"] .pal-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  color: #4a4a4a;
+}
+
+:root[data-look="vectorworks"] .pal-btn:hover {
+  background: rgba(0, 0, 0, 0.09);
+  color: #1a1a1a;
+}
+
+/* the palette tabs (Object Info with Navigation and Attributes): square tabs in the title row */
+:root[data-look="vectorworks"] .pal.tabbed .pal-head {
+  padding-left: 4px;
+}
+
+:root[data-look="vectorworks"] .pal-htab {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: #3a3a3a;
+}
+
+:root[data-look="vectorworks"] .pal-htab.active {
+  background: #ffffff;
+  color: #1a1a1a;
+  box-shadow: inset 0 0 0 1px #a6a6a6;
+}
+
+/* the tool palette: buttons in a tight grid, the icon and its name */
+:root[data-look="vectorworks"] .tool-grid {
+  grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+  gap: 1px;
+  padding: 4px;
+}
+
+:root[data-look="vectorworks"] .tool {
+  height: 28px;
+  border-radius: 0;
+  color: #1a1a1a;
+}
+
+:root[data-look="vectorworks"] .tool:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+:root[data-look="vectorworks"] .tool.active {
+  background: rgba(52, 120, 212, 0.22);
+  box-shadow: inset 0 0 0 1px #3478d4;
+}
+
+/* the palettes' rows: compact, with Windows' 22 px height */
+:root[data-look="vectorworks"] .pal input,
+:root[data-look="vectorworks"] .pal select {
+  border-radius: 0;
+  font-size: 12px;
+}
+
+/* no glass or blur anywhere in the look's chrome */
+:root[data-look="vectorworks"] .pill,
+:root[data-look="vectorworks"] .menu-panel,
+:root[data-look="vectorworks"] .pal {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

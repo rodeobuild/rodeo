@@ -1,0 +1,366 @@
+/* View › Work Like (looks.ts): the slots a look's rows go in round the drawing, the colours the
+   look's parts are drawn with (each look's own stylesheet sets them under :root[data-look="<id>"]),
+   and what a look does to Rodeo's own chrome: no top bar, the drawing edge to edge, the Mode bar
+   in an options row or the status bar, the View bar along the foot of the drawing or gone. */
+
+:root {
+  /* the type of the look's rows */
+  --lk-font: var(--font);
+  --lk-font-size: 12px;
+  /* rows: the title bar, toolbars, the options row, command line and status bar */
+  --lk-bar: var(--chrome);
+  --lk-bar-text: var(--text);
+  --lk-bar-border: var(--chrome-border);
+  --lk-title: var(--chrome);
+  --lk-title-text: var(--text-2);
+  /* the ribbon: its tabs' row, the tab in front, and the panels under it */
+  --lk-tabs: var(--chrome);
+  --lk-tab-text: var(--text-2);
+  --lk-tab-active: var(--surface);
+  --lk-tab-active-text: var(--text);
+  --lk-panel: var(--surface);
+  --lk-panel-title: var(--text-3);
+  --lk-panel-title-bar: transparent;
+  --lk-panel-sep: var(--chrome-border);
+  /* the application tab or button at the start of the ribbon */
+  --lk-accent: var(--accent);
+  --lk-accent-text: #ffffff;
+  /* buttons */
+  --lk-btn-hover: var(--fill-hover);
+  --lk-btn-hover-border: transparent;
+  --lk-btn-on: var(--select);
+  --lk-btn-on-border: transparent;
+  --lk-btn-text: var(--text);
+  --lk-icon-size: 18px;
+  --lk-icon-large: 30px;
+  --lk-radius: 3px;
+  /* fields: the command line, the Measurements box */
+  --lk-field: var(--surface-2);
+  --lk-field-text: var(--text);
+  --lk-field-border: var(--chrome-border);
+  /* the status bar */
+  --lk-status: var(--chrome);
+  --lk-status-text: var(--text-2);
+  --lk-status-on: var(--text);
+  --lk-status-on-bg: var(--fill-strong);
+  /* the toolbox down a side */
+  --lk-toolbox: var(--chrome);
+  --lk-toolbox-border: var(--chrome-border);
+}
+
+/* ---- the slots ------------------------------------------------------------------------------ */
+
+.lk-slot:empty {
+  display: none;
+}
+
+.lk-title-slot,
+.lk-top-slot,
+.lk-bottom-slot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-bar-text);
+}
+
+.lk-row {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.lk-row > .workspace {
+  flex: 1;
+  min-width: 0;
+}
+
+.lk-side-slot {
+  flex: none;
+  display: flex;
+  min-height: 0;
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-bar-text);
+}
+
+/* ---- the title bar ---------------------------------------------------------------------------- */
+
+.lk-titlebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  height: 30px;
+  padding: 0 6px;
+  background: var(--lk-title);
+  color: var(--lk-title-text);
+  border-bottom: 1px solid var(--lk-bar-border);
+}
+
+.lk-title-start {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lk-title-mid {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lk-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lk-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.lk-dirty[hidden] {
+  display: none;
+}
+
+.lk-app-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--lk-radius);
+  background: var(--lk-accent);
+  cursor: default;
+}
+
+.lk-qat {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 6px;
+}
+
+/* ---- a look's buttons (commands.ts lookButton) ------------------------------------------------ */
+
+.lk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--lk-radius);
+  background: transparent;
+  color: var(--lk-btn-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.lk-btn:hover:not(.off) {
+  background: var(--lk-btn-hover);
+  border-color: var(--lk-btn-hover-border);
+}
+
+.lk-btn.on {
+  background: var(--lk-btn-on);
+  border-color: var(--lk-btn-on-border);
+}
+
+.lk-btn.off {
+  opacity: 0.45;
+}
+
+.lk-btn-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--lk-icon-size);
+  height: var(--lk-icon-size);
+}
+
+.lk-btn-icon > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.lk-btn.lk-large {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 44px;
+  max-width: 76px;
+  padding: 3px 4px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.lk-btn.lk-large .lk-btn-icon {
+  width: var(--lk-icon-large);
+  height: var(--lk-icon-large);
+}
+
+.lk-icon-only {
+  padding: 3px;
+}
+
+.lk-initials {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 1.4px solid currentColor;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.lk-btn.lk-large .lk-initials {
+  font-size: 10px;
+}
+
+.lk-split {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.lk-split.lk-large {
+  flex-direction: column;
+}
+
+.lk-btn-more {
+  display: grid;
+  place-items: center;
+  min-width: 12px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: var(--lk-radius);
+  background: transparent;
+  color: var(--lk-btn-text);
+  cursor: default;
+}
+
+.lk-btn-more:hover {
+  background: var(--lk-btn-hover);
+}
+
+/* ---- what a look does to Rodeo's own chrome --------------------------------------------------- */
+
+:root[data-lk-topbar="off"] #topbar {
+  display: none;
+}
+
+/* the drawing edge to edge, as every other application draws it */
+:root[data-look] .stage {
+  padding: 0;
+}
+
+:root[data-look] .canvas-wrap {
+  inset: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* the open drawings' tabs: a flat strip over the drawing, as the applications' file tabs are */
+:root[data-look] .stage.has-tabs .canvas-wrap {
+  top: var(--doc-tabs-h);
+}
+
+:root[data-look] .doc-tabs {
+  left: 0;
+  right: 0;
+  padding: 0 4px;
+  background: var(--lk-bar);
+  border-bottom: 1px solid var(--lk-bar-border);
+}
+
+:root[data-lk-snap="off"] #snapbar,
+:root[data-lk-snap="off"] #sb-cursor {
+  display: none !important;
+}
+
+:root[data-lk-viewbar="hidden"] #viewbar {
+  display: none !important;
+}
+
+/* the View bar along the foot of the drawing: Revit's View Control Bar, Archicad's Quick Options */
+:root[data-lk-viewbar="foot"] .hud-top {
+  top: auto;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0 4px;
+}
+
+:root[data-lk-viewbar="foot"] #viewbar .hud-grip {
+  display: none;
+}
+
+:root[data-lk-viewbar="foot"] #viewbar {
+  box-shadow: none;
+  border-radius: 0;
+  height: 26px;
+  border-width: 1px 0 0;
+  background: var(--lk-status);
+  transform: none !important;
+}
+
+:root[data-lk-viewbar="foot"] .hud-bottom {
+  bottom: 34px;
+}
+
+/* the Mode bar moved into the options row or the status bar: flat, without its grip */
+.lk-options-slot #modebar,
+.lk-status-slot #modebar {
+  position: static;
+  height: auto;
+  min-height: 26px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none !important;
+}
+
+.lk-options-slot .hud-grip,
+.lk-status-slot .hud-grip {
+  display: none;
+}
+
+.lk-options-slot {
+  flex-direction: row;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 6px;
+  background: var(--lk-bar);
+  border-bottom: 1px solid var(--lk-bar-border);
+}
+
+/* the docks' palettes as panels: square, a hairline between */
+:root[data-look] .dock {
+  font-family: var(--lk-font);
+}
+
+/* ---- a phone keeps Rodeo's touch layout whatever the look ------------------------------------- */
+
+.lk-phone .lk-slot {
+  display: none !important;
+}
+
+.lk-phone #topbar {
+  display: flex !important;
+}

@@ -75,6 +75,7 @@ import { openContextMenu, type Row } from "./menu.ts";
 import { confirmDialog, mountMenuBar } from "./menubar.ts";
 import { drawingRows, mountDocTabs, type DocTab, type DocTabActions } from "./docTabs.ts";
 import { mountMenuStrip } from "./menuStrip.ts";
+import { installLooks } from "./looks/looks.ts";
 import { mountPanels } from "./panels/navigation.ts";
 import { resourceViewRows, symbolNameOf } from "./panels/resources.ts";
 import { attributeUtilityRows } from "./attributeCommands.ts";
@@ -1049,6 +1050,8 @@ export class App {
     const strip = byId("menu-strip");
     mountMenuStrip(strip, () => menuBar.menus());
     palettes.addTopGroup("menus", strip);
+    // View › Work Like: Rodeo laid out as the application last chosen (looks/looks.ts)
+    installLooks({ palettes, setTool, menus: () => menuBar.menus() });
     for (const bar of [topbar, strip]) {
       bar.addEventListener("contextmenu", (e) => {
         if ((e.target as Element).closest("input, select, textarea")) return;

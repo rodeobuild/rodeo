@@ -1,0 +1,226 @@
+/* View › Work Like › SketchUp: a Windows light theme, flat and white with a thin grey border. Every
+   rule is scoped to the look so it never reaches Rodeo's own chrome. */
+
+/* the colours and type the look's rows use (looks.css names them) */
+:root[data-look="sketchup"] {
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 12px;
+  --lk-bar: #f2f2f2;
+  --lk-bar-text: #222222;
+  --lk-bar-border: #d4d4d4;
+  --lk-title: #f2f2f2;
+  --lk-title-text: #222222;
+  --lk-tabs: #f2f2f2;
+  --lk-tab-text: #555555;
+  --lk-tab-active: #ffffff;
+  --lk-tab-active-text: #222222;
+  --lk-panel: #ffffff;
+  --lk-panel-title: #222222;
+  --lk-panel-sep: #d4d4d4;
+  --lk-accent: #2b7bd6;
+  --lk-accent-text: #ffffff;
+  --lk-btn-hover: #e4ecf7;
+  --lk-btn-hover-border: #b9cde8;
+  --lk-btn-on: #cfe1f7;
+  --lk-btn-on-border: #2b7bd6;
+  --lk-btn-text: #222222;
+  --lk-radius: 2px;
+  --lk-field: #ffffff;
+  --lk-field-text: #222222;
+  --lk-field-border: #d4d4d4;
+  --lk-status: #f2f2f2;
+  --lk-status-text: #444444;
+  --lk-status-on: #222222;
+  --lk-status-on-bg: #cfe1f7;
+  --lk-toolbox: #f2f2f2;
+  --lk-toolbox-border: #d4d4d4;
+  --lk-icon-size: 16px;
+  --lk-icon-large: 28px;
+}
+
+/* ---- the menu bar: Windows' 22px strip of titles ---------------------------------------------- */
+
+:root[data-look="sketchup"] .menu-strip {
+  height: 22px;
+  padding: 0 2px;
+  gap: 0;
+  background: #f2f2f2;
+  border-bottom: 1px solid #d4d4d4;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-look="sketchup"] .menu-strip-title {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 7px;
+  border-radius: 0;
+  color: #222222;
+  font-size: 12px;
+  cursor: default;
+}
+
+:root[data-look="sketchup"] .menu-strip-title:hover,
+:root[data-look="sketchup"] .menu-strip-title.open {
+  background: #dce8f7;
+  color: #222222;
+}
+
+/* ---- drop-down menus: light panels with square rows ----------------------------------------- */
+
+:root[data-look="sketchup"] .menu-panel {
+  background: #ffffff;
+  border: 1px solid #c8c8c8;
+  border-radius: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  padding: 2px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  color: #222222;
+}
+
+:root[data-look="sketchup"] .menu-item {
+  height: 24px;
+  border-radius: 0;
+  color: #222222;
+}
+
+:root[data-look="sketchup"] .menu-item:hover:not([aria-disabled="true"]),
+:root[data-look="sketchup"] .menu-item.checked {
+  background: #dce8f7;
+}
+
+:root[data-look="sketchup"] .menu-sep {
+  background: #e2e2e2;
+}
+
+/* ---- the title row and the toolbar (Getting Started) ----------------------------------------- */
+
+:root[data-look="sketchup"] .lk-toolbars {
+  background: #f2f2f2;
+  border-bottom: 1px solid #d4d4d4;
+}
+
+:root[data-look="sketchup"] .lk-toolbar {
+  height: 34px;
+  padding: 0 4px;
+  gap: 2px;
+}
+
+:root[data-look="sketchup"] .lk-toolbar .lk-btn.lk-icon-only {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+:root[data-look="sketchup"] .lk-toolbar .lk-btn-more {
+  height: 28px;
+}
+
+:root[data-look="sketchup"] .lk-toolbar-sep {
+  height: 22px;
+  margin: 0 3px;
+  background: #cfcfcf;
+}
+
+/* ---- the Large Tool Set: two columns of 28px buttons, no labels --------------------------------- */
+
+:root[data-look="sketchup"] .lk-toolbox {
+  padding: 4px 3px 8px;
+  background: #f2f2f2;
+  border-right: 1px solid #d4d4d4;
+}
+
+:root[data-look="sketchup"] .lk-toolbox-group + .lk-toolbox-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #dcdcdc;
+}
+
+:root[data-look="sketchup"] .lk-toolbox-grid {
+  gap: 2px;
+}
+
+:root[data-look="sketchup"] .lk-cols-2 .lk-toolbox-grid {
+  grid-template-columns: repeat(2, 28px);
+}
+
+:root[data-look="sketchup"] .lk-toolbox .lk-btn.lk-icon-only {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+:root[data-look="sketchup"] .lk-toolbox .lk-btn-more {
+  height: 28px;
+}
+
+/* ---- the tray: white panels with plain bold titles ------------------------------------------ */
+
+:root[data-look="sketchup"] .dock {
+  background: #f2f2f2;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-look="sketchup"] .pal {
+  background: #ffffff;
+  font-size: 12px;
+  color: #222222;
+}
+
+:root[data-look="sketchup"] .pal-head {
+  height: 28px;
+  padding: 0 6px 0 8px;
+  background: #f2f2f2;
+  border-bottom: 1px solid #d4d4d4;
+  color: #222222;
+}
+
+:root[data-look="sketchup"] .pal-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+:root[data-look="sketchup"] .pal-body {
+  background: #ffffff;
+}
+
+:root[data-look="sketchup"] .dock-col > .pal + .pal {
+  border-top: 1px solid #c8c8c8;
+}
+
+/* ---- the status row: hint, spacer, and the Measurements box --------------------------------- */
+
+:root[data-look="sketchup"] .lk-statusbar {
+  background: #f2f2f2;
+  color: #444444;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-look="sketchup"] .lk-status-row {
+  height: 26px;
+  padding: 0 6px;
+  background: #f2f2f2;
+  border-top: 1px solid #d4d4d4;
+}
+
+:root[data-look="sketchup"] .lk-st-measure-box {
+  min-width: 180px;
+  height: 20px;
+  padding: 0 6px;
+  background: #ffffff;
+  color: #222222;
+  border: 1px solid #b8b8b8;
+  border-radius: 0;
+}
+
+:root[data-look="sketchup"] .lk-st-measure-label {
+  color: #444444;
+  padding-right: 4px;
+}
+
+/* the drawing sits on a plain white field with no inset edge */
+:root[data-look="sketchup"] .canvas-wrap {
+  border: 0;
+}

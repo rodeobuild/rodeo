@@ -14,6 +14,7 @@
 import "./view3d.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { lookBackground, lookMouse, onLookView } from "./looks/viewLook.ts";
 import type { Light3D, Mesh3D, ResourceInfo, Vec3 } from "../core/index.ts";
 import { beamGroup, boxReach, disposeBeams, surfaceReaches } from "./beams.ts";
 import { h } from "./dom.ts";
@@ -286,6 +287,8 @@ interface EdgeBuild {
   readonly runs: Run[];
 }
 
+const BUTTON = { orbit: THREE.MOUSE.ROTATE, pan: THREE.MOUSE.PAN, zoom: THREE.MOUSE.DOLLY } as const;
+
 export class View3D {
   /** Called on a click: the object under the pointer (null for empty space) and whether Shift was held. */
   onPick: ((objectId: string | null, additive: boolean) => void) | null = null;
@@ -405,6 +408,8 @@ export class View3D {
   private readonly down = new Set<number>();
   /** what a left drag does (setNavigation) */
   private nav: Navigation = "orbit";
+  /** stops following View › Work Like's mouse and background (looks/viewLook.ts) */
+  private readonly offLook: () => void;
   /** a left drag the view steers itself (walk, look, ride, move along the sightline): its pointer and where it was last */
   private steer: { id: number; x: number; y: number } | null = null;
   /** the last tap of a finger, for a double tap */
@@ -425,6 +430,10 @@ export class View3D {
 
   constructor(host: HTMLElement) {
     this.host = host;
+    this.offLook = onLookView(() => {
+      this.applyButtons();
+      this.requestRender();
+    });
     this.persp.up.set(0, 0, 1);
     this.ortho.up.set(0, 0, 1);
     this.sun.shadow.mapSize.set(SUN_SHADOW_MAP, SUN_SHADOW_MAP);
@@ -458,6 +467,8 @@ export class View3D {
     this.controls.zoomToCursor = true;
     // one finger orbits; two pinch to zoom and drag to pan (the defaults, written out so the touch layout is plain)
     this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    // the mouse buttons as Rodeo, or the look View › Work Like has chosen, has them
+    this.applyButtons();
     this.controls.addEventListener("change", () => {
       this.requestRender();
       this.queueLamps();
@@ -1036,6 +1047,7 @@ export class View3D {
     if (this.disposed) return;
     this.hide();
     this.disposed = true;
+    this.offLook();
     clearTimeout(this.lampTimer);
     this.resizeObserver.disconnect();
     this.controls.dispose();
@@ -1222,7 +1234,7 @@ export class View3D {
   }
 
   /** Draws at the next animation frame, once however many changes asked for it. */
-  private requestRender(): void {
+  requestRender(): void {
     if (!this.shown || this.frameId !== 0) return;
     this.frameId = requestAnimationFrame(() => {
       this.frameId = 0;
@@ -1709,9 +1721,18 @@ export class View3D {
     this.nav = nav;
     this.steer = null;
     this.canvas.classList.toggle("viewing", viewing);
-    const left = nav === "orbit" || nav === "origin" ? THREE.MOUSE.ROTATE : nav === "pan" ? THREE.MOUSE.PAN : null;
-    this.controls.mouseButtons = { LEFT: left, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    this.applyButtons();
     this.controls.rotateSpeed = sensitivity;
+  }
+
+  /** The buttons' drags: the left as the navigation has it, the middle and right as Rodeo or the look (setLookMouse) has them. */
+  applyButtons(): void {
+    const nav = this.nav;
+    const left = nav === "orbit" || nav === "origin" ? THREE.MOUSE.ROTATE : nav === "pan" ? THREE.MOUSE.PAN : null;
+    const look = lookMouse();
+    const middle = look ? BUTTON[look.middle] : THREE.MOUSE.DOLLY;
+    const right = look ? (look.right === "menu" ? null : BUTTON[look.right]) : THREE.MOUSE.PAN;
+    this.controls.mouseButtons = { LEFT: left, MIDDLE: middle, RIGHT: right };
   }
 
   /**
@@ -1871,7 +1892,7 @@ export class View3D {
 
   /** What the view is drawn on: paper for Sketch, night with the sun off, else a light grey. */
   private background(): number {
-    return this.mode === "sketch" ? PAPER : this.viz.sun === "off" ? NIGHT_BACKGROUND : BACKGROUND;
+    return this.mode === "sketch" ? PAPER : this.viz.sun === "off" ? NIGHT_BACKGROUND : (lookBackground() ?? BACKGROUND);
   }
 
   /** Draws every spot that is on as a beam while there's haze (Viz3D.haze), not only the MAX_LAMPS that light the model. */

@@ -1,0 +1,194 @@
+/* A look's ribbon (ribbon.ts): the tabs over the front tab's panels, each panel's buttons in a row
+   (large ones, or a stack of small ones) and its name along the bottom. Colours come from the
+   --lk-* variables each look sets (looks.css); cursors stay arrows, never hands. */
+
+.lk-ribbon {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--lk-tabs);
+  border-bottom: 1px solid var(--lk-bar-border);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-bar-text);
+  user-select: none;
+  cursor: default;
+}
+
+.lk-ribbon * {
+  cursor: default;
+}
+
+/* ---- the tabs --------------------------------------------------------------------------------- */
+
+.lk-ribbon-tabs {
+  display: flex;
+  align-items: flex-end;
+  flex: none;
+  height: 24px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.lk-ribbon-tabs::-webkit-scrollbar,
+.lk-ribbon-body::-webkit-scrollbar {
+  display: none;
+}
+
+.lk-ribbon-tab {
+  flex: none;
+  height: 24px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--lk-radius) var(--lk-radius) 0 0;
+  background: transparent;
+  color: var(--lk-tab-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.lk-ribbon-tab[hidden] {
+  display: none;
+}
+
+.lk-ribbon-tab:focus-visible {
+  outline: 1px solid var(--lk-accent);
+  outline-offset: -2px;
+}
+
+.lk-ribbon-tab:hover:not(.active):not(.lk-ribbon-app) {
+  background: var(--lk-btn-hover);
+}
+
+/* the front tab takes the body's colour and sits on it, so the two read as one */
+.lk-ribbon-tab.active {
+  position: relative;
+  z-index: 1;
+  background: var(--lk-tab-active);
+  color: var(--lk-tab-active-text);
+  border-color: var(--lk-bar-border);
+}
+
+/* the application tab: the look's accent, opening the File menu */
+.lk-ribbon-tab.lk-ribbon-app {
+  padding: 0 12px;
+  background: var(--lk-accent);
+  color: var(--lk-accent-text);
+  border-color: transparent;
+}
+
+/* a contextual tab: tinted, with a line in the look's --lk-ctx (green by default) */
+.lk-ribbon-tab.lk-ribbon-ctx {
+  background: color-mix(in srgb, var(--lk-ctx, #5fae4f) 22%, var(--lk-tabs));
+  color: var(--lk-tab-active-text);
+  box-shadow: inset 0 -2px 0 var(--lk-ctx, #5fae4f);
+}
+
+.lk-ribbon-tab.lk-ribbon-ctx.active {
+  background: color-mix(in srgb, var(--lk-ctx, #5fae4f) 22%, var(--lk-tab-active));
+  box-shadow: inset 0 2px 0 var(--lk-ctx, #5fae4f);
+}
+
+/* ---- the body and its panels ------------------------------------------------------------------ */
+
+.lk-ribbon-body {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  height: 92px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--lk-panel);
+  scrollbar-width: none;
+}
+
+.lk-ribbon-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.lk-ribbon-panel + .lk-ribbon-panel {
+  border-left: 1px solid var(--lk-panel-sep);
+}
+
+.lk-ribbon-items {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0;
+  padding: 4px 6px 2px;
+}
+
+.lk-ribbon-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+}
+
+.lk-ribbon-panel-title {
+  flex: none;
+  height: 16px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--lk-panel-title);
+  background: var(--lk-panel-title-bar);
+}
+
+/* a stack's buttons: the icon beside the label */
+.lk-ribbon .lk-btn.lk-small {
+  flex-direction: row;
+  align-items: center;
+  height: 20px;
+  max-width: none;
+  padding: 0 5px 0 3px;
+  line-height: 1;
+}
+
+.lk-ribbon .lk-btn.lk-small .lk-btn-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* a large split button keeps its caret beside the label, so it stays inside the body's height */
+.lk-ribbon .lk-split.lk-large {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+/* ---- minimised: only the tabs show; a dropped body lies over the drawing ----------------------- */
+
+.lk-ribbon.lk-ribbon-min .lk-ribbon-body {
+  display: none;
+}
+
+.lk-ribbon.lk-ribbon-open {
+  z-index: 50;
+}
+
+.lk-ribbon.lk-ribbon-open .lk-ribbon-body {
+  display: flex;
+  position: absolute;
+  top: 24px;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid var(--lk-bar-border);
+  box-shadow: var(--shadow);
+}

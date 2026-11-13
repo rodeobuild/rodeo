@@ -46,6 +46,18 @@ interface Entry {
 /** the menus as built, which the editor lists */
 let built: readonly Menu[] = [];
 let layout: MenuLayout | null = readMenuLayout(stored());
+/** View › Work Like's menus (looks/looks.ts): another application's menu bar, over the layout Menus… keeps, while a look is on */
+let lookLayout: MenuLayout | null = null;
+
+/** The layout the menus show: a look's, else the one Menus… arranged; null for the defaults. */
+function active(): MenuLayout | null {
+  return lookLayout ?? layout;
+}
+
+/** Shows a look's menus (null: the ones Menus… arranged again). Not kept: the look puts them back as the editor starts. */
+export function setLookMenus(next: MenuLayout | null): void {
+  lookLayout = next;
+}
 
 function stored(): unknown {
   try {
@@ -100,6 +112,7 @@ function defaults(menus: readonly Menu[]): MenuLayout {
  * commands added since it was made put at the end of the menu they were built in.
  */
 function effective(menus: readonly Menu[], entries: Map<string, Entry>): MenuLayout {
+  const layout = active();
   if (!layout) return defaults(menus);
   const placed = new Set<string>();
   const out: MenuConfig[] = layout.menus.map((m) => ({
@@ -114,10 +127,20 @@ function effective(menus: readonly Menu[], entries: Map<string, Entry>): MenuLay
   }));
   const hidden = layout.hidden.filter((p) => entries.has(p) && !placed.has(p));
   for (const m of menus) {
+    // a look's menu sets the leftovers apart from its own rows, and keeps Rodeo's groups among them
+    let gap = !!lookLayout;
     for (const r of m.rows) {
-      const p = r === "-" ? null : `${m.title}${SEP}${r.label}`;
-      if (p === null || placed.has(p) || hidden.includes(p)) continue;
-      (out.find((x) => x.id === m.title) ?? out[out.length - 1]).rows.push(p);
+      if (r === "-") {
+        gap = !!lookLayout;
+        continue;
+      }
+      const p = `${m.title}${SEP}${r.label}`;
+      if (placed.has(p) || hidden.includes(p)) continue;
+      // a look's menu takes the leftovers of every Rodeo menu its id names, "Modify|AEC"
+      const into = out.find((x) => x.id === m.title) ?? out.find((x) => x.id.split("|").includes(m.title)) ?? out[out.length - 1];
+      if (gap) into.rows.push("-");
+      gap = false;
+      into.rows.push(p);
       placed.add(p);
     }
   }
@@ -134,7 +157,7 @@ function tidy(rows: readonly Row[]): Row[] {
 
 /** The menus as Menus… arranged them, from the menus as built (their shortcuts already set). */
 export function arrangeMenus(menus: readonly Menu[]): Menu[] {
-  if (!layout) return [...menus];
+  if (!active()) return [...menus];
   const entries = entriesOf(menus);
   const { menus: arranged, hidden } = effective(menus, entries);
   const elsewhere = new Set([...hidden, ...arranged.flatMap((m) => m.rows)]);

@@ -1,0 +1,219 @@
+/* View › Work Like › Revit: Revit 2025's light theme. The colours and fonts are set on the look's
+   own variables (looks.css reads them); the rules below only add what those variables can't say:
+   the joined front tab, the blue application tab, the green contextual tab and the palettes'
+   square grey title bars. Everything is scoped to :root[data-look="revit"]. */
+
+:root[data-look="revit"] {
+  /* the type: Segoe UI where it is, the system UI elsewhere */
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 12px;
+
+  /* the title bar: light grey with dark grey text */
+  --lk-title: #f5f5f5;
+  --lk-title-text: #3c3c3c;
+  --lk-bar: #f5f5f5;
+  --lk-bar-text: #1f1f1f;
+  --lk-bar-border: #d0d0d0;
+
+  /* the ribbon: its tabs' row, the tab in front joined to the body, the body and its panel titles */
+  --lk-tabs: #e8e8e8;
+  --lk-tab-text: #4a4a4a;
+  --lk-tab-active: #f7f7f7;
+  --lk-tab-active-text: #1f1f1f;
+  --lk-panel: #f7f7f7;
+  --lk-panel-title: #555555;
+  --lk-panel-title-bar: #ebebeb;
+  --lk-panel-sep: #d6d6d6;
+
+  /* the application tab (File) and the contextual tab's green */
+  --lk-accent: #1a74c4;
+  --lk-accent-text: #ffffff;
+  --lk-ctx: #3f9142;
+
+  /* buttons: a light blue hover, the lit state in Revit's pale blue */
+  --lk-btn-hover: #dfeaf6;
+  --lk-btn-hover-border: #b9cfe6;
+  --lk-btn-on: #cde3f7;
+  --lk-btn-on-border: #8fbce6;
+  --lk-btn-text: #1f1f1f;
+  --lk-radius: 2px;
+
+  /* the command line and fields */
+  --lk-field: #ffffff;
+  --lk-field-text: #1f1f1f;
+  --lk-field-border: #bdbdbd;
+
+  /* the status bar: light grey with dark text */
+  --lk-status: #ececec;
+  --lk-status-text: #2b2b2b;
+  --lk-status-on: #1f1f1f;
+  --lk-status-on-bg: #d6e6f5;
+
+  /* the toolbox, if a look ever has one */
+  --lk-toolbox: #f5f5f5;
+  --lk-toolbox-border: #d0d0d0;
+}
+
+/* the title bar: the file's name centred, the app tab as a blue square */
+:root[data-look="revit"] .lk-titlebar {
+  height: 30px;
+  border-bottom: 1px solid #c8c8c8;
+}
+
+:root[data-look="revit"] .lk-app-btn {
+  width: 34px;
+  height: 26px;
+  background: var(--lk-accent);
+  color: var(--lk-accent-text);
+}
+
+/* the ribbon: its tabs' row in light grey, the front tab white and joined to the body */
+:root[data-look="revit"] .lk-ribbon-tabs {
+  background: var(--lk-tabs);
+  border-bottom: 1px solid #c8c8c8;
+}
+
+:root[data-look="revit"] .lk-ribbon-tab {
+  color: var(--lk-tab-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  cursor: default;
+}
+
+:root[data-look="revit"] .lk-ribbon-tab.active {
+  background: var(--lk-tab-active);
+  color: var(--lk-tab-active-text);
+  border-color: #c8c8c8 #c8c8c8 var(--lk-tab-active);
+  margin-bottom: -1px;
+}
+
+/* the File application tab: a strong blue with white text */
+:root[data-look="revit"] .lk-ribbon-app {
+  background: var(--lk-accent);
+  color: var(--lk-accent-text);
+  border-color: var(--lk-accent);
+  font-weight: 600;
+}
+
+:root[data-look="revit"] .lk-ribbon-app:hover {
+  background: #1767ad;
+}
+
+/* a contextual tab's title in green, its tab brought to the front */
+:root[data-look="revit"] .lk-ribbon-ctx {
+  background: var(--lk-ctx);
+  color: #ffffff;
+  border-color: var(--lk-ctx);
+  font-weight: 600;
+}
+
+:root[data-look="revit"] .lk-ribbon-body {
+  background: var(--lk-panel);
+  border-bottom: 1px solid #c8c8c8;
+}
+
+:root[data-look="revit"] .lk-ribbon-panel {
+  border-right: 1px solid var(--lk-panel-sep);
+}
+
+/* the panel titles on a slightly darker strip along the bottom */
+:root[data-look="revit"] .lk-ribbon-panel-title {
+  background: var(--lk-panel-title-bar);
+  color: var(--lk-panel-title);
+  border-top: 1px solid var(--lk-panel-sep);
+  font-size: 11px;
+  text-align: center;
+  cursor: default;
+}
+
+/* the Options Bar: a flat light grey row, 30px high */
+:root[data-look="revit"] .lk-options-slot {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 8px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #d0d0d0;
+  color: var(--lk-bar-text);
+}
+
+/* the View Control Bar at the foot of the drawing: small icons on light grey */
+:root[data-look="revit"][data-lk-viewbar="foot"] #viewbar {
+  background: #ececec;
+  border-top: 1px solid #c8c8c8;
+  color: #2b2b2b;
+  font-size: 11px;
+}
+
+:root[data-look="revit"][data-lk-viewbar="foot"] #viewbar svg {
+  width: 14px;
+  height: 14px;
+}
+
+:root[data-look="revit"] .canvas-wrap {
+  background: #ffffff;
+}
+
+/* the status bar: light grey, dark text */
+:root[data-look="revit"] .lk-statusbar {
+  background: var(--lk-status);
+  color: var(--lk-status-text);
+  border-top: 1px solid #c8c8c8;
+  font-size: 11px;
+}
+
+:root[data-look="revit"] .lk-st-hint,
+:root[data-look="revit"] .lk-st-text {
+  color: var(--lk-status-text);
+}
+
+/* the Properties and Project Browser palettes: square, grey title bars, white bodies */
+:root[data-look="revit"] .dock-left {
+  background: #ffffff;
+  border-right: 1px solid #c8c8c8;
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+}
+
+:root[data-look="revit"] .dock-left .pal {
+  border-radius: 0;
+  background: #ffffff;
+  border-bottom: 1px solid #c8c8c8;
+}
+
+:root[data-look="revit"] .dock-left .pal-head {
+  height: 26px;
+  padding: 0 6px 0 8px;
+  background: #dcdcdc;
+  color: #1f1f1f;
+  border-bottom: 1px solid #c4c4c4;
+}
+
+:root[data-look="revit"] .dock-left .pal-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:root[data-look="revit"] .dock-left .pal-body {
+  background: #ffffff;
+}
+
+:root[data-look="revit"] .dock-left .pal-tab {
+  border-radius: 0;
+  color: #3c3c3c;
+}
+
+:root[data-look="revit"] .dock-left .pal-tab.active {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #c4c4c4;
+}
+
+/* the look's buttons: hover and pressed states without rounded corners */
+:root[data-look="revit"] .lk-btn {
+  border-radius: 2px;
+}
+
+:root[data-look="revit"] .lk-btn.off {
+  opacity: 0.4;
+}

@@ -57,6 +57,13 @@ export function setInteractiveColors(c: { readonly selection: string; readonly p
 }
 const PEN_DEFAULT = "#1d1d1f";
 const PAPER = "#fcfcfb";
+/** what the drawing is drawn on: Rodeo's paper, or the colour a look (View › Work Like) gives it */
+let paper = PAPER;
+
+/** Sets the colour the 2D drawing is drawn on (null: Rodeo's paper); the next frame shows it. */
+export function setPaper(color: string | null): void {
+  paper = color ?? PAPER;
+}
 const GRID_MINOR = "rgba(60, 70, 90, 0.08)";
 const GRID_MAJOR = "rgba(60, 70, 90, 0.18)";
 const GRID_AXIS = "rgba(60, 70, 90, 0.32)";
@@ -417,7 +424,7 @@ export class Renderer {
     const H = view.height;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = PAPER;
+    ctx.fillStyle = paper;
     ctx.fillRect(0, 0, W, H);
     if (!scene.document) {
       this.kept = null;
