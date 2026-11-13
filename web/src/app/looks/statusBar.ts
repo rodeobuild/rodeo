@@ -4,6 +4,7 @@
 // Rodeo's own state and runs Rodeo's own commands (types.ts), so the bar only lays them out.
 
 import { h } from "../dom.ts";
+import { language, onLanguage, t } from "../i18n.ts";
 import { dataBar } from "../databar.ts";
 import { setActiveClass, setActiveLayer } from "../commands.ts";
 import { store } from "../state.ts";
@@ -18,14 +19,31 @@ const CHECK_MARK = `<svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="t
 // a funnel: Revit's filter icon, drawn here as a plain line icon
 const FILTER_ICON = lookIcon('<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>');
 
+/**
+ * Rodeo's hint, translated, as SketchUp writes its instructions: its parts (split by " · ") as
+ * sentences, each ending in a full stop ("。" and no spaces in Japanese and Chinese).
+ */
+export function sentences(hint: string): string {
+  const cjk = /^(ja|zh)/.test(language().code);
+  const parts = t(hint)
+    .split(" · ")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => (/[.!?。！？]$/.test(p) ? p : `${p}${cjk ? "。" : "."}`));
+  return parts.join(cjk ? "" : " ");
+}
+
 /** The cursor's position as the status bar shows it, measured from the datum while one is set (as statusbar.ts does). */
-function cursorText(): string {
+function cursorText(style?: "xyz"): string {
   const s = store.session;
   const c = store.cursor;
   if (!s || !c) return "";
   const units = s.doc.info.units;
   const d = store.datum;
-  const xy = `X ${formatLength(c.x - (d?.x ?? 0), units)}   Y ${formatLength(c.y - (d?.y ?? 0), units)}`;
+  const x = formatLength(c.x - (d?.x ?? 0), units);
+  const y = formatLength(c.y - (d?.y ?? 0), units);
+  // the plan's cursor lies on the construction plane, so its z is 0
+  const xy = style === "xyz" ? `x ${x}   y ${y}   z ${formatLength(0, units)}` : `X ${x}   Y ${y}`;
   return d ? `Datum  ${xy}` : xy;
 }
 
@@ -55,11 +73,15 @@ export function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
     case "hint": {
       const el = h("span", { cls: "lk-st-hint" });
       const show = (): void => {
-        el.textContent = store.hint;
-        el.title = store.hint;
+        const own = it.prompts?.[store.hint.split(" · ")[0]];
+        const text = own ?? (it.style === "sentences" ? sentences(store.hint) : store.hint);
+        el.textContent = text;
+        el.title = text;
       };
       show();
       offs.push(store.on(["hint", "tool"], show));
+      // the sentences are written already translated, so they are written again in a new language
+      if (it.style === "sentences") offs.push(onLanguage(show));
       return el;
     }
     case "coords": {
@@ -68,7 +90,7 @@ export function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
       const value = h("span", { cls: "lk-st-coords-value" });
       el.append(value);
       const show = (): void => {
-        value.textContent = cursorText();
+        value.textContent = cursorText(it.style);
       };
       show();
       offs.push(store.on(["cursor", "session", "datum"], show));
@@ -77,9 +99,14 @@ export function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
     case "toggle":
       return toggle(it);
     case "button": {
-      const btn = h("button", { cls: "lk-st-button", title: it.label, attrs: { type: "button", "aria-label": it.label } });
-      if (it.icon) btn.append(h("span", { cls: "lk-st-icon", html: it.icon }));
-      btn.append(h("span", { cls: "lk-st-label", text: it.label }));
+      // an icon-only button is drawn like a toggle's icon (22 px square, the label as its tooltip)
+      const btn = it.iconOnly
+        ? h("button", { cls: "lk-st-toggle lk-st-icon", title: it.label, html: it.icon ?? "", attrs: { type: "button", "aria-label": it.label } })
+        : h("button", { cls: "lk-st-button", title: it.label, attrs: { type: "button", "aria-label": it.label } });
+      if (!it.iconOnly) {
+        if (it.icon) btn.append(h("span", { cls: "lk-st-icon", html: it.icon }));
+        btn.append(h("span", { cls: "lk-st-label", text: it.label }));
+      }
       btn.addEventListener("click", () => activate(btn, it.do));
       track(btn, it.do);
       return btn;

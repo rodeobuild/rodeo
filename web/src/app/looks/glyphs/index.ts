@@ -6,4 +6,11 @@ import { GLYPHS as B } from "./b.ts";
 import { GLYPHS as C } from "./c.ts";
 import { GLYPHS as D } from "./d.ts";
 
-export const GLYPHS: Readonly<Record<string, string>> = { ...A, ...B, ...C, ...D };
+const ALL: Record<string, string> = { ...A, ...B, ...C, ...D };
+
+// Move by Points in its copy modes (AutoCAD's COPY, Rhino's and Revit's Copy, Archicad's Drag a
+// Copy) is drawn as Duplicate is, so Copy never looks like Move beside it
+ALL["tool:moveby:copy"] = ALL["menu:Edit › Duplicate"];
+ALL["tool:moveby:multiple"] = ALL["menu:Edit › Duplicate"];
+
+export const GLYPHS: Readonly<Record<string, string>> = ALL;

@@ -11,8 +11,21 @@ import type { LookButton, LookSpec } from "./types.ts";
 const ERASER = lookIcon('<path d="M4.5 14.5 10.5 5.5l8 5.5-5.5 7.5H8z"/><path d="M8.5 11.5l6 4"/><path d="M9 20.5h11"/>');
 /** A box with an arrow out of its corner: Scale runs Rodeo's Scale Objects command. */
 const SCALE = lookIcon('<rect x="4" y="4" width="10" height="10"/><path d="M14 14l6 6"/><path d="M20 14v6h-6"/>');
+/** A map pin over a small globe: Geo-location runs Rodeo's site import, so it gets this icon. */
+const GEO = lookIcon('<path d="M8 3.5a4.5 4.5 0 0 1 4.5 4.5c0 3-4.5 8-4.5 8s-4.5-5-4.5-8A4.5 4.5 0 0 1 8 3.5z"/><circle cx="8" cy="8" r="1.6"/><circle cx="17" cy="16.5" r="4"/><path d="M13 16.5h8"/><path d="M17 12.5c-1.3 1.3-1.3 6.7 0 8"/>');
+/** A circle with a C in it: the Credits button, drawn as a copyright sign. */
+const CREDITS = lookIcon('<circle cx="12" cy="12" r="9"/><path d="M14.8 9.4a3.6 3.6 0 1 0 0 5.2"/>');
+/** A head and shoulders: Sign in. */
+const PERSON = lookIcon('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/>');
+/** A question mark in a circle: the Instructor. */
+const INSTRUCTOR = lookIcon('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4"/><path d="M12 17h.01"/>');
 
-const select: LookButton = { label: "Select", do: { tool: "select" } };
+// Select always starts in SketchUp's window-and-crossing mode, so its button sets the marquee back to a rectangle
+const select: LookButton = { label: "Select", do: { tool: "select", mode: "rect" } };
+/** A loose loop with a short tail and its knot: the Lasso, drawn for Rodeo. */
+const LASSO = lookIcon('<path d="M6.5 13.5C4.6 12.4 3.5 10.9 3.5 9.2c0-3 3.8-5.2 8.5-5.2s8.5 2.3 8.5 5.2-3.8 5.3-8.5 5.3c-1.2 0-2.3-.1-3.3-.4"/><circle cx="7.3" cy="14.6" r="1.4"/><path d="M7 16c-.6 1.6-.2 3 1.2 4.5"/>');
+// SketchUp 2025 has Lasso as its own tool beside Select: Rodeo's lasso marquee
+const lasso: LookButton = { label: "Lasso", do: { tool: "select", mode: "lasso" }, icon: LASSO };
 const eraser: LookButton = { label: "Eraser", do: { menu: "Edit › Delete" }, icon: ERASER, keys: "E" };
 const line: LookButton = { label: "Line", do: { tool: "line" }, keys: "L" };
 const freehand: LookButton = { label: "Freehand", do: { tool: "freehand" } };
@@ -22,12 +35,13 @@ const polygon: LookButton = { label: "Polygon", do: { tool: "regpoly" } };
 const rectangle: LookButton = { label: "Rectangle", do: { tool: "rect" }, keys: "R", more: [circle, polygon] };
 const pushPull: LookButton = { label: "Push/Pull", do: { tool: "pushpull" }, keys: "P" };
 const offset: LookButton = { label: "Offset", do: { tool: "offset" }, keys: "F" };
-const move: LookButton = { label: "Move", do: { tool: "moveby" }, keys: "M" };
+const move: LookButton = { label: "Move", do: { tool: "moveby", mode: "move" }, keys: "M" };
 const rotate: LookButton = { label: "Rotate", do: { tool: "rotate" }, keys: "Q" };
 const scale: LookButton = { label: "Scale", do: { menu: "Modify › Scale Objects…" }, icon: SCALE, keys: "S" };
 const tapeMeasure: LookButton = { label: "Tape Measure", do: { tool: "measure" }, keys: "T" };
 const dimension: LookButton = { label: "Dimension", do: { tool: "dimension" } };
 const protractor: LookButton = { label: "Protractor", do: { tool: "protractor" } };
+// SketchUp sets a text's alignment in Entity Info, as Rodeo's Object Info does, so Text has no drop-down
 const text: LookButton = { label: "Text", do: { tool: "text" } };
 const paintBucket: LookButton = { label: "Paint Bucket", do: { tool: "attrmap" }, keys: "B" };
 const orbit: LookButton = { label: "Orbit", do: { tool: "flyover" }, keys: "O" };
@@ -220,7 +234,7 @@ export const look: LookSpec = {
     tabs: [
       {
         title: "Getting Started",
-        buttons: [select, eraser, "-", line, arc, rectangle, "-", pushPull, offset, move, rotate, scale, "-", tapeMeasure, text, paintBucket, "-", orbit, pan, zoom, zoomExtents],
+        buttons: [select, lasso, eraser, "-", line, arc, rectangle, "-", pushPull, offset, move, rotate, scale, "-", tapeMeasure, text, paintBucket, "-", orbit, pan, zoom, zoomExtents],
       },
     ],
   },
@@ -229,7 +243,7 @@ export const look: LookSpec = {
     columns: 2,
     labels: false,
     groups: [
-      { buttons: [select, eraser, paintBucket] },
+      { buttons: [select, lasso, eraser, paintBucket] },
       { buttons: [line, freehand, rectangle, circle, polygon, arc] },
       { buttons: [pushPull, offset, move, rotate, scale] },
       { buttons: [tapeMeasure, dimension, protractor, text] },
@@ -238,11 +252,22 @@ export const look: LookSpec = {
     ],
   },
   statusBar: {
-    // the tool's hint comes with the Mode bar at the row's start
-    rows: [[{ kind: "spacer" }, { kind: "measurements", label: "Measurements" }]],
+    // SketchUp's status row: four icon buttons at the far left, then the tool's instructions as
+    // sentences, then the Measurements box at the right
+    rows: [
+      [
+        { kind: "button", label: "Geo-location", do: { menu: "File › Import › Import Site Context…" }, icon: GEO, iconOnly: true },
+        { kind: "inert", label: "Credits", why: "Rodeo keeps no author credits for drawings", icon: CREDITS },
+        { kind: "inert", label: "Sign in", why: "Sign in from the account button on Rodeo's start page", icon: PERSON },
+        { kind: "button", label: "Instructor", do: { menu: "Help › User Guide" }, icon: INSTRUCTOR, iconOnly: true },
+        { kind: "hint", style: "sentences" },
+        { kind: "spacer" },
+        { kind: "measurements", label: "Measurements" },
+      ],
+    ],
   },
-  // a tool's modes along the status bar, as SketchUp's hints and modifier keys sit there
-  modeBar: "status",
+  // a tool's modes are picked by their keys, or by the toolbars' buttons; no Mode bar, as in SketchUp
+  modeBar: "keys",
   viewBar: "hidden",
   snapPill: false,
   rails: false,
@@ -261,7 +286,7 @@ export const look: LookSpec = {
     c: { tool: "circle" },
     p: { tool: "pushpull" },
     f: { tool: "offset" },
-    m: { tool: "moveby" },
+    m: { tool: "moveby", mode: "move" },
     q: { tool: "rotate" },
     s: { menu: "Modify › Scale Objects…" },
     t: { tool: "measure" },

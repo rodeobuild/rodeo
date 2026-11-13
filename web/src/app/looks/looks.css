@@ -409,6 +409,11 @@
   display: none !important;
 }
 
+/* SketchUp: the tool's modes are picked by keys and toolbar buttons, not a Mode bar */
+:root[data-lk-modebar="keys"]:not(.lk-phone) #modebar {
+  display: none !important;
+}
+
 /* ---- the coloured icons (glyphs/), painted with the look's colours ------------------------------ */
 
 :root {

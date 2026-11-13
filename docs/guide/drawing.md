@@ -75,7 +75,7 @@ In the **Freehand** tool (<kbd>U</kbd>), No Smoothing keeps the simplified corne
 
 ### Move by Points
 
-**Move by Points** (<kbd>⇧M</kbd>: from one point to another) moves the selection; Option or Copy mode moves a copy.
+**Move by Points** (<kbd>⇧M</kbd>: from one point to another) moves the selection; Option or Copy mode moves a copy. In Copy Multiple mode (3) each further click places another copy of the originals, measured from the same first point, until Escape or Enter.
 
 ### Offset
 

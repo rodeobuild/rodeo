@@ -82,6 +82,8 @@ export interface LookHost {
   setTool(id: ToolId): void;
   /** picks one of the active tool's modes, as its Mode bar button does */
   setToolMode(mode: string): void;
+  /** the active tool's modes now, one per group */
+  toolModes(): readonly string[];
   /** the menus as they stand (a look's when one is on) */
   menus(): readonly { readonly title: string; readonly rows: readonly Row[] }[];
 }
@@ -99,6 +101,8 @@ export interface CommandLineHandle {
   space(): boolean;
   /** Escape over the drawing: ends a command asking for a selection or an option; true when one was */
   escape(): boolean;
+  /** shows the command line when it is hidden, hides it when shown (its × button, Ctrl+9) */
+  toggle(): void;
   unmount(): void;
 }
 
@@ -291,11 +295,13 @@ async function putUp(chosen: LookSpec): Promise<void> {
   const root = document.documentElement;
   if (look.id === "rodeo") {
     delete root.dataset.look;
-    for (const k of ["lkTopbar", "lkModebar", "lkViewbar", "lkSnap"]) delete root.dataset[k];
+    for (const k of ["lkTopbar", "lkModebar", "lkViewbar", "lkSnap", "lkModeFields", "lkStartTab"]) delete root.dataset[k];
   } else {
     root.dataset.look = look.id;
     root.dataset.lkTopbar = look.topBar ? "on" : "off";
     root.dataset.lkModebar = look.modeBar;
+    if (look.modeFields) root.dataset.lkModeFields = look.modeFields;
+    else delete root.dataset.lkModeFields;
     root.dataset.lkViewbar = look.viewBar;
     root.dataset.lkSnap = look.snapPill ? "on" : "off";
   }
@@ -305,6 +311,9 @@ async function putUp(chosen: LookSpec): Promise<void> {
   // Rhino and SketchUp show one drawing per window: no tabs of open drawings (Window lists them)
   if (look.docTabs === false) root.dataset.lkDocTabs = "off";
   else delete root.dataset.lkDocTabs;
+  // AutoCAD's document tabs begin with a Start tab (docTabs.ts draws it while this is set)
+  if (look.startTab) root.dataset.lkStartTab = "on";
+  else delete root.dataset.lkStartTab;
   setTerms(look.id === "rodeo" ? null : look.terms);
   setLookMenus(menusOf(look));
   window.dispatchEvent(new Event("rodeo:menus"));
@@ -470,6 +479,7 @@ export function installLooks(h1: LookHost): void {
   setLookDeps({
     setTool: (id) => h1.setTool(id),
     setToolMode: (mode) => h1.setToolMode(mode),
+    toolModes: () => h1.toolModes(),
     togglePalette: (id) => h1.palettes.toggle(id),
     paletteShown: (id) => h1.palettes.isShown(id),
   });
@@ -550,6 +560,11 @@ export function lookModifiedKey(e: KeyboardEvent): boolean {
   if (!command) return false;
   if (!e.repeat) runCommand(command);
   return true;
+}
+
+/** Shows the look's command line when it is hidden, hides it when shown (AutoCAD's Ctrl+9); nothing while the look has none. */
+export function toggleCommandLine(): void {
+  commandLine?.toggle();
 }
 
 /** Whether a look's command line is on (not on a phone, which keeps Rodeo's layout). */

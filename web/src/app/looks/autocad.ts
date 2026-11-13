@@ -7,7 +7,7 @@
 import type { ToolId } from "../state.ts";
 import type { Command, CommandLineSpec, LookButton, LookSpec, RibbonTab, StatusBarSpec } from "./types.ts";
 import { lookIcon } from "./commands.ts";
-import { WORK_LIKE } from "./looks.ts";
+import { toggleCommandLine, WORK_LIKE } from "./looks.ts";
 import { AREA, dim, LIST, MAKE2D, ORTHO, REGEN } from "./extra.ts";
 import { orthoOn, setOrtho } from "../ortho.ts";
 import "./autocad.css";
@@ -91,8 +91,10 @@ const commandLine: CommandLineSpec = {
     POINT: t("locus"),
     REVCLOUD: t("cloud"),
     // commands on a selection: with nothing selected they ask for objects first, then run
-    MOVE: { select: "Select objects:", do: t("moveby") },
-    COPY: { select: "Select objects:", do: m("Edit › Duplicate") },
+    // Move by Points in its Move mode; COPY in Copy Multiple, as AutoCAD copies until Enter. Their
+    // options are AutoCAD's, not the tool's modes (options: [] shows none)
+    MOVE: { select: "Select objects:", do: { tool: "moveby", mode: "move" }, options: [] },
+    COPY: { select: "Select objects:", do: { tool: "moveby", mode: "multiple" }, options: [], enter: t("select") },
     ROTATE: { select: "Select objects:", do: t("rotate") },
     SCALE: { select: "Select objects:", do: m("Modify › Scale Objects…") },
     MIRROR: { select: "Select objects:", do: t("mirror") },
@@ -230,7 +232,7 @@ const commandLine: CommandLineSpec = {
     OPTIONS: { menu: "Edit › Preferences…" },
     ADCENTER: { palette: "resources" },
     TOOLPALETTES: { palette: "toolsets" },
-    "3DMOVE": { select: "Select objects:", do: t("moveby") },
+    "3DMOVE": { select: "Select objects:", do: { tool: "moveby", mode: "move" } },
     "3DROTATE": { do: { menu: "Modify › Rotate 3D…" }, select: "Select objects:" },
     "3DARRAY": { select: "Select objects:", do: m("Edit › Duplicate Array…") },
     ALIGN: { do: { menu: "Modify › Align › Align/Distribute…" }, select: "Select objects:" },
@@ -357,6 +359,10 @@ const commandLine: CommandLineSpec = {
     "Click a cross section": "Select cross sections in lofting order:",
     "Click a face of a solid, or a flat closed curve": "Select a face or closed curve:",
     "Select objects first": "Select objects:",
+    "Click the point to move from": "Specify base point:",
+    "Click the point to move to": "Specify second point:",
+    "Click the point to copy from": "Specify base point:",
+    "Click where each copy goes": "Specify second point:",
     "Select lines, polygons or polylines to reshape": "Select objects:",
     "Click or drag a box to select": "Select objects:",
     "Click to zoom in or drag a box": "Specify corner of window, enter a scale factor (nX or nXP), or",
@@ -391,8 +397,8 @@ const home: RibbonTab = {
     {
       title: "Modify",
       items: [
-        [b("Move", t("moveby"), "M"), b("Rotate", t("rotate"), "RO"), b("Trim", t("trim"), "TR")],
-        [b("Erase", m("Edit › Delete"), "E"), b("Copy", m("Edit › Duplicate"), "CO"), b("Mirror", t("mirror"), "MI")],
+        [b("Move", { tool: "moveby", mode: "move" }, "M"), b("Rotate", t("rotate"), "RO"), b("Trim", t("trim"), "TR")],
+        [b("Erase", m("Edit › Delete"), "E"), b("Copy", { tool: "moveby", mode: "multiple" }, "CO"), b("Mirror", t("mirror"), "MI")],
         [b("Fillet", t("fillet"), "F", [b("Chamfer", t("chamfer"), "CHA")]), b("Explode", m("Modify › Decompose"), "X"), b("Stretch", t("reshape"), "S")],
         [b("Scale", m("Modify › Scale Objects…"), "SC"), b("Array", m("Edit › Duplicate Array…"), "AR"), b("Offset", t("offset"), "O")],
       ],
@@ -837,6 +843,8 @@ export const look: LookSpec = {
     navigation: { kind: "layerTable", style: "autocad", columns: ["current", "name", "visible", "lock", "color", "linetype", "lineweight"], none: "0" },
   },
   layoutTabs: true,
+  // the document tabs begin with a Start tab (docTabs.ts)
+  startTab: true,
   viewportControls: true,
   grid: true,
   viewCube: true,
@@ -849,6 +857,8 @@ export const look: LookSpec = {
     Delete: m("Edit › Delete"),
     "Ctrl+1": p("objectInfo"),
     "Ctrl+3": p("toolsets"),
+    // shows or hides the command line (its × button hides it too)
+    "Ctrl+9": { run: toggleCommandLine },
     "Ctrl+Z": m("Edit › Undo"),
     "Ctrl+Y": m("Edit › Redo"),
   },

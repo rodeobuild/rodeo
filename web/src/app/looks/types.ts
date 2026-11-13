@@ -151,14 +151,24 @@ export interface CommandLineSpec {
 
 /** One thing along a status bar. */
 export type StatusItem =
-  /** what the tool asks for next (Rodeo's Mode bar hint) */
-  | { readonly kind: "hint" }
+  /** what the tool asks for next (Rodeo's Mode bar hint); `style: "sentences"` writes its parts as sentences, as SketchUp's status bar does */
+  | {
+      readonly kind: "hint";
+      readonly style?: "sentences";
+      /** the application's own words for a step, by the hint's first part (before " · "): Revit's "Click to enter wall start point." */
+      readonly prompts?: Readonly<Record<string, string>>;
+    }
   /** the cursor's position in the drawing */
-  | { readonly kind: "coords"; readonly label?: string }
+  | {
+      readonly kind: "coords";
+      readonly label?: string;
+      /** "xyz": lower-case x, y and z, z on the construction plane (Rhino's "CPlane x 12.3 y 4.5 z 0.000") */
+      readonly style?: "xyz";
+    }
   /** a toggle: a menu row with a check mark, or anything with `checked` */
   | { readonly kind: "toggle"; readonly label: string; readonly do: Command; readonly style?: "text" | "check" | "icon"; readonly icon?: string }
-  /** a button that runs something */
-  | { readonly kind: "button"; readonly label: string; readonly do: Command; readonly icon?: string }
+  /** a button that runs something; `iconOnly` shows just the icon, with the label as its tooltip (SketchUp's status bar icons) */
+  | { readonly kind: "button"; readonly label: string; readonly do: Command; readonly icon?: string; readonly iconOnly?: true }
   /** fixed text */
   | { readonly kind: "text"; readonly text: string }
   /** the drawing's units ("Millimeters", "Feet and Inches") */
@@ -256,9 +266,17 @@ export interface LookSpec {
    * Where Rodeo's Mode bar (the tool's modes and options) goes: over the drawing as Rodeo has it,
    * in a row under the ribbon or toolbars (Revit's Options Bar, Archicad's Info Box), at the start
    * of the status bar, or into the command line as the prompt's options (Rhino, AutoCAD: the bar
-   * itself is hidden and its modes are clicked or typed there).
+   * itself is hidden and its modes are clicked or typed there). "keys": hidden: the tool's modes
+   * are picked by their keys, named in the status bar's hint, or by the toolbars' buttons, as
+   * SketchUp's are.
    */
-  readonly modeBar: "hud" | "options" | "status" | "line";
+  readonly modeBar: "hud" | "options" | "status" | "line" | "keys";
+  /**
+   * The Mode bar's groups drawn as the application draws a command's options: "menus", labelled
+   * drop-downs (Revit's Options Bar); "panels", captioned panels of buttons after a Main panel
+   * (Archicad's Info Box). The tool's name and hint are left out of both.
+   */
+  readonly modeFields?: "menus" | "panels";
   /** Rodeo's View bar (layer, class, view): over the drawing, along the foot of the drawing (Revit's View Control Bar, Archicad's Quick Options), or gone */
   readonly viewBar: "hud" | "foot" | "hidden";
   /** Rodeo's snapping pill and cursor position over the drawing (a status bar usually shows them instead) */
@@ -309,6 +327,8 @@ export interface LookSpec {
   readonly viewCube?: boolean;
   /** false: one drawing per window and no tabs of open drawings over it (Rhino, SketchUp); Window lists them */
   readonly docTabs?: boolean;
+  /** true: the document tabs begin with a Start tab that opens Window › Home Screen; it is never the front tab (AutoCAD) */
+  readonly startTab?: boolean;
   /** each 3D pane shows its construction plane's grid and axes (Rhino's viewports) */
   readonly grid3d?: boolean;
   /**

@@ -1057,7 +1057,7 @@ export class App {
     mountMenuStrip(strip, () => menuBar.menus());
     palettes.addTopGroup("menus", strip);
     // View › Work Like: Rodeo laid out as the application last chosen (looks/looks.ts)
-    installLooks({ palettes, setTool, setToolMode: (mode) => this.controller.setMode(mode), menus: () => menuBar.menus() });
+    installLooks({ palettes, setTool, setToolMode: (mode) => this.controller.setMode(mode), toolModes: () => this.controller.modes().map((m) => m.active), menus: () => menuBar.menus() });
     for (const bar of [topbar, strip]) {
       bar.addEventListener("contextmenu", (e) => {
         if ((e.target as Element).closest("input, select, textarea")) return;

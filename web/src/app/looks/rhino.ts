@@ -339,8 +339,10 @@ export const look: LookSpec = {
       DimCurveLength: { tool: "arclength" },
       Leader: { tool: "leaderline" },
       Distance: { tool: "measure" },
-      Move: { do: { tool: "moveby" }, select: "Select objects to move. Press Enter when done" },
-      Copy: { do: { menu: "Edit › Duplicate" }, select: "Select objects to copy. Press Enter when done" },
+      // Move by Points in its Move mode; Copy in Copy Multiple, as Rhino copies until Enter. Their
+      // options are Rhino's, not the tool's modes (options: [] shows none)
+      Move: { do: { tool: "moveby", mode: "move" }, select: "Select objects to move. Press Enter when done", options: [] },
+      Copy: { do: { tool: "moveby", mode: "multiple" }, select: "Select objects to copy. Press Enter when done", options: [], enter: { tool: "select" } },
       Rotate: { do: { tool: "rotate" }, select: "Select objects to rotate. Press Enter when done" },
       Rotate3D: { do: { menu: "Modify › Rotate 3D…" }, select: "Select objects to rotate. Press Enter when done" },
       Scale: { do: { menu: "Modify › Scale Objects…" }, select: "Select objects to scale. Press Enter when done" },
@@ -514,6 +516,10 @@ export const look: LookSpec = {
       "Click the torus's centre": "Center of torus",
       "Click to zoom in or drag a box": "Select a corner of the zoom window",
       "Select objects first": "Select objects",
+      "Click the point to move from": "Point to move from",
+      "Click the point to move to": "Point to move to",
+      "Click the point to copy from": "Point to copy from",
+      "Click where each copy goes": "Point to copy to. Press Enter when done",
     },
   },
   // The toolbars under the command line, one tab each, in Rhino's order.
@@ -643,8 +649,8 @@ export const look: LookSpec = {
       {
         title: "Transform",
         buttons: [
-          tool("Move", "moveby"),
-          menu("Copy", "Edit › Duplicate"),
+          { label: "Move", do: { tool: "moveby", mode: "move" } },
+          { label: "Copy", do: { tool: "moveby", mode: "multiple" } },
           tool("Rotate", "rotate"),
           menu("Rotate 3D", "Modify › Rotate 3D…"),
           tool("Mirror", "mirror"),
@@ -795,8 +801,8 @@ export const look: LookSpec = {
           tool("Text", "text"),
           menu("Hatch", "Modify › Hatch…"),
           tool("Dimension", "dimension"),
-          tool("Move", "moveby"),
-          menu("Copy", "Edit › Duplicate"),
+          { label: "Move", do: { tool: "moveby", mode: "move" } },
+          { label: "Copy", do: { tool: "moveby", mode: "multiple" } },
           tool("Rotate", "rotate"),
           tool("Mirror", "mirror"),
           menu("Scale", "Modify › Scale Objects…"),
@@ -838,7 +844,7 @@ export const look: LookSpec = {
   statusBar: {
     rows: [
       [
-        { kind: "coords", label: "CPlane" },
+        { kind: "coords", label: "CPlane", style: "xyz" },
         { kind: "units" },
         { kind: "layer", of: "class", swatch: true, none: "Default" },
         { kind: "spacer" },

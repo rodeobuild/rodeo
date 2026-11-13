@@ -84,14 +84,6 @@
   color: var(--lk-bar-text);
 }
 
-/* AutoCAD's command-line mark before the empty field */
-.lk-cmd-glyph {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-weight: 600;
-  letter-spacing: -1px;
-  opacity: 0.8;
-}
-
 .lk-cmd-input::placeholder {
   color: var(--lk-bar-text);
   opacity: 0.55;
@@ -199,4 +191,62 @@
 
 .lk-cmd-option.active {
   background: var(--lk-btn-on);
+}
+
+/* a hidden command line takes no room (its Close button, or Ctrl+9 in AutoCAD) */
+.lk-cmd[hidden] {
+  display: none;
+}
+
+/* AutoCAD's buttons left of the prompt: a grip, Close, Customize and Recent Commands. Line icons
+   in the bar's text colour, no background until the pointer is over one. */
+:root[data-look="autocad"] .lk-cmd-grip,
+:root[data-look="autocad"] .lk-cmd-tool {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--lk-bar-text);
+  cursor: default;
+}
+
+:root[data-look="autocad"] .lk-cmd-grip {
+  width: 12px;
+  margin-right: 2px;
+}
+
+:root[data-look="autocad"] .lk-cmd-tool:hover {
+  background: var(--lk-btn-hover);
+}
+
+:root[data-look="autocad"] .lk-cmd-grip svg,
+:root[data-look="autocad"] .lk-cmd-tool > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Recent Commands: the prompt glyph, then a small caret */
+:root[data-look="autocad"] .lk-cmd-recent {
+  width: auto;
+  padding: 0 3px 0 2px;
+  gap: 1px;
+}
+
+:root[data-look="autocad"] .lk-cmd-caret svg {
+  width: 9px;
+  height: 9px;
+}
+
+/* a keyboard focus on one of these buttons shows its outline */
+:root[data-look="autocad"] .lk-cmd-tool:focus-visible {
+  outline: 1px solid var(--lk-accent);
+  outline-offset: -1px;
 }

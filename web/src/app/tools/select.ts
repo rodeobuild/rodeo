@@ -26,6 +26,7 @@ import { followHyperlink, isHyperlink } from "../hyperlink.ts";
 import { boundsInFrame, pickObject, pickViewport, topIdsInFrame, topIdsInPolygon, topIdsInRect } from "../hittest.ts";
 import { isDerivedId, type Scene } from "../scene.ts";
 import type { View } from "../view.ts";
+import { orthoOn, orthoPoint } from "../ortho.ts";
 import { prefs } from "../prefs.ts";
 import { store } from "../state.ts";
 import { annotatableViewport, editAnnotations, editSymbol } from "../symbolEdit.ts";
@@ -413,7 +414,10 @@ export class SelectTool extends BaseTool {
       if (dist(this.env.view.toScreen(last), p.screen) >= LASSO_STEP_PX) this.path.push(p.raw);
     }
     if (this.mode === "move") {
-      const to = this.env.snap.snap(p.raw, this.env.view, this.moveIds).pos;
+      // Ortho (View › Ortho) keeps the drag level or upright from where it was picked up, as the
+      // pointer path does for drawing tools (tools.ts); an object snap still wins, Shift lets go
+      const s = this.env.snap.snap(p.raw, this.env.view, this.moveIds);
+      const to = !p.shift && orthoOn() && (s.kind === null || s.kind === "grid") ? orthoPoint(this.anchor, s.pos) : s.pos;
       this.delta = this.alongWall({ x: to.x - this.anchor.x, y: to.y - this.anchor.y });
       this.showMove();
     }

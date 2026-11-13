@@ -128,14 +128,88 @@
   cursor: default;
 }
 
-/* the Options Bar: a flat light grey row, 30px high */
+/* the Options Bar: a flat light grey row, 26px high */
 :root[data-look="revit"] .lk-options-slot {
-  height: 30px;
-  min-height: 30px;
+  height: 26px;
+  min-height: 26px;
   padding: 0 8px;
   background: #f0f0f0;
   border-bottom: 1px solid #d0d0d0;
   color: var(--lk-bar-text);
+}
+
+/* the Mode bar as the Options Bar's fields: "Marquee:" then a white drop-down with its value.
+   Only while the look asks for fields (data-lk-mode-fields); the tool's name and hint are the
+   status bar's job in Revit, so the bar shows neither. */
+:root[data-look="revit"][data-lk-mode-fields="menus"] .lk-options-slot #modebar {
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  color: var(--lk-bar-text);
+}
+
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mode-tool,
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mode-hint,
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-group::before {
+  display: none !important;
+}
+
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-group {
+  gap: 12px;
+  align-items: center;
+}
+
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-field-label {
+  color: var(--lk-bar-text);
+  font-size: var(--lk-font-size);
+}
+
+/* each drop-down: a white box with a grey hairline, square, its value left and the caret right */
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-field .mb-menu {
+  height: 20px;
+  min-width: 112px;
+  padding: 0 4px 0 6px;
+  gap: 6px;
+  justify-content: space-between;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 0;
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+  font-size: var(--lk-font-size);
+  cursor: default;
+}
+
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-field .mb-menu:hover {
+  background: var(--lk-field);
+  border-color: #8a8a8a;
+}
+
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-field .mb-menu svg {
+  width: 10px;
+  height: 10px;
+  color: var(--lk-bar-text);
+}
+
+/* the Tool preferences button: small, flat, at the end */
+:root[data-look="revit"][data-lk-mode-fields="menus"] #modebar .mb-group:last-of-type .bar-btn {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--lk-bar-text);
+  box-shadow: none;
 }
 
 /* the View Control Bar at the foot of the drawing: small icons on light grey */

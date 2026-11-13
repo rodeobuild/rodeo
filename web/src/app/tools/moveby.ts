@@ -1,6 +1,8 @@
 // Move by Points tool: click a point, then the point it should go to, and the
 // selection moves by the distance between them. In Copy mode, or with Option
-// (Alt) held on the second click, a copy moves and the originals stay. Shift
+// (Alt) held on the second click, a copy moves and the originals stay. In Copy
+// Multiple mode (AutoCAD's COPY, Rhino's Copy) each further click places another
+// copy of the originals from the same base point, until Esc or Enter. Shift
 // constrains the move to 45-degree steps. Esc starts over; a move keeps the
 // selection and the tool, so the next pair of clicks moves it again.
 
@@ -14,9 +16,9 @@ import { drawLabel, drawMarker, mapOutlines, selectionOutlines, selectionUnchang
 
 const MIN_WORLD = 1e-9;
 
-type MoveMode = "move" | "copy";
-const MODES: readonly MoveMode[] = ["move", "copy"];
-const MODE_NAME: Record<MoveMode, string> = { move: "Move", copy: "Copy" };
+type MoveMode = "move" | "copy" | "multiple";
+const MODES: readonly MoveMode[] = ["move", "copy", "multiple"];
+const MODE_NAME: Record<MoveMode, string> = { move: "Move", copy: "Copy", multiple: "Copy Multiple" };
 
 export class MoveByPointsTool extends BaseTool {
   readonly id = "moveby";
@@ -65,7 +67,11 @@ export class MoveByPointsTool extends BaseTool {
 
   hint(): string {
     if (store.selection.size === 0) return "Select objects first";
-    if (!this.from) return "Click the point to move from · 1–2 mode";
+    if (this.mode === "multiple") {
+      if (!this.from) return "Click the point to copy from · 1–3 mode";
+      return "Click where each copy goes · Shift 45° · Esc or Enter when done";
+    }
+    if (!this.from) return "Click the point to move from · 1–3 mode";
     return `Click the point to move to · Shift 45° · ${ALT_KEY} copy`;
   }
 
@@ -82,6 +88,11 @@ export class MoveByPointsTool extends BaseTool {
     const dx = to.x - this.from.x;
     const dy = to.y - this.from.y;
     const ids = [...store.selection];
+    if (this.mode === "multiple") {
+      // the base point and the originals stay picked up for the next copy; the originals stay selected
+      if (Math.hypot(dx, dy) >= MIN_WORLD) attempt("Move copy", (s) => s.duplicateObjects(ids, dx, dy));
+      return;
+    }
     this.reset();
     if (Math.hypot(dx, dy) < MIN_WORLD) return;
     if (this.mode === "copy" || this.altHeld) {
@@ -102,8 +113,13 @@ export class MoveByPointsTool extends BaseTool {
   }
 
   key(e: KeyboardEvent): boolean {
-    if (!e.metaKey && !e.ctrlKey && (e.key === "1" || e.key === "2")) {
+    if (!e.metaKey && !e.ctrlKey && (e.key === "1" || e.key === "2" || e.key === "3")) {
       this.setMode(MODES[Number(e.key) - 1]);
+      return true;
+    }
+    // Enter ends a run of copies, as Escape does
+    if (e.key === "Enter" && this.mode === "multiple" && this.from) {
+      this.reset();
       return true;
     }
     if (e.key !== "Escape" || !this.from) return false;

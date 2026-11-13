@@ -527,9 +527,12 @@ export async function setLanguage(code: string): Promise<void> {
 
 const GLOBE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c-1.8 1.7-2.6 3.8-2.6 6.2s.8 4.5 2.6 6.2M8 1.8c1.8 1.7 2.6 3.8 2.6 6.2s-.8 4.5-2.6 6.2"/></svg>`;
 
-/** Calls `fn` after each change of language (what code sets in its own words, such as a tooltip, follows). */
-export function onLanguage(fn: (lang: Language) => void): void {
+/** Calls `fn` after each change of language (what code sets in its own words, such as a tooltip, follows). Returns the call that stops it. */
+export function onLanguage(fn: (lang: Language) => void): () => void {
   listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 /** The start hub's footer picker: a globe and the language's own name, a list of the others when clicked. */

@@ -86,6 +86,8 @@ export const GLYPHS: Readonly<Record<string, string>> = {
   // a round marker with a downward triangle inside it
   "tool:secmarker": `<circle cx="12" cy="12" r="8.8" fill="var(--g-paper)" stroke="var(--g-ink)" stroke-width="1.5"/><path d="M6.8 9.2h10.4L12 15.6z" fill="var(--g-hi)" stroke="var(--g-ink)" stroke-width="1.3" stroke-linejoin="round"/>`,
   // a pointer arrow
+  // a loose loop of rope with its knot and a short tail: Select's lasso marquee
+  "tool:select:lasso": `<path d="M7 14C4.6 12.9 3.2 11.2 3.2 9.3c0-3.1 3.9-5.5 8.8-5.5s8.8 2.4 8.8 5.5-3.9 5.5-8.8 5.5c-1.3 0-2.5-.2-3.6-.5" fill="var(--g-fill)" fill-opacity=".35" stroke="var(--g-ink)" stroke-width="1.6" stroke-linecap="round"/><circle cx="7.6" cy="14.9" r="1.6" fill="var(--g-hi)" stroke="var(--g-ink)" stroke-width="1.2"/><path d="M7.2 16.5c-.6 1.6-.1 3 1.4 4.6" fill="none" stroke="var(--g-ink)" stroke-width="1.5" stroke-linecap="round"/>`,
   "tool:select": `<path d="M6 3.5V19l4.2-4 2.8 6 2.4-1.1-2.8-5.9H16z" fill="var(--g-paper)" stroke="var(--g-ink)" stroke-width="1.5" stroke-linejoin="round"/>`,
   // two matching small shapes, with a pointer arrow below them
   "tool:selectsimilar": `<rect x="2.5" y="2.5" width="6" height="6" fill="var(--g-hi)" stroke="var(--g-ink)" stroke-width="1.4"/><rect x="15.5" y="2.5" width="6" height="6" fill="var(--g-hi)" stroke="var(--g-ink)" stroke-width="1.4"/><g transform="translate(8 8) scale(0.6)"><path d="M6 3.5V19l4.2-4 2.8 6 2.4-1.1-2.8-5.9H16z" fill="var(--g-paper)" stroke="var(--g-ink)" stroke-width="2.5" stroke-linejoin="round"/></g>`,

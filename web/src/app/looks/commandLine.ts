@@ -11,12 +11,39 @@ import { dataBar } from "../databar.ts";
 import { setSelection } from "../commands.ts";
 import { language, onLanguage, t } from "../i18n.ts";
 import { store, type ToolId } from "../state.ts";
-import { runCommand } from "./commands.ts";
+import { lookIcon, runCommand } from "./commands.ts";
 import type { CommandLineHandle } from "./looks.ts";
+import { menuButton, type Row } from "../menu.ts";
+import { toast } from "../toast.ts";
 import type { Command, CommandLineSpec, LineCommand, LineOption } from "./types.ts";
 
 /** Suggestions listed under the prompt at most, so the list stays short over the drawing. */
 const MAX_SUGGEST = 10;
+
+/** Customize's choices in AutoCAD, kept in this browser: AutoComplete on or off, lines of history shown. */
+const AUTOCOMPLETE_KEY = "openvwx.cmdAutoComplete";
+const HISTORY_KEY = "openvwx.cmdHistory";
+
+/** Recent Commands lists this many at most. */
+const MAX_RECENT = 10;
+
+/** A value kept in this browser, or null when none is kept or storage is blocked. */
+function kept(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps a value in this browser; nothing is kept when storage is blocked (the choice lasts while the page is open). */
+function keep(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // storage blocked: the choice is only made for this page
+  }
+}
 
 /** A typed letter (in any language, for options in its words), digit or sign that starts a command, an option or a value. */
 const STARTS = /^[\p{L}\p{N}_.,@<'!-]$/u;
@@ -153,6 +180,10 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   let active = 0; // the highlighted suggestion
   let moved = false; // the arrow keys picked a suggestion, so Enter takes it even if it only contains the text
   let pending: Pending | null = null;
+  // Customize's choices (AutoCAD only): whether suggestions show, and how many history lines
+  let autoComplete = !autocad || kept(AUTOCOMPLETE_KEY) !== "off";
+  const savedLines = autocad ? Number(kept(HISTORY_KEY)) : NaN;
+  let historyLines = [1, 3, 5].includes(savedLines) ? savedLines : spec.history;
 
   const root = el("div", `lk-cmd ${spec.where === "top" ? "lk-cmd-at-top" : "lk-cmd-at-bottom"}`);
   root.dataset.options = autocad ? "autocad" : "rhino";
@@ -180,7 +211,57 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   // Positioned by CSS just under (top line) or just over (bottom line) the input, and left at it.
   const list = el("div", "lk-cmd-suggest");
   list.hidden = true;
-  row.append(prompt, input, list);
+  // AutoCAD's buttons left of the prompt, in its order: a grip, Close (hides the line), Customize
+  // (a menu) and Recent Commands (a menu of the commands run lately)
+  const extras: HTMLElement[] = [];
+  if (autocad) {
+    const grip = el("span", "lk-cmd-grip");
+    grip.setAttribute("aria-hidden", "true");
+    grip.innerHTML = lookIcon('<path d="M9.5 6h0M14.5 6h0M9.5 12h0M14.5 12h0M9.5 18h0M14.5 18h0" stroke-width="2.6"/>');
+    const iconButton = (label: string, svg: string, cls = ""): HTMLButtonElement => {
+      const btn = el("button", cls ? `lk-cmd-tool ${cls}` : "lk-cmd-tool");
+      btn.type = "button";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+      btn.innerHTML = svg;
+      // a press keeps the focus in the field, as the prompt's options do
+      btn.addEventListener("mousedown", (e) => e.preventDefault());
+      return btn;
+    };
+    const close = iconButton("Close", lookIcon('<path d="M7 7l10 10M17 7L7 17"/>'));
+    close.addEventListener("click", () => {
+      root.hidden = true;
+      toast("Command line hidden · Ctrl+9 shows it again", "info");
+    });
+    const customize = menuButton(iconButton("Customize", lookIcon('<path d="M14.7 6.3a4 4 0 0 0-5.1 5.1L4.5 16.5a2 2 0 0 0 3 3l5.1-5.1a4 4 0 0 0 5.1-5.1l-2.4 2.4-2.6-.6-.6-2.6z"/>')), (): Row[] => [
+      { label: "AutoComplete", checked: () => autoComplete, run: () => {
+        autoComplete = !autoComplete;
+        keep(AUTOCOMPLETE_KEY, autoComplete ? "on" : "off");
+        updateSuggest(true);
+      } },
+      "-",
+      ...[1, 3, 5].map((n): Row => ({
+        label: `${n} ${n === 1 ? "Line" : "Lines"} of History`,
+        checked: () => historyLines === n,
+        run: () => {
+          historyLines = n;
+          keep(HISTORY_KEY, String(n));
+          renderHistory();
+        },
+      })),
+    ]);
+    const recent = menuButton(
+      iconButton("Recent Commands", lookIcon('<path d="M4 7l5 5-5 5M12 18h8"/>') + `<span class="lk-cmd-caret">${lookIcon('<path d="M5 9l7 7 7-7"/>')}</span>`, "lk-cmd-recent"),
+      (): Row[] => {
+        // the latest first, each name once, at most MAX_RECENT
+        const names = [...new Set([...ran].reverse())].slice(0, MAX_RECENT);
+        if (names.length === 0) return [{ label: "No recent commands", enabled: () => false }];
+        return names.map((n): Row => ({ label: show(n), run: () => start(n) }));
+      },
+    );
+    extras.push(grip, close, customize, recent);
+  }
+  row.append(...extras, prompt, input, list);
   root.append(history, row, printedBox);
   into.append(root);
 
@@ -245,7 +326,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
 
   /** Recomputes the suggestions for what is typed; a new text starts again at the top of them. */
   function updateSuggest(reset: boolean): void {
-    sugs = pending && pending.stage !== "running" ? [] : suggest(input.value);
+    sugs = (pending && pending.stage !== "running") || !autoComplete ? [] : suggest(input.value);
     if (reset || active >= sugs.length) {
       active = 0;
       moved = false;
@@ -254,7 +335,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   }
 
   function renderHistory(): void {
-    const shown = spec.history > 0 ? lines.slice(-spec.history) : [];
+    const shown = historyLines > 0 ? lines.slice(-historyLines) : [];
     history.replaceChildren(...shown.map((text) => el("div", "lk-cmd-line", text)));
   }
 
@@ -273,7 +354,6 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     return name !== undefined ? show(name) : show(allTools().find((t) => t.id === tool)?.label ?? tool);
   }
 
-  /** The words the prompt asks with now, without its options. */
   /**
    * The prompt's words, and before them the command's name where the application writes it there
    * (AutoCAD's "LINE Specify first point:"). Kept apart so the words are translated on their own.
@@ -289,8 +369,10 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     const hint = store.hint.trim();
     const own = pending?.stage === "running" && pending.tool === tool && hint === pending.hint ? pending.cmd.prompt : undefined;
     const mapped = own ?? (hint ? spec.prompts?.[firstPart(hint)] : undefined);
-    if (mapped) return autocad ? { lead: toolLabel(tool), words: mapped } : { lead: "", words: mapped };
-    return hint ? { lead: toolLabel(tool), words: hint } : { lead: "", words: toolLabel(tool) };
+    // the typed command's own name while its tool runs (COPY, not MOVE, though both run Move by Points)
+    const lead = pending?.stage === "running" && pending.tool === tool ? show(pending.name) : toolLabel(tool);
+    if (mapped) return autocad ? { lead, words: mapped } : { lead: "", words: mapped };
+    return hint ? { lead, words: hint } : { lead: "", words: lead };
   }
 
 
@@ -316,12 +398,13 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   /** The prompt with its options, each a button: "Zoom ( All Extents Selected ):", "ZOOM [All/Extents] <real time>:". */
   function renderPrompt(): void {
     const idle = pending === null && store.tool === "select";
-    // AutoCAD waits with ">_" and "Type a command" greyed inside the empty field, not as a prompt
+    // AutoCAD waits with "Type a command" greyed inside the empty field, not as a prompt (its ">_"
+    // is the Recent Commands button before it)
     if (autocad) {
       input.placeholder = idle ? t(spec.prompt) : "";
       root.classList.toggle("lk-cmd-busy", !idle);
       if (idle) {
-        prompt.replaceChildren(el("span", "lk-cmd-glyph", ">_"));
+        prompt.replaceChildren();
         return;
       }
     }
@@ -709,7 +792,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
 
   return {
     type(e: KeyboardEvent): boolean {
-      if (e.ctrlKey || e.metaKey || e.altKey) return false;
+      if (root.hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
       // a letter, digit or sign typed over the drawing starts a command, an option or a value
       if (e.key.length === 1 && STARTS.test(e.key)) {
         input.focus();
@@ -718,23 +801,26 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
         updateSuggest(true);
         return true;
       }
-      // Enter while a command asks for a selection or an option answers it
-      if (e.key === "Enter" && pending && pending.stage !== "running") return enter();
+      // Enter while a command asks for a selection or an option answers it, and ends a running one
+      // that says what Enter does (COPY, Copy: their run of copies)
+      if (e.key === "Enter" && pending && (pending.stage !== "running" || pending.cmd.enter)) return enter();
       return false;
     },
     key(e: KeyboardEvent): boolean {
-      if (e.ctrlKey || e.metaKey || e.altKey) return false;
+      if (root.hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
       // Enter over the drawing on an empty line repeats the last command
       if (e.key === "Enter" && input.value === "" && ran.length > 0) return repeatLast();
       return false;
     },
     space(): boolean {
       // Space is Enter in both applications: it answers a prompt, or repeats the last command when none is at work
-      if (pending && pending.stage !== "running") return enter();
+      if (root.hidden) return false;
+      if (pending && (pending.stage !== "running" || pending.cmd.enter)) return enter();
       if (store.tool === "select" && ran.length > 0) return repeatLast();
       return false;
     },
     escape(): boolean {
+      if (root.hidden) return false;
       if (!printedBox.hidden && !pending) {
         unprint();
         return true;
@@ -742,6 +828,9 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
       if (!pending) return false;
       cancel();
       return true;
+    },
+    toggle(): void {
+      root.hidden = !root.hidden;
     },
     unmount(): void {
       printer = null;

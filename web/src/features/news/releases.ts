@@ -22,6 +22,19 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T18:50:00Z",
+    "work-like-bars",
+    "Work Like: each application's own bars, and Copy as they copy",
+    `Revit, Archicad and SketchUp lose Rodeo's Mode bar, and Move and Copy work from a base point as in AutoCAD and Rhino.
+- Revit: the Options Bar shows a tool's choices as labelled drop-downs (Marquee: Rectangle).
+- Archicad: the Info Box shows captioned panels (Main, then the tool's choices), and a status bar at the foot says what to do next.
+- SketchUp: the status bar has Geo-location, Credits, Sign in and the Instructor, then what to do next in sentences, and Lasso sits beside Select.
+- AutoCAD: COPY asks for a base point and places a copy at each point you click until Enter; the command line has Close, Customize and Recent Commands, and the tabs start with Start.
+- Rhino: Copy copies as AutoCAD's does, and the status bar shows x, y and z.
+- Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T12:40:00Z",
     "work-like-frames",
     "Work Like: closer to each application, and Lock, Ortho and Make 2D",

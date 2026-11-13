@@ -35,8 +35,8 @@ const MODIFY_PANELS: readonly RibbonPanel[] = [
       large("Align", { menu: "Modify › Align › Align/Distribute…" }, "AL"),
       large("Offset", { tool: "offset" }, "OF"),
       large("Mirror - Pick Axis", { tool: "mirror" }, "MM"),
-      large("Move", { menu: "Modify › Move…" }, "MV"),
-      large("Copy", { menu: "Edit › Duplicate" }, "CO"),
+      large("Move", { tool: "moveby", mode: "move" }, "MV"),
+      large("Copy", { tool: "moveby", mode: "copy" }, "CO"),
       large("Rotate", { tool: "rotate" }, "RO"),
       [small("Trim/Extend", { tool: "trim" }, "TR"), small("Split", { tool: "split" }, "SL"), small("Array", { menu: "Edit › Duplicate Array…" }, "AR")],
       [small("Scale", { menu: "Modify › Scale Objects…" }, "RE"), small("Delete", { menu: "Edit › Delete" }, "DE")],
@@ -394,6 +394,15 @@ const TOOLS_ROWS = [
   "Tools › Voice Commands…",
 ];
 
+/** Revit's status bar words for the steps of the tools it shares with Rodeo, by Rodeo's hint's first part. */
+const REVIT_PROMPTS: Readonly<Record<string, string>> = {
+  "Click the wall's start, or a wall's end or side to join it": "Click to enter wall start point.",
+  "Click the next corner, or a wall to join": "Click to enter wall end point.",
+  "Click or drag to draw a line": "Click to enter line start point.",
+  "Click the point to move from": "Click to enter move start point.",
+  "Click the point to move to": "Click to enter move end point.",
+};
+
 export const look: LookSpec = {
   id: "revit",
   name: "Revit",
@@ -495,6 +504,7 @@ export const look: LookSpec = {
     ],
   },
   modeBar: "options",
+  modeFields: "menus",
   // the View Control Bar under the drawing in place of Rodeo's view bar
   viewBar: "hidden",
   viewControl: "revit",
@@ -507,7 +517,7 @@ export const look: LookSpec = {
   // Revit's ViewCube is in its 3D views only; Rodeo's shows in the plan too
   viewCube: false,
   statusBar: {
-    rows: [[{ kind: "hint" }, { kind: "spacer" }, { kind: "text", text: "Main Model" }, { kind: "selection" }]],
+    rows: [[{ kind: "hint", prompts: REVIT_PROMPTS }, { kind: "spacer" }, { kind: "text", text: "Main Model" }, { kind: "selection" }]],
   },
   // single keys are left to Rodeo; two-key shortcuts are Revit's
   sequences: {
@@ -522,9 +532,10 @@ export const look: LookSpec = {
     rm: { tool: "space" },
     gr: { tool: "gridline" },
     rp: { tool: "refmarker" },
-    mv: { menu: "Modify › Move…" },
-    co: { menu: "Edit › Duplicate" },
-    cc: { menu: "Edit › Duplicate" },
+    // Move and Copy pick a start point and an end point, as Revit's do: Move by Points
+    mv: { tool: "moveby", mode: "move" },
+    co: { tool: "moveby", mode: "copy" },
+    cc: { tool: "moveby", mode: "copy" },
     ro: { tool: "rotate" },
     mm: { tool: "mirror" },
     dm: { tool: "mirror" },

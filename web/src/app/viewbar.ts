@@ -10,6 +10,7 @@ import { byId, h } from "./dom.ts";
 import { TOOL_ICON, UI_ICON, visibilityIcon } from "./icons.ts";
 import { menuButton, type Row } from "./menu.ts";
 import { STEP, need, whyIn, whyNot } from "./menuReasons.ts";
+import { lockedObjects, onLockedChange } from "./lockedObjects.ts";
 import { showDialog } from "./menubar.ts";
 import { menuKeyOf } from "./menuKeys.ts";
 import { displayModeRows } from "./displayModes.ts";
@@ -579,12 +580,58 @@ export function mountModeBar(controller: ToolController): void {
       m.options.map((o): Row => ({ label: o.label, keys: o.key, checked: () => o.id === m.active, run: () => controller.setMode(o.id) })),
     );
   };
+  /**
+   * A mode group as a labelled field, as Revit's Options Bar shows a command's options: "Marquee:"
+   * then a drop-down with the current value. Used while the look asks for fields ("menus").
+   */
+  const fieldOf = (m: ToolModes): HTMLElement =>
+    h("span", { cls: "mb-field" }, h("span", { cls: "mb-field-label", text: `${m.label ?? "Mode"}:` }), menuOf(m));
+  /**
+   * A captioned panel, as Archicad's Info Box shows one: its caption over its controls. `key` names
+   * the caption's own translation where its word means something else elsewhere ("Main", a pipe main).
+   */
+  const panelOf = (title: string, key: string | null, ...body: (Node | string)[]): HTMLElement =>
+    h(
+      "span",
+      { cls: "mb-panel" },
+      h("span", { cls: "mb-panel-title", text: `${title}:`, attrs: key ? { "data-i18n": key } : {} }),
+      h("span", { cls: "mb-panel-body" }, ...body),
+    );
+  /**
+   * The Info Box's first panel ("panels"): "Default Settings" while nothing is selected, else how many
+   * objects are selected and how many of them can be changed (not locked), then the button that
+   * opens the tool's settings.
+   */
+  const mainPanel = (): HTMLElement => {
+    const n = store.selection.size;
+    const locked = lockedObjects();
+    const editable = locked.size === 0 ? n : [...store.selection].filter((id) => !locked.has(id)).length;
+    const text =
+      n === 0
+        ? h("span", { cls: "mb-panel-text", text: "Default Settings" })
+        : h("span", { cls: "mb-panel-text mb-panel-counts" }, h("span", { text: `Selected: ${n}` }), h("span", { text: `Editable: ${editable}` }));
+    const settings = barButton(UI_ICON.prefs, "Tool preferences", () => void controller.preferences());
+    settings.disabled = !controller.hasPreferences();
+    return panelOf("Main", "Info Box › Main:", text, settings);
+  };
   const syncModes = (): void => {
     const groups = controller.modes();
-    modes.hidden = groups.length === 0;
+    const fields = document.documentElement.dataset.lkModeFields;
     prefs.hidden = !controller.hasPreferences();
-    modes.replaceChildren(...groups.map((m) => (compact ? menuOf(m) : segOf(m))));
+    if (fields === "panels") {
+      // Archicad's Info Box: Main, then each mode group as a panel of its buttons (Geometry Method)
+      modes.hidden = false;
+      modes.replaceChildren(mainPanel(), ...groups.map((m) => panelOf(m.label ?? "Geometry Method", null, segOf(m))));
+      return;
+    }
+    modes.hidden = groups.length === 0;
+    modes.replaceChildren(...groups.map((m) => (fields === "menus" ? fieldOf(m) : compact ? menuOf(m) : segOf(m))));
   };
+  // the look changes while the bar is up: its groups redraw as fields or as they were
+  new MutationObserver(() => {
+    syncModes();
+    fit();
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-lk-mode-fields"] });
   /**
    * Fits the hint to the room the Mode bar leaves it: its key chips go first, from the last, and only
    * once none is left does the step end in an ellipsis (the whole hint is its tooltip).
@@ -634,6 +681,12 @@ export function mountModeBar(controller: ToolController): void {
     syncModes();
     fit();
   });
+  // the Info Box's Main panel counts the selection
+  const syncCounts = (): void => {
+    if (document.documentElement.dataset.lkModeFields === "panels") syncModes();
+  };
+  store.on("selection", syncCounts);
+  onLockedChange(syncCounts);
   store.on("hint", syncHint);
   onPrefs(() => {
     syncHint();

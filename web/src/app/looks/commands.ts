@@ -15,6 +15,8 @@ export interface LookDeps {
   setTool(id: ToolId): void;
   /** picks one of the active tool's modes (a Mode bar button) */
   setToolMode(mode: string): void;
+  /** the active tool's modes now, one per group */
+  toolModes(): readonly string[];
   /** shows a closed palette, closes an open one */
   togglePalette(id: string): void;
   paletteShown(id: string): boolean;
@@ -55,9 +57,9 @@ export function runCommand(c: Command): void {
   }
 }
 
-/** Whether a command's button shows lit: its tool active, its menu row checked, its palette shown. */
+/** Whether a command's button shows lit: its tool active (in its mode, when it names one), its menu row checked, its palette shown. */
 export function commandChecked(c: Command): boolean {
-  if ("tool" in c) return store.tool === c.tool;
+  if ("tool" in c) return store.tool === c.tool && (c.mode === undefined || (deps?.toolModes().includes(c.mode) ?? false));
   if ("menu" in c) return menuItemAt(c.menu)?.checked?.() ?? false;
   if ("palette" in c) return deps?.paletteShown(c.palette) ?? false;
   return c.checked?.() ?? false;
@@ -145,6 +147,12 @@ const MENU_ICON: Readonly<Record<string, string>> = {
 };
 
 /** The icon for a menu command, from the table above or by the kind of submenu it sits in. */
+/** A tool in a mode drawn apart from its tool: Move by Points copying is drawn as Duplicate, so Copy never looks like Move. */
+const MODE_ICON: Readonly<Record<string, string>> = {
+  "moveby:copy": lookIcon(SQUARES),
+  "moveby:multiple": lookIcon(SQUARES),
+};
+
 function menuIcon(path: string): string | null {
   const own = MENU_ICON[path];
   if (own) return own;
@@ -169,7 +177,7 @@ export function setGlyphs(g: Readonly<Record<string, string>> | null): void {
 /** A command's key in the coloured set: tool:<id>, menu:<path>, palette:<id>, or run:<the button's label>. */
 function glyphKey(b: Pick<LookButton, "label" | "do">): string {
   const c = b.do;
-  if ("tool" in c) return `tool:${c.tool}`;
+  if ("tool" in c) return c.mode === undefined ? `tool:${c.tool}` : `tool:${c.tool}:${c.mode}`;
   if ("menu" in c) return `menu:${c.menu}`;
   if ("palette" in c) return `palette:${c.palette}`;
   return `run:${b.label}`;
@@ -177,10 +185,12 @@ function glyphKey(b: Pick<LookButton, "label" | "do">): string {
 
 /** A command's icon: its coloured one in a look that uses them, the button's own, else its tool's, else its palette's, else its menu row's, else the label's initials. */
 export function commandIcon(b: Pick<LookButton, "icon" | "label" | "do">): string {
-  const glyph = glyphs?.[glyphKey(b)];
+  const c = b.do;
+  // a tool in one of its modes takes that mode's own glyph (Lasso), else the button's icon, else its tool's glyph
+  const glyph = glyphs?.[glyphKey(b)] ?? (!b.icon && "tool" in c && c.mode !== undefined ? glyphs?.[`tool:${c.tool}`] : undefined);
   if (glyph) return `<svg class="lk-glyph" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${glyph}</svg>`;
   if (b.icon) return b.icon;
-  const c = b.do;
+  if ("tool" in c && c.mode !== undefined && MODE_ICON[`${c.tool}:${c.mode}`]) return MODE_ICON[`${c.tool}:${c.mode}`];
   if ("tool" in c && TOOL_ICON[c.tool]) return TOOL_ICON[c.tool];
   if ("palette" in c && c.palette in PALETTE_ICON) return PALETTE_ICON[c.palette as keyof typeof PALETTE_ICON];
   if ("menu" in c) {

@@ -8,7 +8,13 @@ import type { TabMark } from "./ext.ts";
 import { openContextMenu, type Row } from "./menu.ts";
 import { h } from "./dom.ts";
 import { store } from "./state.ts";
+import { runCommand } from "./looks/commands.ts";
 import "./docTabs.css";
+
+/** Whether the look shows a Start tab first in the strip (AutoCAD: its data-lk-start-tab is "on"). */
+function startShown(): boolean {
+  return document.documentElement.dataset.lkStartTab === "on";
+}
 
 /** An open drawing as its tab shows it. */
 export interface DocTab {
@@ -89,7 +95,8 @@ export function mountDocTabs(stage: HTMLElement, actions: DocTabActions): () => 
   const render = (): void => {
     const tabs = actions.tabs();
     // redrawn only when what it shows changes: every edit says "session"
-    const key = JSON.stringify([wanted, tabs]);
+    const start = startShown();
+    const key = JSON.stringify([wanted, tabs, start]);
     if (key === drawn) return;
     drawn = key;
     const shown = wanted && tabs.length >= 1;
@@ -97,6 +104,17 @@ export function mountDocTabs(stage: HTMLElement, actions: DocTabActions): () => 
     strip.hidden = !shown;
     strip.replaceChildren();
     if (!shown) return;
+    // AutoCAD's Start tab leads the strip: it is never the front tab, and a click opens Window › Home Screen
+    if (start) {
+      const home = h(
+        "div",
+        { cls: "doc-tab doc-tab-start", attrs: { role: "tab", "aria-selected": "false", tabindex: "-1", title: "Start" } },
+        // its own key: "Start" alone is a start point elsewhere (Japanese 始点)
+        h("span", { cls: "doc-tab-name", text: "Start", attrs: { "data-i18n": "Tab › Start" } }),
+      );
+      home.addEventListener("click", () => runCommand({ menu: "Window › Home Screen" }));
+      strip.append(home);
+    }
     tabs.forEach((t, i) => {
       const close = h("button", { cls: "doc-tab-close", attrs: { type: "button", title: "Close", "aria-label": `Close ${t.name}` } });
       close.innerHTML = CLOSE_ICON;
@@ -141,6 +159,8 @@ export function mountDocTabs(stage: HTMLElement, actions: DocTabActions): () => 
   };
 
   store.on(["session", "file"], render);
+  // the look turns its Start tab on or off while the strip is up
+  new MutationObserver(() => render()).observe(document.documentElement, { attributes: true, attributeFilter: ["data-lk-start-tab"] });
   redraw = render;
   render();
   return render;

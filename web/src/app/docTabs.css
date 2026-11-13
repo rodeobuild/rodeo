@@ -57,6 +57,11 @@
   color: var(--text-soft);
 }
 
+/* AutoCAD's Start tab: a tab like the others, without a × or a mark, never kept from the strip's room */
+.doc-tab-start {
+  flex: none;
+}
+
 .doc-tab.front {
   background: var(--surface);
   color: var(--text);

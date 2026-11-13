@@ -310,6 +310,10 @@ export const look: LookSpec = {
   snapPill: false,
   rails: false,
   modeBar: "options",
+  // the Info Box: captioned panels (Main, then each of the tool's mode groups)
+  modeFields: "panels",
+  // the status bar at the window's foot, where Archicad prompts the next step ("Enter First Node of PolyWall")
+  statusBar: { rows: [[{ kind: "hint" }, { kind: "spacer" }]] },
   // the Quick Options under the drawing in place of Rodeo's view bar
   viewBar: "hidden",
   viewControl: "archicad",
@@ -422,9 +426,10 @@ export const look: LookSpec = {
     "Ctrl+G": { menu: "Modify › Group" },
     "Ctrl+Shift+G": { menu: "Modify › Ungroup" },
     "Ctrl+M": { tool: "mirror" },
-    "Ctrl+D": { tool: "moveby" },
+    // Edit › Move › Drag, and Drag a Copy: Move by Points in its Move and Copy modes
+    "Ctrl+D": { tool: "moveby", mode: "move" },
     "Ctrl+E": { tool: "rotate" },
-    "Ctrl+Shift+D": { menu: "Edit › Duplicate" },
+    "Ctrl+Shift+D": { tool: "moveby", mode: "copy" },
   },
   // Archicad pans with the wheel pressed; Shift with the wheel orbits. The right button opens the menu.
   mouse: { middle: "pan", right: "menu" },
