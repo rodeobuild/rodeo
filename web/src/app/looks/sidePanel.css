@@ -27,8 +27,11 @@
   user-select: none;
 }
 
+/* the heading sits on a light grey strip across the panel's width */
 .lk-sidepanel-title {
-  padding: 4px 6px;
+  padding: 3px 6px;
+  background: #e2e2e2;
+  border-bottom: 1px solid #c8c8c8;
   color: #333333;
   font-size: 11px;
   font-weight: 600;

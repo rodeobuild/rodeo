@@ -2781,8 +2781,10 @@ function buildLookAxes(): THREE.LineSegments[] {
 }
 
 /**
- * The sky: a quad over the whole view, its colour from each pixel's view ray. Above the horizon it
- * runs from the horizon's #e9eff3 up to #a9c6dd at the top of the window; below the horizon it is white. Drawn first, under the model.
+ * The sky and the ground, as SketchUp 2026's default style draws them: a quad over the whole view, its
+ * colour from each pixel's view ray. Above the horizon the sky runs from the horizon's #bfe6f4 up to
+ * #40b3e3 at the top of the window; below it the ground is a flat #bfc0c6 (both read from SketchUp
+ * 2026's own help image of its window). Drawn first, under the model.
  */
 function buildLookSky(): THREE.Mesh {
   const material = new THREE.ShaderMaterial({
@@ -2806,10 +2808,11 @@ function buildLookSky(): THREE.Mesh {
         vec4 tb = invProjection * vec4(0.0, 1.0, 1.0, 1.0);
         vec3 topDir = normalize(mat3(camWorld) * normalize(tb.xyz / tb.w - ta.xyz / ta.w));
         float t = clamp(dir.z / max(topDir.z, 0.001), 0.0, 1.0);
-        vec3 horizon = vec3(233.0, 239.0, 243.0) / 255.0;
-        vec3 top = vec3(169.0, 198.0, 221.0) / 255.0;
+        vec3 horizon = vec3(191.0, 230.0, 244.0) / 255.0;
+        vec3 top = vec3(64.0, 179.0, 227.0) / 255.0;
+        vec3 ground = vec3(191.0, 192.0, 198.0) / 255.0;
         vec3 sky = mix(horizon, top, t);
-        gl_FragColor = vec4(dir.z > 0.0 ? sky : vec3(1.0), 1.0);
+        gl_FragColor = vec4(dir.z > 0.0 ? sky : ground, 1.0);
       }`,
     depthTest: false,
     depthWrite: false,

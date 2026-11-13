@@ -213,7 +213,8 @@ export const look: LookSpec = {
     "Attribute Mapping": "Paint Bucket",
     Walkthrough: "Walk",
   },
-  // The default tray: Entity Info with Materials as a tab, Components with Tags and Shadows as tabs.
+  // The default tray: Entity Info with Materials as a tab, Components with Tags and Shadows as tabs. The tray
+  // takes each as a section, and Scenes from Navigation's Saved Views tab (tray.ts).
   palettes: {
     objectInfo: { where: "right", order: 0 },
     attributes: { where: "right", tabOf: "objectInfo" },
@@ -310,7 +311,7 @@ export const look: LookSpec = {
   mouse: { middle: "orbit", right: "menu" },
   paper: "#ffffff",
   background3d: "#dfe9f2",
-  // a sky above the horizon and the drawing axes through the origin in the 3D view
+  // a sky above the horizon, grey ground below it and the drawing axes through the origin in the 3D view
   axes3d: "sketchup",
   // one 3D view in perspective, where the drawing tools draw on the ground, as SketchUp opens
   start3d: true,

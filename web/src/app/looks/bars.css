@@ -158,6 +158,76 @@
   grid-template-columns: repeat(2, 30px);
 }
 
+.lk-cols-3 .lk-toolbox-grid {
+  grid-template-columns: repeat(3, 30px);
+}
+
+.lk-cols-4 .lk-toolbox-grid {
+  grid-template-columns: repeat(4, 30px);
+}
+
+/* a foldable group's title: a band with a disclosure triangle (Archicad's Design, Document, More) */
+.lk-toolbox-group-title.lk-toolbox-fold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  margin: 0;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--lk-panel-title-bar, var(--lk-btn-hover));
+  color: var(--lk-bar-text);
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+}
+
+.lk-toolbox-fold:hover {
+  background: var(--lk-btn-hover);
+}
+
+.lk-toolbox-fold:focus-visible {
+  outline: 1px solid var(--lk-accent);
+  outline-offset: -2px;
+}
+
+.lk-toolbox-fold-mark {
+  display: inline-flex;
+  flex: none;
+  transform: rotate(90deg);
+  transition: transform 0.1s;
+}
+
+.lk-folded .lk-toolbox-fold-mark {
+  transform: none;
+}
+
+.lk-folded .lk-toolbox-grid {
+  display: none;
+}
+
+/* foldable groups sit band on band, with no rule or gap between them */
+.lk-toolbox-group.lk-foldable + .lk-toolbox-group.lk-foldable {
+  margin-top: 1px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.lk-foldable .lk-toolbox-grid {
+  padding: 2px 0 4px;
+}
+
+/* a toolbar button showing its name beside the icon (Archicad 28's Guides, Grids, Measure) */
+.lk-toolbar .lk-btn:not(.lk-icon-only) {
+  height: 26px;
+  padding: 0 6px 0 4px;
+  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+}
+
 .lk-toolbox .lk-btn.lk-icon-only {
   width: 30px;
   height: 30px;

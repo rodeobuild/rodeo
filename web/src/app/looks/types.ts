@@ -38,6 +38,10 @@ export interface LookButton {
   readonly keys?: string;
   /** a drop-down of more buttons beside it (a ribbon's split button); the first runs on a click of the button itself */
   readonly more?: readonly LookButton[];
+  /** in a ribbon's stack of small buttons: the icon alone, its name in the tooltip (AutoCAD's Draw and Modify icons) */
+  readonly iconOnly?: true;
+  /** on a toolbar: its name beside the icon (Archicad 28's Guides, Grids, Measure and Group) */
+  readonly showLabel?: true;
 }
 
 /** A ribbon panel's buttons: large buttons in a row, or a stack of up to three small ones (an array). */
@@ -47,6 +51,13 @@ export interface RibbonPanel {
   /** its name along the bottom of the panel ("Build", "Draw", "Modify") */
   readonly title: string;
   readonly items: readonly RibbonItem[];
+  /**
+   * the panel's slide-out: more of its buttons, dropped below the panel by a click on its title,
+   * which then shows a caret (AutoCAD's "Draw ▾", "Modify ▾")
+   */
+  readonly extra?: readonly RibbonItem[];
+  /** the small arrow at the panel's bottom-right corner that opens its dialog or palette (AutoCAD's Properties ↘) */
+  readonly launcher?: LookButton;
 }
 
 export interface RibbonTab {
@@ -79,13 +90,24 @@ export interface ToolbarSpec {
 /** A column of tool buttons down one side of the drawing: SketchUp's Large Tool Set, Rhino's sidebar, Archicad's Toolbox. */
 export interface ToolboxSpec {
   readonly side: "left" | "right";
-  /** buttons across: 1 or 2 */
-  readonly columns: 1 | 2;
+  /** buttons across */
+  readonly columns: 1 | 2 | 3 | 4;
   /** each button's name beside its icon (Archicad's Toolbox) rather than in its tooltip only */
   readonly labels?: boolean;
   /** a caption over the column ("Toolbox") */
   readonly title?: string;
-  readonly groups: readonly { readonly title?: string; readonly buttons: readonly LookButton[] }[];
+  readonly groups: readonly ToolboxGroup[];
+}
+
+/** A group of the toolbox's tools under its title. */
+export interface ToolboxGroup {
+  readonly title?: string;
+  readonly buttons: readonly LookButton[];
+  /**
+   * its title a band with a disclosure triangle that folds the group away and back (Archicad's
+   * Design, Document and More); "closed" starts it folded. Kept per look in this browser.
+   */
+  readonly fold?: "open" | "closed";
 }
 
 /** An option a typed command offers at its prompt: clicked, or typed by its name or its key letters. */

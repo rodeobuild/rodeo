@@ -22,6 +22,20 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T23:50:00Z",
+    "work-like-side-by-side",
+    "Work Like: side by side with each application",
+    `The looks were laid beside each company's own pictures of its window and moved closer where they differed, and more of their words come in your language.
+- AutoCAD's Home tab is laid out as AutoCAD's: Modify in its columns, Rectangle, Ellipse and Hatch as icons, Linear with the other kinds of dimension, and an arrow in the Properties panel's corner.
+- Draw ▾ and Modify ▾ drop the rest of their tools below the panel, as AutoCAD's panels do (Point, Spline, Revision Cloud; Join, Break, Align).
+- Rhino's viewports are Top, Perspective, Front and Right, as its 4View lays them out; its sidebar is four tools across, its command area keeps two lines of history, its OSnap list is plain check boxes and its status bar shows the pointer's X, Y and Z.
+- Archicad's Toolbox starts with Arrow and Marquee and folds into Design, Document and More; its toolbar has Archicad 28's Undo, Redo, Pick Up and Inject Parameters, Grids, Measure, Group and editing tools.
+- SketchUp's 3D view has SketchUp 2026's blue sky and grey ground. Its Default Tray closes from the × on its title bar or on each section, a right-click on the title bar brings sections back, and Scenes holds the saved views.
+- More of the applications' own words in your language: Rhino's toolbar tabs, menus and commands (German "Kurven", "Verrunden"), Revit's building-systems words ("Luftkanal", "Rohr"), AutoCAD's status bar ("Fangmodus") and Archicad's menus and Toolbox ("Werkzeugkasten").
+- Where an application isn't made in your language (Revit, SketchUp and AutoCAD in Dutch, Turkish, Ukrainian, Indonesian and Vietnamese), its look keeps its English words, as the version people there use.`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T23:30:00Z",
     "work-like-ribbons",
     "Work Like: ribbons, toolboxes and menus in your language",

@@ -2,7 +2,9 @@
 // buttons in a row (large ones, or a stack of small ones) with its name along the bottom. The
 // application tab opens the File menu; a contextual tab appears while something is selected and
 // comes to the front. Double-clicking a tab minimises the ribbon to its tabs, and a tab then drops
-// over the drawing until the next click elsewhere or Escape.
+// over the drawing until the next click elsewhere or Escape. A panel with a slide-out (AutoCAD's
+// "Draw ▾") drops the rest of its buttons below it from a click on its title, until a button is run,
+// a click elsewhere or Escape.
 
 import "./ribbon.css";
 import { h } from "../dom.ts";
@@ -37,19 +39,40 @@ function isStack(item: RibbonItem): item is readonly LookButton[] {
 }
 
 function itemEl(item: RibbonItem): HTMLElement {
-  if (isStack(item)) return h("div", { cls: "lk-ribbon-stack" }, ...item.map((b) => lookButton(b, { size: "small" })));
+  if (isStack(item)) return h("div", { cls: "lk-ribbon-stack" }, ...item.map((b) => lookButton(b, { size: "small", iconOnly: b.iconOnly })));
   return lookButton(item, { size: item.size ?? "large" });
 }
 
-function panelEl(panel: RibbonPanel): HTMLElement {
-  return h(
-    "div",
-    { cls: "lk-ribbon-panel" },
-    h("div", { cls: "lk-ribbon-items" }, ...panel.items.map((item) => itemEl(item))),
-    // keyed by its sense: a panel and a tab of one English name can be two words in a language (AutoCAD's
-    // Japanese View tab 表示, its View panel ビュー)
-    h("div", { cls: "lk-ribbon-panel-title", text: panel.title, title: panel.title, attrs: { "data-i18n": `Ribbon panel › ${panel.title}` } }),
+const CARET = `<svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+// the launcher's mark: an arrow into the corner, Rodeo's own drawing
+const LAUNCH = `<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5 7.5 7.5M7.5 4v3.5H4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/** A panel; with a slide-out its title is a button that calls `slideOut` with the panel's element. */
+function panelEl(panel: RibbonPanel, slideOut: (el: HTMLElement, title: HTMLElement, panel: RibbonPanel) => void): HTMLElement {
+  // keyed by its sense: a panel and a tab of one English name can be two words in a language (AutoCAD's
+  // Japanese View tab 表示, its View panel ビュー)
+  const i18n = `Ribbon panel › ${panel.title}`;
+  const el = h("div", { cls: "lk-ribbon-panel" }, h("div", { cls: "lk-ribbon-items" }, ...panel.items.map((item) => itemEl(item))));
+  if (panel.launcher) {
+    const launch = lookButton({ ...panel.launcher, icon: LAUNCH, size: undefined }, { iconOnly: true });
+    launch.classList.add("lk-ribbon-launcher");
+    el.classList.add("lk-has-launcher");
+    el.append(launch);
+  }
+  if (!panel.extra?.length) {
+    el.append(h("div", { cls: "lk-ribbon-panel-title", text: panel.title, title: panel.title, attrs: { "data-i18n": i18n } }));
+    return el;
+  }
+  const title = h(
+    "button",
+    { cls: "lk-ribbon-panel-title lk-ribbon-panel-more", title: panel.title, attrs: { type: "button", "aria-haspopup": "true", "aria-expanded": "false" } },
+    h("span", { cls: "lk-ribbon-panel-name", text: panel.title, attrs: { "data-i18n": i18n } }),
+    h("span", { cls: "lk-ribbon-panel-caret", html: CARET }),
   );
+  title.addEventListener("click", () => slideOut(el, title, panel));
+  el.append(title);
+  return el;
 }
 
 /** A tab's title; a contextual one has the selection's kind put in for {0}. */
@@ -75,6 +98,40 @@ export function mountRibbon(into: HTMLElement, spec: RibbonSpec): () => void {
   let bodyOf: RibbonTab | null | undefined = undefined;
 
   const root = h("div", { cls: "lk-ribbon" });
+  // the open slide-out and the panel title that opened it
+  let slide: { readonly el: HTMLElement; readonly title: HTMLElement } | null = null;
+
+  const closeSlide = (): void => {
+    if (!slide) return;
+    slide.title.setAttribute("aria-expanded", "false");
+    slide.title.classList.remove("active");
+    slide.el.remove();
+    slide = null;
+  };
+
+  /** Drops a panel's slide-out below it, or takes it away when it is the one open. */
+  const slideOut = (panelBox: HTMLElement, title: HTMLElement, panel: RibbonPanel): void => {
+    const again = slide?.title === title;
+    closeSlide();
+    if (again || !panel.extra?.length) return;
+    const r = panelBox.getBoundingClientRect();
+    const el = h(
+      "div",
+      { cls: "lk-ribbon-slide", attrs: { role: "group", "aria-label": panel.title } },
+      h("div", { cls: "lk-ribbon-items" }, ...panel.extra.map((item) => itemEl(item))),
+    );
+    el.style.left = `${Math.round(r.left)}px`;
+    el.style.top = `${Math.round(r.bottom)}px`;
+    el.style.minWidth = `${Math.round(r.width)}px`;
+    // a button run from the slide-out closes it, as a menu does; a caret's menu stays open (it stops the click)
+    el.addEventListener("click", (e) => {
+      if ((e.target as Element).closest(".lk-btn")) closeSlide();
+    });
+    title.setAttribute("aria-expanded", "true");
+    title.classList.add("active");
+    root.append(el);
+    slide = { el, title };
+  };
   const tabRow = h("div", { cls: "lk-ribbon-tabs", attrs: { role: "tablist" } });
   const body = h("div", { cls: "lk-ribbon-body", attrs: { role: "tabpanel" } });
   root.append(tabRow, body);
@@ -135,7 +192,8 @@ export function mountRibbon(into: HTMLElement, spec: RibbonSpec): () => void {
     // the body is rebuilt only when the front tab changes; its buttons follow the state themselves
     if (bodyOf !== front) {
       bodyOf = front;
-      body.replaceChildren(...(front?.panels.map((p) => panelEl(p)) ?? []));
+      closeSlide();
+      body.replaceChildren(...(front?.panels.map((p) => panelEl(p, slideOut)) ?? []));
     }
   }
 
@@ -178,18 +236,24 @@ export function mountRibbon(into: HTMLElement, spec: RibbonSpec): () => void {
     { passive: false },
   );
 
-  // a click elsewhere, or Escape, takes a dropped body away
+  // a click elsewhere, or Escape, takes a dropped body or an open slide-out away
   const onDown = (e: PointerEvent): void => {
-    if (!dropped || root.contains(e.target as Node)) return;
+    const at = e.target as Node;
+    if (slide && !slide.el.contains(at) && !slide.title.contains(at)) closeSlide();
+    if (!dropped || root.contains(at)) return;
     dropped = false;
     paint();
   };
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === "Escape" && dropped) {
+    if (e.key === "Escape" && slide) closeSlide();
+    else if (e.key === "Escape" && dropped) {
       dropped = false;
       paint();
     }
   };
+  // the panels turned sideways or the window resized: a slide-out would be left behind
+  body.addEventListener("scroll", closeSlide);
+  window.addEventListener("resize", closeSlide);
   document.addEventListener("pointerdown", onDown, true);
   document.addEventListener("keydown", onKey);
 
@@ -201,6 +265,8 @@ export function mountRibbon(into: HTMLElement, spec: RibbonSpec): () => void {
     off();
     document.removeEventListener("pointerdown", onDown, true);
     document.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", closeSlide);
+    closeSlide();
     root.remove();
   };
 }

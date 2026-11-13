@@ -36,14 +36,15 @@ export function sentences(hint: string): string {
 /** The cursor's position as the status bar shows it, measured from the datum while one is set (as statusbar.ts does). */
 function cursorText(style?: "xyz"): string {
   const s = store.session;
-  const c = store.cursor;
+  // Rhino's readout shows the origin until the pointer first goes over the drawing
+  const c = store.cursor ?? (style === "xyz" ? { x: 0, y: 0 } : null);
   if (!s || !c) return "";
   const units = s.doc.info.units;
   const d = store.datum;
   const x = formatLength(c.x - (d?.x ?? 0), units);
   const y = formatLength(c.y - (d?.y ?? 0), units);
   // the plan's cursor lies on the construction plane, so its z is 0
-  const xy = style === "xyz" ? `x ${x}   y ${y}   z ${formatLength(0, units)}` : `X ${x}   Y ${y}`;
+  const xy = style === "xyz" ? `X ${x}   Y ${y}   Z ${formatLength(0, units)}` : `X ${x}   Y ${y}`;
   return d ? `Datum  ${xy}` : xy;
 }
 

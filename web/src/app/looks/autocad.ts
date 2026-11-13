@@ -27,6 +27,9 @@ const b = (label: string, use: Command, keys?: string, more?: readonly LookButto
   ...(more ? { more } : {}),
 });
 
+/** A small ribbon button showing its icon alone, its name in the tooltip (AutoCAD's Rectangle, Erase, Explode). */
+const ico = (label: string, use: Command, keys?: string, more?: readonly LookButton[]): LookButton => ({ ...b(label, use, keys, more), iconOnly: true });
+
 /** A large ribbon button: its icon over its label. */
 const big = (label: string, use: Command, keys?: string, more?: readonly LookButton[]): LookButton => ({ ...b(label, use, keys, more), size: "large" });
 
@@ -389,26 +392,45 @@ const home: RibbonTab = {
         big("Polyline", t("polyline"), "PL"),
         big("Circle", t("circle"), "C"),
         big("Arc", t("arc"), "A", [b("Quarter Arc", t("quarterarc"))]),
-        [b("Rectangle", t("rect"), "REC"), b("Polygon", t("regpoly"), "POL"), b("Point", t("locus"), "PO")],
-        [b("Hatch", m("Modify › Hatch…"), "H"), b("Ellipse", t("oval"), "EL"), b("Spline", t("freehand"), "SPL")],
-        [b("Revision Cloud", t("cloud"), "REVCLOUD")],
+        // AutoCAD's icons beside them: Rectangle (Polygon in its drop-down), Ellipse and Hatch
+        [ico("Rectangle", t("rect"), "REC", [b("Polygon", t("regpoly"), "POL")]), ico("Ellipse", t("oval"), "EL"), ico("Hatch", m("Modify › Hatch…"), "H")],
       ],
+      // the slide-out under "Draw ▾": the panel's other tools
+      extra: [[b("Point", t("locus"), "PO"), b("Spline", t("freehand"), "SPL"), b("Revision Cloud", t("cloud"), "REVCLOUD")]],
     },
     {
       title: "Modify",
+      // AutoCAD's columns: Move, Copy, Stretch; Rotate, Mirror, Scale; Trim, Fillet, Array; then Erase, Explode and Offset as icons
       items: [
-        [b("Move", { tool: "moveby", mode: "move" }, "M"), b("Rotate", t("rotate"), "RO"), b("Trim", t("trim"), "TR")],
-        [b("Erase", m("Edit › Delete"), "E"), b("Copy", { tool: "moveby", mode: "multiple" }, "CO"), b("Mirror", t("mirror"), "MI")],
-        [b("Fillet", t("fillet"), "F", [b("Chamfer", t("chamfer"), "CHA")]), b("Explode", m("Modify › Decompose"), "X"), b("Stretch", t("reshape"), "S")],
-        [b("Scale", m("Modify › Scale Objects…"), "SC"), b("Array", m("Edit › Duplicate Array…"), "AR"), b("Offset", t("offset"), "O")],
+        [b("Move", { tool: "moveby", mode: "move" }, "M"), b("Copy", { tool: "moveby", mode: "multiple" }, "CO"), b("Stretch", t("reshape"), "S")],
+        [b("Rotate", t("rotate"), "RO"), b("Mirror", t("mirror"), "MI"), b("Scale", m("Modify › Scale Objects…"), "SC")],
+        [
+          b("Trim", t("trim"), "TR", [b("Extend", t("connect"), "EX")]),
+          b("Fillet", t("fillet"), "F", [b("Chamfer", t("chamfer"), "CHA")]),
+          b("Array", m("Edit › Duplicate Array…"), "AR"),
+        ],
+        [ico("Erase", m("Edit › Delete"), "E"), ico("Explode", m("Modify › Decompose"), "X"), ico("Offset", t("offset"), "O")],
       ],
+      extra: [[b("Join", m("Modify › Join › Join"), "J"), b("Break", t("split"), "BR"), b("Align", m("Modify › Align › Align/Distribute…"), "AL")]],
     },
     {
       title: "Annotation",
       items: [
         big("Text", t("text"), "DT"),
-        big("Dimension", t("dimension"), "DLI", [b("Arc Length", t("arclength")), b("Slope", t("slopedim")), b("Dimension Tape", t("dimtape"))]),
-        [b("Leader", t("callout")), b("Table", m("Tools › Reports › Create Report…"))],
+        big("Dimension", t("dimension"), "DIM"),
+        [
+          b("Linear", dim("linear"), "DLI", [
+            b("Angular", dim("angular"), "DAN"),
+            b("Radius", dim("radial"), "DRA"),
+            b("Diameter", dim("diameter"), "DDI"),
+            b("Ordinate", dim("ordinate"), "DOR"),
+            b("Arc Length", t("arclength")),
+            b("Slope", t("slopedim")),
+            b("Dimension Tape", t("dimtape")),
+          ]),
+          b("Leader", t("callout")),
+          b("Table", m("Tools › Reports › Create Report…")),
+        ],
       ],
     },
     {
@@ -422,24 +444,26 @@ const home: RibbonTab = {
       title: "Block",
       items: [
         big("Insert", t("symbol"), "I"),
-        [b("Create", m("Modify › Create Symbol…"), "B"), b("Block Editor", m("Modify › Edit Symbol")), b("Exit Block", m("Modify › Exit Symbol"))],
+        [b("Create", m("Modify › Create Symbol…"), "B"), b("Edit", m("Modify › Edit Symbol"), "BE"), ico("Exit Block", m("Modify › Exit Symbol"))],
       ],
     },
     {
       title: "Properties",
-      items: [big("Match Properties", t("eyedropper"), "MA"), [b("Properties", p("objectInfo"), "PR")]],
+      items: [big("Match Properties", t("eyedropper"), "MA")],
+      // the arrow at the panel's corner opens the Properties palette, as AutoCAD's does
+      launcher: b("Properties", p("objectInfo"), "PR"),
     },
     {
       title: "Groups",
-      items: [[b("Group", m("Modify › Group"), "G"), b("Ungroup", m("Modify › Ungroup"))]],
+      items: [big("Group", m("Modify › Group"), "G"), [ico("Ungroup", m("Modify › Ungroup"))]],
     },
     {
       title: "Utilities",
-      items: [big("Measure", t("measure"), "ME"), [b("Divide", m("Modify › Drafting Aids › Even Divide…"), "DIV"), b("Protractor", t("protractor"))]],
+      items: [big("Measure", t("measure"), "ME"), [ico("Divide", m("Modify › Drafting Aids › Even Divide…"), "DIV"), ico("Protractor", t("protractor"))]],
     },
     {
       title: "Clipboard",
-      items: [big("Paste", m("Edit › Paste"), "Ctrl+V"), [b("Cut", m("Edit › Cut"), "Ctrl+X"), b("Copy", m("Edit › Copy"), "Ctrl+C")]],
+      items: [big("Paste", m("Edit › Paste"), "Ctrl+V"), [ico("Cut", m("Edit › Cut"), "Ctrl+X"), ico("Copy", m("Edit › Copy"), "Ctrl+C")]],
     },
     {
       title: "View",

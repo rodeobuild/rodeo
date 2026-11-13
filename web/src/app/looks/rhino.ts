@@ -782,10 +782,10 @@ export const look: LookSpec = {
       },
     ],
   },
-  // The sidebar of tools down the left: Rhino's tools in its order, two across, no labels.
+  // The sidebar of tools down the left: Rhino's tools in its order, four across, no labels.
   toolbox: {
     side: "left",
-    columns: 2,
+    columns: 4,
     groups: [
       {
         buttons: [
@@ -907,8 +907,8 @@ export const look: LookSpec = {
   mouse: { middle: "pan", right: "orbit" },
   paper: "#b4b4b4",
   background3d: "#a0a0a0",
-  // Rhino's four views: the plan top left, the three 3D views beside it.
-  panes: { layout: "four", x: 0.5, y: 0.5, kinds: ["plan", "3d", "3d", "3d"] },
+  // Rhino's four viewports as its 4View: Top top left, Perspective top right, Front and Right below.
+  panes: { layout: "four", x: 0.5, y: 0.5, kinds: ["plan", "3d", "3d", "3d"], views: ["iso", "front", "right"] },
   // Rhino's four viewports: Top, Front, Right and Perspective
   paneNames: { plan: "Top", views: { "Right Isometric": "Perspective", "Left Isometric": "Perspective" }, turned: "Perspective" },
   // Rhino's viewport tabs under the views, above the status bar

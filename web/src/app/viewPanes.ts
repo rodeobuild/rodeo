@@ -50,6 +50,12 @@ export interface PaneArrangement {
   readonly x: number;
   readonly y: number;
   readonly kinds: readonly PaneKind[];
+  /**
+   * The standard view each 3D pane starts with, by pane after the first, where the arrangement
+   * has its own (Rhino's four viewports put Perspective top right, Front and Right below); the
+   * live 3D view starts in the pane with the isometric view.
+   */
+  readonly views?: readonly ViewPreset[];
 }
 
 const STORAGE_KEY = "openvwx.viewPanes";
@@ -93,6 +99,11 @@ const START_VIEWS: Readonly<Record<PaneLayout, readonly ViewPreset[]>> = {
   fourBottom: FOUR,
 };
 
+const PRESETS: ReadonlySet<string> = new Set<ViewPreset>([
+  "top", "bottom", "front", "back", "left", "right", "iso", "leftIso",
+  "rightRearIso", "leftRearIso", "lowerRightIso", "lowerLeftIso", "lowerRightRearIso", "lowerLeftRearIso",
+]);
+
 /** A pane's place in the drawing area, as fractions of its width and height. */
 interface Frac {
   readonly x: number;
@@ -107,6 +118,8 @@ let shareX = 0.5;
 let shareY = 0.5;
 /** what each pane shows */
 let kinds: PaneKind[] = ["plan"];
+/** an arrangement's own start views (a look's) and the layout they are for, kept while other layouts come and go */
+let ownViews: { readonly layout: PaneLayout; readonly views: readonly ViewPreset[] } | null = null;
 /** the 3D pane holding the live 3D view, and the plan pane holding the live plan; -1 where there is none */
 let live = -1;
 let livePlan = 0;
@@ -124,19 +137,25 @@ function startKinds(l: PaneLayout): PaneKind[] {
 
 /** An arrangement read from storage or a workspace: an unknown layout is one pane, a divider out of range halfway, kinds that don't fit the layout its own. */
 export function readPaneArrangement(data: unknown): PaneArrangement {
-  const d = (typeof data === "object" && data !== null ? data : {}) as { layout?: unknown; x?: unknown; y?: unknown; kinds?: unknown };
+  const d = (typeof data === "object" && data !== null ? data : {}) as { layout?: unknown; x?: unknown; y?: unknown; kinds?: unknown; views?: unknown };
   const known = PANE_LAYOUTS.find(([l]) => l === d.layout);
   const l = known ? known[0] : "single";
   const fraction = (v: unknown): number => (typeof v === "number" && v >= MIN_SHARE && v <= 1 - MIN_SHARE ? v : 0.5);
   const fits =
     Array.isArray(d.kinds) && d.kinds.length === START_VIEWS[l].length + 1 && d.kinds.every((k) => k === "plan" || k === "3d");
-  return { layout: l, x: fraction(d.x), y: fraction(d.y), kinds: fits ? (d.kinds as PaneKind[]) : startKinds(l) };
+  const views =
+    Array.isArray(d.views) && d.views.length === START_VIEWS[l].length && d.views.every((v) => typeof v === "string" && PRESETS.has(v))
+      ? (d.views as ViewPreset[])
+      : null;
+  const kept = { layout: l, x: fraction(d.x), y: fraction(d.y), kinds: fits ? (d.kinds as PaneKind[]) : startKinds(l) };
+  return views ? { ...kept, views } : kept;
 }
 
-/** The live plan in the first plan pane, the live 3D view in the last 3D pane. */
+/** The live plan in the first plan pane, the live 3D view in the 3D pane starting isometric (else the last 3D pane). */
 function startLive(): void {
   livePlan = kinds.indexOf("plan");
-  live = kinds.lastIndexOf("3d");
+  const iso = kinds.findIndex((k, i) => i > 0 && k === "3d" && startView(i) === "iso");
+  live = iso >= 0 ? iso : kinds.lastIndexOf("3d");
 }
 
 function load(): void {
@@ -146,6 +165,7 @@ function load(): void {
     shareX = kept.x;
     shareY = kept.y;
     kinds = [...kept.kinds];
+    ownViews = kept.views ? { layout: kept.layout, views: kept.views } : null;
   } catch {
     // no storage, or nothing kept: one pane
   }
@@ -162,17 +182,21 @@ function persist(): void {
 
 /** The arrangement now, as a workspace keeps it. */
 export function paneArrangement(): PaneArrangement {
-  return { layout, x: shareX, y: shareY, kinds: [...kinds] };
+  const now = { layout, x: shareX, y: shareY, kinds: [...kinds] };
+  return ownViews?.layout === layout ? { ...now, views: ownViews.views } : now;
 }
 
 /** Puts an arrangement in place (a workspace chosen); a new layout or new kinds start the live views afresh. */
 export function setPaneArrangement(next: PaneArrangement): void {
-  const changed = next.layout !== layout || next.kinds.some((k, i) => k !== kinds[i]);
+  const own = next.views ? { layout: next.layout, views: next.views } : null;
+  const sameViews = (own?.layout ?? null) === (ownViews?.layout ?? null) && (own?.views ?? []).every((v, i) => v === ownViews?.views[i]);
+  const changed = next.layout !== layout || next.kinds.some((k, i) => k !== kinds[i]) || !sameViews;
   if (!changed && next.x === shareX && next.y === shareY) return;
   layout = next.layout;
   shareX = next.x;
   shareY = next.y;
   kinds = [...next.kinds];
+  ownViews = own;
   if (changed) startLive();
   persist();
   place?.();
@@ -216,7 +240,8 @@ function activePane(): number {
 
 /** The standard view pane `i` starts with as a 3D view. */
 export function startView(i: number): ViewPreset {
-  return START_VIEWS[layout][i - 1] ?? "iso";
+  const own = ownViews?.layout === layout ? ownViews.views : null;
+  return own?.[i - 1] ?? START_VIEWS[layout][i - 1] ?? "iso";
 }
 
 /** A new arrangement starts the live plan in its first pane and the live 3D view in its last, the others in their standard views. */

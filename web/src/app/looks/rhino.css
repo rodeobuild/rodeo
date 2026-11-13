@@ -138,6 +138,11 @@
   color: #1e1e1e;
 }
 
+/* the history keeps two lines' height when empty, as Rhino's box does before anything has run */
+:root[data-look="rhino"] .lk-cmd-history {
+  min-height: 36px;
+}
+
 :root[data-look="rhino"] .lk-cmd-input {
   background: transparent;
   color: #1e1e1e;
@@ -217,7 +222,7 @@
   background: #d0d0d0;
 }
 
-/* ---- the sidebar of tools: light grey, two across, tight buttons --------------------------- */
+/* ---- the sidebar of tools: light grey, four across, tight buttons ------------------------- */
 
 :root[data-look="rhino"] .lk-toolbox {
   background: #ededed;
@@ -343,6 +348,16 @@
 
 :root[data-look="rhino"] .lk-st-text {
   padding: 0 4px;
+}
+
+/* ---- the OSnap panel: each mode a plain check box and word in a list, no button behind it -- */
+
+:root[data-look="rhino"] .lk-sidepanel .lk-st-toggle,
+:root[data-look="rhino"] .lk-sidepanel .lk-st-toggle:hover,
+:root[data-look="rhino"] .lk-sidepanel .lk-st-toggle.on {
+  background: transparent;
+  border-color: transparent;
+  color: #1e1e1e;
 }
 
 /* ---- the drawing's pane labels: small dark text at each pane's top-left -------------------- */

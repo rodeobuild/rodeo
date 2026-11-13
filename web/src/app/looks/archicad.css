@@ -46,6 +46,8 @@
   --lk-status-on-bg: #d4d4d4;
   --lk-toolbox: #e9e9e9;
   --lk-toolbox-border: #c6c6c6;
+  /* the grey band over each foldable Toolbox group (Design, Document, More) */
+  --lk-panel-title-bar: #e0e0e0;
   color: var(--text);
   font-family: var(--lk-font);
   font-size: var(--lk-font-size);
@@ -199,6 +201,15 @@
   color: var(--text-3);
   font-size: 10px;
   letter-spacing: 0.01em;
+}
+
+/* a foldable group's band: grey, mixed case, normal weight, its disclosure triangle at the left */
+:root[data-look="archicad"] .lk-toolbox-group-title.lk-toolbox-fold {
+  padding: 3px 4px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
 :root[data-look="archicad"] .lk-toolbox-grid {

@@ -13,6 +13,11 @@ function button(label: string, c: Command, icon?: string): LookButton {
   return icon ? { label, do: c, icon } : { label, do: c };
 }
 
+/** A toolbar button with its name shown beside its icon (Archicad 28's Grids, Measure and Group). */
+function labelled(label: string, c: Command): LookButton {
+  return { ...button(label, c), showLabel: true };
+}
+
 /** Archicad's status bar words for the steps of the tools it shares with Rodeo, by Rodeo's hint's first part. */
 const ARCHICAD_PROMPTS: Readonly<Record<string, string>> = {
   "Click or drag a box to select": "Click an element or draw a selection area.",
@@ -329,73 +334,74 @@ export const look: LookSpec = {
   panels: { navigation: { kind: "browser", style: "archicad" } },
   grid: false,
   viewCube: false,
-  // Standard toolbar under the menus, with Archicad's order: file, edit, views, zoom, style
+  // Standard toolbar under the menus, in Archicad 28's order: undo and redo; pick up and inject
+  // parameters; Grids, Measure and Group with their names; then the editing tools as icons.
   toolbars: {
     showTabs: false,
     tabs: [
       {
         title: "Standard",
         buttons: [
-          button("New", { menu: "File › New" }),
-          button("Open", { menu: "File › Open…" }, UI_ICON.open),
-          button("Save", { menu: "File › Save" }, UI_ICON.save),
-          button("Print", { menu: "File › Print…" }),
-          "-",
           button("Undo", { menu: "Edit › Undo" }, UI_ICON.undo),
           button("Redo", { menu: "Edit › Redo" }, UI_ICON.redo),
           "-",
-          button("Cut", { menu: "Edit › Cut" }),
-          button("Copy", { menu: "Edit › Copy" }),
-          button("Paste", { menu: "Edit › Paste" }),
+          button("Pick Up Parameters", { tool: "eyedropper", mode: "pick" }),
+          button("Inject Parameters", { tool: "eyedropper", mode: "put" }),
           "-",
-          button("Find & Select", { menu: "Tools › Custom Selection…" }),
+          labelled("Grids", { menu: "View › Show Grid" }),
+          labelled("Measure", { tool: "measure" }),
+          labelled("Group", { menu: "Modify › Group" }),
           "-",
-          button("Floor Plan", { menu: "View › Projection › 2D Plan" }, UI_ICON.plan),
-          button("3D Window", { menu: "View › 3D View" }, UI_ICON.cube),
-          button("Section", { menu: "View › Create Section Viewport…" }),
-          button("Elevation", { menu: "View › Create Interior Elevation Viewport…" }),
-          button("Layout", { menu: "Window › Palettes › Sheet Layers" }),
-          "-",
-          button("Zoom In", { menu: "View › Zoom In" }, UI_ICON.zoomIn),
-          button("Zoom Out", { menu: "View › Zoom Out" }, UI_ICON.zoomOut),
-          button("Fit in Window", { menu: "View › Fit to Window" }, UI_ICON.fit),
-          "-",
-          button("3D Style", { menu: "View › Rendering › Shaded" }, UI_ICON.render),
+          button("Split", { tool: "split" }),
+          button("Adjust", { tool: "reshape" }),
+          button("Trim", { tool: "trim" }),
+          // Connect moves a line's end to where it crosses the other line: Archicad's Intersect
+          button("Intersect", { tool: "connect" }),
+          button("Fillet", { tool: "fillet" }),
+          button("Offset", { tool: "offset" }),
+          button("Resize", { menu: "Modify › Scale Objects…" }),
         ],
       },
     ],
   },
-  // The Toolbox down the left, labelled, one column: the select arrow, then the design tools,
-  // the document tools, and the rest. Each button is Rodeo's tool or menu row under Archicad's name.
+  // The Toolbox down the left, labelled, one column, as Archicad 28's: the arrow and the marquee,
+  // then the foldable Design, Document and More groups. Each button is Rodeo's tool or menu row under
+  // Archicad's name.
   toolbox: {
     side: "left",
     columns: 1,
     labels: true,
     title: "Toolbox",
     groups: [
-      { buttons: [button("Arrow", { tool: "select" })] },
+      {
+        buttons: [
+          // Rectangle is the selection tool's own drag, so Arrow puts the marquee back to it
+          button("Arrow", { tool: "select", mode: "rect" }),
+          // Archicad's separate Marquee tool: the selection tool's lasso
+          button("Marquee", { tool: "select", mode: "lasso" }),
+        ],
+      },
       {
         title: "Design",
+        fold: "open",
         buttons: [
           button("Wall", { tool: "wall" }),
+          button("Door", { tool: "door" }),
+          button("Window", { tool: "window" }),
           button("Column", { tool: "column" }),
           button("Beam", { tool: "structmember" }),
           button("Slab", { tool: "slab" }),
           button("Stair", { tool: "stair" }),
-          button("Railing", { tool: "railing" }),
           button("Roof", { menu: "AEC › Create Roof…" }),
           button("Shell", { tool: "shellsolid" }),
-          button("Door", { tool: "door" }),
-          button("Window", { tool: "window" }),
-          button("Wall End", { tool: "walljoin" }),
-          button("Object", { tool: "symbol" }),
-          button("Lamp", { tool: "light" }),
-          button("Zone", { tool: "space" }),
           button("Morph", { tool: "extpoly" }),
+          button("Object", { tool: "symbol" }),
+          button("Zone", { tool: "space" }),
         ],
       },
       {
         title: "Document",
+        fold: "open",
         buttons: [
           button("Dimension", { tool: "dimension" }),
           button("Text", { tool: "text" }),
@@ -417,7 +423,14 @@ export const look: LookSpec = {
       },
       {
         title: "More",
-        buttons: [button("Hotspot", { tool: "locus" }), button("Grid Element", { tool: "gridline" })],
+        fold: "closed",
+        buttons: [
+          button("Hotspot", { tool: "locus" }),
+          button("Grid Element", { tool: "gridline" }),
+          button("Railing", { tool: "railing" }),
+          button("Wall End", { tool: "walljoin" }),
+          button("Lamp", { tool: "light" }),
+        ],
       },
     ],
   },
