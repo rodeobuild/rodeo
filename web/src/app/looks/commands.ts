@@ -155,8 +155,27 @@ function menuIcon(path: string): string | null {
   return null;
 }
 
-/** A command's icon: the button's own, else its tool's, else its palette's, else its menu row's, else the label's initials. */
+/** The coloured icons (glyphs/) by command key, while a look that uses them is on; null for Rodeo's line icons. */
+let glyphs: Readonly<Record<string, string>> | null = null;
+
+/** Sets the coloured icons a look's buttons are drawn with (null: Rodeo's own line icons). */
+export function setGlyphs(g: Readonly<Record<string, string>> | null): void {
+  glyphs = g;
+}
+
+/** A command's key in the coloured set: tool:<id>, menu:<path>, palette:<id>, or run:<the button's label>. */
+function glyphKey(b: Pick<LookButton, "label" | "do">): string {
+  const c = b.do;
+  if ("tool" in c) return `tool:${c.tool}`;
+  if ("menu" in c) return `menu:${c.menu}`;
+  if ("palette" in c) return `palette:${c.palette}`;
+  return `run:${b.label}`;
+}
+
+/** A command's icon: its coloured one in a look that uses them, the button's own, else its tool's, else its palette's, else its menu row's, else the label's initials. */
 export function commandIcon(b: Pick<LookButton, "icon" | "label" | "do">): string {
+  const glyph = glyphs?.[glyphKey(b)];
+  if (glyph) return `<svg class="lk-glyph" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${glyph}</svg>`;
   if (b.icon) return b.icon;
   const c = b.do;
   if ("tool" in c && TOOL_ICON[c.tool]) return TOOL_ICON[c.tool];

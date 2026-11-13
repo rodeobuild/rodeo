@@ -1,0 +1,94 @@
+/* A look's view control bar (viewControl.ts): one flat row along the foot of the drawing, in the
+   look's status colours. Items are flat, with no glass or blur. */
+
+.lk-viewcontrol {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+  border-top: 1px solid var(--lk-bar-border);
+  background: var(--lk-status);
+  color: var(--lk-status-text);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+}
+
+.lk-viewcontrol .lk-vc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  box-sizing: border-box;
+  height: 20px;
+  min-width: 22px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.lk-viewcontrol .lk-vc-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.lk-viewcontrol .lk-vc-btn:hover:not(:disabled) {
+  background: var(--lk-btn-hover);
+  color: var(--lk-status-on);
+}
+
+.lk-viewcontrol .lk-vc-btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.lk-viewcontrol .lk-vc-btn:disabled,
+.lk-viewcontrol .lk-vc-btn.off {
+  opacity: 0.45;
+}
+
+.lk-viewcontrol .lk-vc-caret svg {
+  width: 7px;
+  height: 7px;
+}
+
+.lk-viewcontrol .lk-vc-text {
+  padding: 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lk-viewcontrol .lk-vc-label {
+  padding: 0 2px;
+}
+
+/* Revit's scale reads as the drop-down's words, so it can be as wide as they are */
+.lk-viewcontrol[data-style="revit"] .lk-vc-drop:first-child {
+  min-width: 96px;
+}
+
+.lk-viewcontrol .lk-vc-zoom {
+  min-width: 6ch;
+  padding: 0 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lk-viewcontrol .lk-vc-sep {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--lk-bar-border);
+}

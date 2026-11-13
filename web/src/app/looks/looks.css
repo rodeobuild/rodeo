@@ -364,3 +364,65 @@
 .lk-phone #topbar {
   display: flex !important;
 }
+
+/* ---- under the drawing: Revit's View Control Bar and Archicad's Quick Options over the status bar,
+   AutoCAD's layout tabs beside it (data-lk-foot="row") ------------------------------------------- */
+
+.lk-foot-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+:root[data-lk-foot="row"] .lk-foot-row {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+:root[data-lk-foot="row"] .lk-foot-row > .lk-foot-slot {
+  flex: none;
+  max-width: 50%;
+}
+
+:root[data-lk-foot="row"] .lk-foot-row > .lk-status-slot {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- a palette's content the application's way (LookSpec.panels): Rodeo's own is hidden under it */
+
+.lk-replaced > :not(.lk-panel-host) {
+  display: none !important;
+}
+
+.lk-panel-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ---- the Mode bar in Rhino and AutoCAD: its modes are the command line's options --------------- */
+
+:root[data-lk-modebar="line"]:not(.lk-phone) #modebar {
+  display: none !important;
+}
+
+/* ---- the coloured icons (glyphs/), painted with the look's colours ------------------------------ */
+
+:root {
+  --g-ink: #2a2f36;
+  --g-fill: #b9d4ee;
+  --g-fill2: #6c9bcf;
+  --g-hi: #f0b429;
+  --g-pt: #d64541;
+  --g-add: #2f9e44;
+  --g-del: #d64541;
+  --g-paper: #ffffff;
+}
+
+.lk-glyph {
+  display: block;
+  overflow: visible;
+}

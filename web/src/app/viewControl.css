@@ -211,6 +211,11 @@
   opacity: 1;
 }
 
+/* a look without a view cube (View › Work Like): the whole control goes; viewControl.ts sets the attribute */
+:root[data-view-cube="off"] .ovc {
+  display: none;
+}
+
 /* a phone's drawing has no room for it */
 @media (max-width: 599px) {
   .ovc {

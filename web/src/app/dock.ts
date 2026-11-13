@@ -525,6 +525,11 @@ export class Palettes {
     h("span"),
   );
 
+  /** The content a palette was made with, where View › Work Like shows a look's own (Rhino's layer table) in its place. */
+  bodyOf(id: string): HTMLElement | null {
+    return this.specs.get(id)?.body ?? null;
+  }
+
   constructor(
     private readonly host: HTMLElement,
     specs: readonly PaletteSpec[],

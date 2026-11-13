@@ -3,8 +3,9 @@
 // Vectorworks, or Rodeo's own. A look (types.ts) brings that application's menu bar and what is in
 // each menu, its words for things, where its panels sit, its ribbon, toolbars, toolbox, command
 // line and status bar, its keys and two-key shortcuts, how its mouse moves the 3D view and the
-// colours of its chrome and drawing area. Everything still runs Rodeo's own tools and commands,
-// with Rodeo's icons.
+// colours of its chrome and drawing area, its layer table or project browser, the bars under its
+// drawing and its grid. Everything still runs Rodeo's own tools and commands, with Rodeo's own
+// icons (line icons, or the coloured set in glyphs/ drawn for Rodeo).
 //
 // The chosen look is kept per browser. Each look keeps its own palette arrangement, theme and view
 // panes: moving a palette while working like Revit changes Revit's, and Rodeo's comes back as it
@@ -20,10 +21,11 @@ import { setTerms } from "../i18n.ts";
 import { openContextMenu, type Row } from "../menu.ts";
 import { setLookMenus } from "../menuLayout.ts";
 import { setPaper } from "../renderer.ts";
-import { store, type ToolId } from "../state.ts";
+import { setGrid, store, type ToolId } from "../state.ts";
 import { setTheme, theme, type Theme } from "../theme.ts";
-import { paneArrangement, readPaneArrangement, setPaneArrangement } from "../viewPanes.ts";
-import { lookButton, refreshButtons, runCommand, setLookDeps } from "./commands.ts";
+import { paneArrangement, readPaneArrangement, setPaneArrangement, setPaneNames } from "../viewPanes.ts";
+import { setLookCanvas } from "./canvasLook.ts";
+import { lookButton, refreshButtons, runCommand, setGlyphs, setLookDeps } from "./commands.ts";
 import { setLookView } from "./viewLook.ts";
 import type { Command, LookId, LookSpec } from "./types.ts";
 
@@ -58,6 +60,8 @@ const RODEO: LookSpec = {
 const KEY = "openvwx.look";
 /** each look's own arrangement, theme and view panes, kept as it is left */
 const SAVED_KEY = "openvwx.look.saved.v1";
+/** the look last put on at its start without being chosen here (installLooks) */
+const STARTED_KEY = "openvwx.look.started";
 /** a phone keeps Rodeo's touch layout whatever the look (looks.css has the same width) */
 const PHONE_QUERY = "(max-width: 760px)";
 /** how long the second key of a two-key shortcut may wait */
@@ -67,6 +71,8 @@ interface Saved {
   layout: unknown;
   theme: Theme;
   panes: unknown;
+  /** the 2D grid shown or not (Revit, Archicad and SketchUp start without one) */
+  grid?: boolean;
 }
 
 /** What the engine reaches in the editor (app.ts gives it as it starts). */
@@ -82,8 +88,14 @@ type Unmount = () => void;
 
 /** The command line on screen, which takes letters typed over the drawing. */
 export interface CommandLineHandle {
-  /** takes a key typed over the drawing (not in a field); true when it used it */
+  /** takes a letter, digit or sign typed over the drawing before Rodeo's own keys and tools see it; true when it used it */
+  type(e: KeyboardEvent): boolean;
+  /** takes a key typed over the drawing that nothing else used (Enter repeats the last command); true when it used it */
   key(e: KeyboardEvent): boolean;
+  /** Space over the drawing: answers the prompt or repeats the last command; true when it did */
+  space(): boolean;
+  /** Escape over the drawing: ends a command asking for a selection or an option; true when one was */
+  escape(): boolean;
   unmount(): void;
 }
 
@@ -105,6 +117,17 @@ function stored(): LookId {
     // storage blocked: Rodeo's own
     return "rodeo";
   }
+}
+
+/** Reads a key kept in this browser, or writes it when given a value (storage blocked: nothing kept). */
+function localStore(key: string, value?: string): string | null {
+  try {
+    if (value === undefined) return localStorage.getItem(key);
+    localStorage.setItem(key, value);
+  } catch {
+    // storage blocked
+  }
+  return null;
 }
 
 function readSaved(): Partial<Record<LookId, Saved>> {
@@ -147,6 +170,8 @@ interface Slots {
   right: HTMLElement;
   bottom: HTMLElement;
   cmdBottom: HTMLElement;
+  /** under the drawing beside or over the status bar: Revit's View Control Bar, Archicad's Quick Options, AutoCAD's layout tabs */
+  foot: HTMLElement;
   status: HTMLElement;
 }
 
@@ -170,10 +195,11 @@ function makeSlots(): Slots {
     right: slot("lk-right", "lk-side-slot"),
     bottom: slot("lk-bottom", "lk-bottom-slot"),
     cmdBottom: slot("lk-cmd-bottom", "lk-cmd-slot"),
+    foot: slot("lk-foot", "lk-foot-slot"),
     status: slot("lk-status", "lk-status-slot"),
   };
   s.top.append(s.ribbon, s.cmdTop, s.toolbars, s.options);
-  s.bottom.append(s.cmdBottom, s.status);
+  s.bottom.append(s.cmdBottom, h("div", { cls: "lk-foot-row" }, s.foot, s.status));
   app.prepend(s.title);
   topbar.after(s.top);
   const row = h("div", { cls: "lk-row" });
@@ -253,10 +279,12 @@ async function putUp(chosen: LookSpec): Promise<void> {
   const h0 = host;
   if (!h0) return;
   const s = makeSlots();
-  takeDown();
-  spec = chosen;
   // a phone keeps Rodeo's touch layout, whatever the look, till the window widens
   const look = document.documentElement.classList.contains("lk-phone") ? RODEO : chosen;
+  // the coloured icons before any button is made (loaded only for a look that draws with them)
+  setGlyphs(look.icons === "color" ? (await import("./glyphs/index.ts")).GLYPHS : null);
+  takeDown();
+  spec = chosen;
   const root = document.documentElement;
   if (look.id === "rodeo") {
     delete root.dataset.look;
@@ -268,12 +296,18 @@ async function putUp(chosen: LookSpec): Promise<void> {
     root.dataset.lkViewbar = look.viewBar;
     root.dataset.lkSnap = look.snapPill ? "on" : "off";
   }
+  // Revit's and Archicad's bars sit over the status bar, AutoCAD's layout tabs beside it
+  if (look.layoutTabs) root.dataset.lkFoot = "row";
+  else delete root.dataset.lkFoot;
   setTerms(look.id === "rodeo" ? null : look.terms);
   setLookMenus(menusOf(look));
   window.dispatchEvent(new Event("rodeo:menus"));
   h0.palettes.setRails(look.rails);
   setLookView(look.id === "rodeo" ? null : look.mouse, look.background3d ?? null);
   setPaper(look.paper ?? null);
+  setLookCanvas(look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true });
+  const names = look.paneNames;
+  setPaneNames(names ? (kind, view) => (kind === "plan" ? names.plan : view === null ? names.turned : (names.views[view] ?? view)) : null);
   if (look.titleBar) parts.push(mountTitle(s.title, look));
   const loaders: Promise<void>[] = [];
   if (look.ribbon) {
@@ -292,7 +326,8 @@ async function putUp(chosen: LookSpec): Promise<void> {
     const cl = look.commandLine;
     loaders.push(
       import("./commandLine.ts").then((m) => {
-        const handle = m.mountCommandLine(cl.where === "top" ? s.cmdTop : s.cmdBottom, cl);
+        // in Rhino and AutoCAD the running tool's modes are the command line's options
+        const handle = m.mountCommandLine(cl.where === "top" ? s.cmdTop : s.cmdBottom, cl, look.modeBar === "line" ? document.getElementById("modebar") : null);
         commandLine = handle;
         parts.push(() => handle.unmount());
       }),
@@ -306,6 +341,30 @@ async function putUp(chosen: LookSpec): Promise<void> {
     const bar = look.statusBar;
     loaders.push(import("./statusBar.ts").then((m) => void parts.push(m.mountStatusBar(s.status, bar, look.modeBar === "status" ? modebar : null))));
   }
+  // a palette's content the application's way (Rhino's layer table, Revit's Project Browser) over Rodeo's own
+  for (const [id, panel] of Object.entries(look.panels ?? {})) {
+    const body = h0.palettes.bodyOf(id);
+    if (!body) continue;
+    const holder = h("div", { cls: "lk-panel-host" });
+    body.classList.add("lk-replaced");
+    body.append(holder);
+    let off: Unmount | null = null;
+    parts.push(() => {
+      off?.();
+      holder.remove();
+      body.classList.remove("lk-replaced");
+    });
+    loaders.push(
+      panel.kind === "layerTable"
+        ? import("./panels/layerTable.ts").then((m) => void (off = m.mountLayerTable(holder, panel)))
+        : import("./panels/browserTree.ts").then((m) => void (off = m.mountBrowserTree(holder, panel.style))),
+    );
+  }
+  if (look.viewControl) {
+    const style = look.viewControl;
+    loaders.push(import("./viewControl.ts").then((m) => void parts.push(m.mountViewControl(s.foot, style))));
+  }
+  if (look.layoutTabs) loaders.push(import("./layoutTabs.ts").then((m) => void parts.push(m.mountLayoutTabs(s.foot))));
   await Promise.all(loaders);
   refreshButtons();
   store.emit("view");
@@ -334,7 +393,7 @@ export function setLook(id: LookId): Promise<void> {
       return;
     }
     const saved = readSaved();
-    saved[current] = { layout: host.palettes.snapshot(), theme: theme(), panes: paneArrangement() };
+    saved[current] = { layout: host.palettes.snapshot(), theme: theme(), panes: paneArrangement(), grid: store.showGrid };
     writeSaved(saved);
     const own = saved[id];
     current = id;
@@ -347,18 +406,24 @@ export function setLook(id: LookId): Promise<void> {
       host.palettes.restore(own.layout);
       setTheme(own.theme);
       setPaneArrangement(readPaneArrangement(own.panes));
+      setGrid({ show: own.grid ?? next.grid ?? true });
     } else if (id === "rodeo") {
       host.palettes.reset();
       setPaneArrangement(readPaneArrangement(null));
-    } else {
-      host.palettes.restore(arrangementOf(next));
-      setTheme(next.theme);
-      // one pane unless the look starts with more, whatever the look left had
-      setPaneArrangement(next.panes ?? readPaneArrangement(null));
-    }
+      setGrid({ show: true });
+    } else startOf(next);
     await putUp(next);
   });
   return switching;
+}
+
+/** Puts a look's start on: its palettes, theme, view panes and grid. */
+function startOf(look: LookSpec): void {
+  host!.palettes.restore(arrangementOf(look));
+  setTheme(look.theme);
+  // one pane unless the look starts with more, whatever the look left had
+  setPaneArrangement(look.panes ?? readPaneArrangement(null));
+  setGrid({ show: look.grid ?? true });
 }
 
 /** Puts the look on now back as it starts: its palettes, theme and panes. */
@@ -370,12 +435,11 @@ async function resetLook(): Promise<void> {
   const saved = readSaved();
   delete saved[current];
   writeSaved(saved);
-  if (current === "rodeo") host.palettes.reset();
-  else {
-    host.palettes.restore(arrangementOf(look));
-    setTheme(look.theme);
-  }
-  setPaneArrangement(look.panes ?? readPaneArrangement(null));
+  if (current === "rodeo") {
+    host.palettes.reset();
+    setPaneArrangement(readPaneArrangement(null));
+    setGrid({ show: true });
+  } else startOf(look);
   await putUp(look);
 }
 
@@ -399,7 +463,13 @@ export function installLooks(h1: LookHost): void {
   if (!entry) return;
   switching = switching.then(async () => {
     try {
-      await putUp(await entry.load());
+      const look = await entry.load();
+      // a look set without ever being chosen here (its key copied in, a test): its start once, not Rodeo's arrangement
+      if (!readSaved().rodeo && localStore(STARTED_KEY) !== current) {
+        startOf(look);
+        localStore(STARTED_KEY, current);
+      }
+      await putUp(look);
     } catch (err) {
       console.warn("Work Like: the look didn't load", err);
     }
@@ -431,6 +501,30 @@ function keyName(e: KeyboardEvent): string {
   if (/^F\d{1,2}$/.test(e.key)) return e.key;
   if (e.key.length === 1) return (e.shiftKey && /[a-z]/i.test(e.key) ? "⇧" : "") + e.key.toLowerCase();
   return e.key;
+}
+
+/** Whether a look's command line is on (not on a phone, which keeps Rodeo's layout). */
+function lineOn(): boolean {
+  return current !== "rodeo" && commandLine !== null && !document.documentElement.classList.contains("lk-phone");
+}
+
+/**
+ * A key typed over the drawing, offered to a look's command line before the data bar, the tool and
+ * Rodeo's own keys: in Rhino and AutoCAD whatever is typed goes to the command line. True when it
+ * took it.
+ */
+export function lookTypeKey(e: KeyboardEvent): boolean {
+  return lineOn() && commandLine!.type(e);
+}
+
+/** Space over the drawing in a look with a command line: Enter, as there. True when it took it. */
+export function lookSpace(): boolean {
+  return lineOn() && commandLine!.space();
+}
+
+/** Escape over the drawing: ends a typed command waiting for a selection or an option. True when it did. */
+export function lookEscape(): boolean {
+  return lineOn() && commandLine!.escape();
 }
 
 /**

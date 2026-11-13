@@ -461,21 +461,34 @@ A look changes:
 
 - the menu bar: the application's menus in its order, each holding the Rodeo commands that do what its commands do. Commands it has no place for go at the end of the nearest menu, after a line, so nothing is lost.
 - its words: Object Info is Properties in Revit, Entity Info in SketchUp; symbols are blocks in AutoCAD, families in Revit, components in SketchUp; classes are layers in Archicad, tags in SketchUp. Menus, palette titles, tabs and labels show them.
-- the rows round the drawing: Revit's and AutoCAD's ribbon and Quick Access Toolbar, Rhino's command line and tabbed toolbars, SketchUp's Getting Started toolbar and Large Tool Set, Archicad's Standard toolbar, Toolbox and Info Box, and each application's status bar.
-- where the palettes sit, and what they are called (Revit's Properties over the Project Browser, Archicad's Navigator, SketchUp's tray).
+- the rows round the drawing: Revit's and AutoCAD's ribbon and Quick Access Toolbar, Rhino's command line and tabbed toolbars, SketchUp's Getting Started toolbar and Large Tool Set, Archicad's Standard toolbar, Toolbox and Info Box, Revit's View Control Bar, Archicad's Quick Options, AutoCAD's Model and layout tabs, and each application's status bar.
+- where the palettes sit, what they are called and what they show: a layer table in Rhino (Layers), AutoCAD (Layer Properties) and SketchUp (Tags), Revit's Project Browser and Archicad's Project Map (see below).
+- the drawing area: Rhino's grey viewports named Top, Front, Right and Perspective, with a red X and a green Y axis through the grid; no grid in Revit, Archicad or SketchUp; no view cube where the application has none.
 - its keys: SketchUp's single letters (L, R, P, M, Q…), Revit's two-letter shortcuts (WA, DR, VV…), AutoCAD's and Rhino's function keys.
 - how the mouse moves the 3D view: SketchUp orbits with the wheel pressed, Rhino with a right drag, the others pan with the wheel pressed; Shift swaps orbit and pan.
 - the colours: light chrome for most, AutoCAD's dark one with its dark model space, Rhino's grey viewports and four view panes.
 
-Every button, key and typed command runs Rodeo's own tool or menu command, and the icons are Rodeo's. Where Rodeo has nothing that does what an application's command does, the look leaves that command out rather than run something else. On a phone Rodeo keeps its touch layout, whatever the look.
+Every button, key and typed command runs Rodeo's own tool or menu command. The buttons of the Archicad, AutoCAD, Revit, Rhino and SketchUp looks have coloured icons, one picture per command, painted in each application's colours; they are drawn for Rodeo, not copied from the applications. The Vectorworks look keeps Rodeo's line icons. Where Rodeo has nothing that does what an application's command does, the look leaves that command out rather than run something else. On a phone Rodeo keeps its touch layout, whatever the look.
 
 ### The command line
 
-In the Rhino and AutoCAD looks, typing over the drawing goes to the command line: a command's name or its short name (L for Line, CO for Copy in AutoCAD; M for Move in Rhino), then Enter or Space. As you type, the commands that match show under it (↑ and ↓ go through them, Tab completes). Enter or Space on an empty line runs the last command again; ↑ and ↓ then go back through the commands you ran. While a command runs, the line shows the step it asks for. Escape clears it.
+In the Rhino and AutoCAD looks, typing over the drawing goes to the command line: a command's name or its short name (L for Line, CO for Copy in AutoCAD; M for Move in Rhino), then Enter or Space. Rhino's `_Line`, `-Layer` and `'Zoom` forms work too, and so does the start of a name when only one command begins with it. As you type, the commands that match show under it (↑ and ↓ go through them, Tab completes). Enter or Space on an empty line runs the last command again; ↑ and ↓ then go back through the commands you ran. A name the look doesn't know says so and runs nothing.
+
+While a command runs, the line asks for its next step in the application's words (Start of line, Specify first point:) and lists its options: Rhino's in brackets, `( All Extents Selected … )`, AutoCAD's as `[All/Extents/Previous/Window/Object] <real time>`. Click an option, or type its name or its underlined letters, then Enter. **Zoom** works this way: `zoom`, Enter, `e`, Enter zooms to everything; Enter on its own takes the default. While a drawing tool runs, its modes (Rodeo's Mode bar, which these looks hide) are the options.
+
+Type points and distances as you would there: `10,20` is a point, `@5,0` (or Rhino's `r5,0`) is from the last point, `10<45` is a length at an angle, and a single number is the first value the step asks for (a circle's radius, a line's length). Commands that work on objects (Move, Copy, Rotate, Join, Boolean Union, Explode…) ask you to select them when nothing is selected: click the objects, then Enter. Escape ends a command.
 
 ### The ribbon
 
 In the Revit and AutoCAD looks the ribbon's tabs hold the commands in panels. The coloured tab at the start (and the button at the top left) opens the File menu, which ends with **Work Like**. Revit's **Modify | …** tab shows while something is selected, named for what it is (Modify | Walls). Double-click a tab to fold the ribbon to its tabs; a tab then drops its panels over the drawing until you click elsewhere. Double-click again to unfold it.
+
+### Layers, browsers and view bars
+
+In the Rhino, AutoCAD and SketchUp looks the Navigation palette is a layer table: Rodeo's classes, each a row with its name, whether it is current, shown and locked, its colour, line type and line weight (SketchUp: shown, name, dashes and colour). Click a row's cells to make it current, turn it off or on, or lock it; double-click a name to rename it; the buttons above add and delete layers, and the field filters them. Rodeo's None class is Default in Rhino, 0 in AutoCAD and Untagged in SketchUp.
+
+The Revit look's Project Browser lists the views: Floor Plans (each design layer), 3D Views, Elevations, Sheets (each sheet layer), Families (the symbols) and saved views. Click a plan to open it, {3D} for the 3D view; double-click a family to place it. The Archicad look's Project Map lists the Stories, numbered from the lowest, the 3D views, the elevations and, under Project Indexes, the layouts. Arrow keys move through both, and Enter opens.
+
+Under the drawing, Revit's View Control Bar sets the scale and the visual style and hides or isolates what is selected; Archicad's Quick Options show the zoom and the scale, with the model view and the zoom buttons. AutoCAD's Model tab and a tab for each sheet layer sit beside its status bar; **+** adds a sheet layer.
 
 ### Arranging a look and going back
 

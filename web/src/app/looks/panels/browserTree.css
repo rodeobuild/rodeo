@@ -1,0 +1,217 @@
+/* View › Work Like: the project browser tree (browserTree.ts). Revit's rows are 20px with + and −
+   boxes and dotted guide lines; Archicad's are 22px with small triangles. Every colour and font
+   comes from the look's own variables (--lk-panel, --lk-bar-text, --lk-bar-border, --lk-btn-hover,
+   --lk-btn-on, --lk-font, --lk-font-size). Scoped to .lk-browser; no blur, and the arrow cursor
+   everywhere (never a hand). */
+
+.lk-browser {
+  --u: 16px;
+  --row: 20px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--lk-panel);
+  color: var(--lk-bar-text);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  user-select: none;
+}
+
+.lk-browser[data-style="archicad"] {
+  --u: 14px;
+  --row: 22px;
+}
+
+.lk-browser,
+.lk-browser * {
+  cursor: default;
+}
+
+/* Revit: the search field over the tree */
+.lk-browser[data-style="revit"] .lk-br-search {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--lk-bar-border);
+}
+
+.lk-br-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--lk-bar-border);
+  border-radius: var(--lk-radius, 0);
+  background: var(--lk-panel);
+  color: var(--lk-bar-text);
+  font: inherit;
+  outline: none;
+}
+
+.lk-br-search-input:focus {
+  border-color: var(--lk-btn-on-border, var(--lk-bar-border));
+}
+
+/* Archicad: the file's name over the Project Map */
+.lk-browser[data-style="archicad"] .lk-br-head {
+  flex: 0 0 auto;
+  height: var(--row);
+  line-height: var(--row);
+  padding: 0 6px;
+  border-bottom: 1px solid var(--lk-bar-border);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lk-br-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 0;
+  outline: none;
+}
+
+.lk-br-tree:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--lk-bar-border);
+}
+
+.lk-br-empty {
+  padding: 8px 6px;
+  color: var(--lk-bar-text);
+  opacity: 0.6;
+}
+
+/* One line of the tree. The depth sets the indent through --d; the base gap is 4px. */
+.lk-br-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--row);
+  padding-left: calc(4px + var(--d, 0) * var(--u));
+  white-space: nowrap;
+}
+
+.lk-br-row:hover {
+  background: var(--lk-btn-hover);
+}
+
+.lk-br-row.is-cursor {
+  background: var(--lk-btn-on);
+}
+
+.lk-br-row.is-current .lk-br-label {
+  font-weight: 700;
+}
+
+.lk-browser[data-style="revit"] .lk-br-row.is-root .lk-br-label {
+  font-weight: 600;
+}
+
+/* the box or triangle column: one indent wide, its mark centred */
+.lk-br-tog {
+  position: relative;
+  flex: 0 0 var(--u);
+  width: var(--u);
+  height: 100%;
+}
+
+.lk-br-ico {
+  display: inline-flex;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  color: inherit;
+}
+
+.lk-br-ico svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.lk-br-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Revit: a dotted guide down each ancestor column that has siblings below it */
+.lk-br-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dotted currentColor;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Revit's + and − box, drawn with two thin bars; a minus when open */
+.lk-br-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  margin: -5px 0 0 -4px;
+  border: 1px solid var(--lk-bar-text);
+  background: var(--lk-panel);
+  opacity: 0.75;
+}
+
+.lk-br-box::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 3px;
+  height: 1px;
+  background: var(--lk-bar-text);
+}
+
+.lk-br-box.is-closed::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 3px;
+  width: 1px;
+  background: var(--lk-bar-text);
+}
+
+/* Archicad: a small triangle, pointing down when open and right when closed */
+.lk-br-tri {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin-top: -3px;
+  border-style: solid;
+  border-color: transparent;
+}
+
+.lk-br-tri.is-open {
+  margin-left: -4px;
+  border-width: 5px 4px 0 4px;
+  border-top-color: var(--lk-bar-text);
+}
+
+.lk-br-tri.is-closed {
+  margin-left: -2px;
+  margin-top: -4px;
+  border-width: 4px 0 4px 4px;
+  border-left-color: var(--lk-bar-text);
+}

@@ -278,9 +278,12 @@ export function interfaceText(): Map<string, string> {
     const look = file.includes(join("app", "looks") + "/");
     // What's new shows a release's body a line at a time, its "- " lines as a list
     const releases = file.endsWith(join("news", "releases.ts"));
+    // a look's `prompts` are keyed by Rodeo's own hints, which never show as they are written there
+    const promptKeys = look ? new Set([...src.matchAll(/\bprompts:\s*\{([\s\S]*?)\n\s*\}/g)].flatMap((m) => [...m[1].matchAll(/^\s*"([^"]+)":/gm)].map((k) => k[1]))) : null;
     for (const { text, line, before } of literals(src)) {
       if (tools && MODEL_ONLY.test(before)) continue;
       if (look && MENU_PATH.test(text)) continue;
+      if (promptKeys?.has(text) && /[{,]\s*$/.test(before)) continue;
       for (const part of releases ? text.split("\n").map((l) => l.replace(/^- /, "")) : [text]) {
         const t = part.trim();
         if (isInterfaceText(t, before) && !found.has(t)) found.set(t, `${relative(WEB, file)}:${line}`);

@@ -12,6 +12,7 @@
 import "./viewControl.css";
 import type { Vec3 } from "../core/index.ts";
 import { h } from "./dom.ts";
+import { lookCanvas, onLookCanvas } from "./looks/canvasLook.ts";
 import { appContext } from "./ext.ts";
 import { documentGeoref, onGeoref } from "./georef.ts";
 import { openContextMenu, type Row } from "./menu.ts";
@@ -184,6 +185,13 @@ export function mountViewControl(host: HTMLElement, deps: ViewControlDeps): void
   });
   const el = h("div", { cls: "ovc" }, svg, menuBtn);
   host.append(el);
+
+  // a look without a view cube (View › Work Like, viewCube: false) hides it: viewControl.css keys on this attribute
+  const syncLookCube = (): void => {
+    document.documentElement.dataset.viewCube = lookCanvas()?.viewCube === false ? "off" : "on";
+  };
+  syncLookCube();
+  onLookCanvas(syncLookCube);
 
   menuBtn.addEventListener("click", () => {
     const r = menuBtn.getBoundingClientRect();

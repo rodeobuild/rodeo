@@ -306,3 +306,15 @@
 :root[data-look="archicad"] .lk-app-btn {
   cursor: default;
 }
+
+/* the coloured icons in Archicad's colours */
+:root[data-look="archicad"] {
+  --g-ink: #2b3440;
+  --g-fill: #cfe3f5;
+  --g-fill2: #3d7cc9;
+  --g-hi: #f2b632;
+  --g-pt: #e04a3f;
+  --g-add: #33a24a;
+  --g-del: #e04a3f;
+  --g-paper: #ffffff;
+}

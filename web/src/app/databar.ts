@@ -395,6 +395,34 @@ export class DataBar {
     return true;
   }
 
+  /** The keys of the tool's fields now, in order (none when no tool asks for values). */
+  fieldKeys(): string[] {
+    return this.stage ? this.stage.fields.map((f) => f.key) : [];
+  }
+
+  /**
+   * Values typed somewhere else (View › Work Like's command line): each goes into its field by key,
+   * then the bar takes them as Enter in it would. False when the tool asks for no values or none of
+   * the keys is one of its fields.
+   */
+  typeIn(values: Readonly<Record<string, string>>): boolean {
+    if (!this.stage || !this.root) return false;
+    let any = false;
+    for (const [key, text] of Object.entries(values)) {
+      const input = this.inputs.get(key);
+      if (!input) continue;
+      input.value = text;
+      this.locked.add(key);
+      input.classList.add("is-locked");
+      input.classList.remove("is-invalid");
+      any = true;
+    }
+    if (!any) return false;
+    this.handlers?.edit();
+    this.commit();
+    return true;
+  }
+
   /** Puts focus on the first field unless it is already inside the bar. */
   keepFocus(): void {
     if (!this.hasFocus()) this.focusField(false);

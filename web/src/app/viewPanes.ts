@@ -554,6 +554,19 @@ const CHIP_INSET = 8;
 /** what a chip mustn't sit under: the View bar, the Onscreen View Control's cube and the bars over the drawing while editing */
 const CHIP_OBSTACLES = "#viewbar > .pill, .ovc:not([hidden]) .ovc-cube, .edit-bars > :not([hidden])";
 
+/** A look's own names for the panes (View › Work Like: Rhino's Top, Front, Right and Perspective), by what each shows and its standard view. */
+export type PaneNamer = (kind: PaneKind, view: string | null) => string;
+let paneNamer: PaneNamer | null = null;
+/** counts the namers set, so the chips are written again when the look changes */
+let namerVersion = 0;
+
+/** Names the panes the way a look does (null: Rodeo's "Plan" and "3D · Right Isometric"). */
+export function setPaneNames(f: PaneNamer | null): void {
+  paneNamer = f;
+  namerVersion++;
+  relabel?.();
+}
+
 /** Names the panes' chips again: called as the live 3D view moves, so a 3D pane's chip follows its view. */
 export function relabelPanes(): void {
   relabel?.();
@@ -620,9 +633,16 @@ export function mountPanes(wrap: HTMLElement, hooks: PaneHooks): void {
       chips[i].classList.toggle("active", i === activePane());
       const kind = kinds[i] ?? "plan";
       const view = kind === "3d" ? hooks.view(i) : null;
-      const text = `${kind}|${view ?? ""}`;
+      const text = `${kind}|${view ?? ""}|${namerVersion}`;
       if (said[i] === text) continue;
       said[i] = text;
+      const own = paneNamer?.(kind, view);
+      if (own !== undefined) {
+        kindTexts[i].removeAttribute("data-i18n");
+        kindTexts[i].textContent = own;
+        viewTexts[i].hidden = true;
+        continue;
+      }
       kindTexts[i].textContent = kind === "3d" ? "3D" : "Plan";
       viewTexts[i].hidden = view === null;
       if (view !== null) {

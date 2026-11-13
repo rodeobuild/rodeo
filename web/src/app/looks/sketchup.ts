@@ -238,12 +238,19 @@ export const look: LookSpec = {
     ],
   },
   statusBar: {
-    rows: [[{ kind: "hint" }, { kind: "spacer" }, { kind: "measurements", label: "Measurements" }]],
+    // the tool's hint comes with the Mode bar at the row's start
+    rows: [[{ kind: "spacer" }, { kind: "measurements", label: "Measurements" }]],
   },
-  modeBar: "hud",
+  // a tool's modes along the status bar, as SketchUp's hints and modifier keys sit there
+  modeBar: "status",
   viewBar: "hidden",
   snapPill: false,
   rails: false,
+  icons: "color",
+  // the Tags panel in the Navigation palette's place; no grid or view cube
+  panels: { navigation: { kind: "layerTable", style: "sketchup", columns: ["visible", "name", "linetype", "color"], none: "Untagged" } },
+  grid: false,
+  viewCube: false,
   // SketchUp's single keys; each maps to a Rodeo tool or menu command that exists.
   keys: {
     l: { tool: "line" },

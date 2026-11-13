@@ -38,6 +38,7 @@ import { bboxOfPoints, unionBBox } from "./geom.ts";
 import { buildGeom, fillsShape, outlineOf, type Geom } from "./shapes.ts";
 import { FONT, paintText } from "./textPaint.ts";
 import { t } from "./i18n.ts";
+import { lookCanvas, onLookCanvas } from "./looks/canvasLook.ts";
 
 /**
  * The selection's colour, its handles' and the tools' previews; with PRESELECT and SNAP_COLOR set by
@@ -355,6 +356,8 @@ export class Renderer {
     if (!ctx) throw new Error("openvwx: 2D canvas is not available");
     this.ctx = ctx;
     this.resize();
+    // a look's grid colours or axes changed (View › Work Like): draw the grid again
+    onLookCanvas(() => this.requestDraw());
   }
 
   /** Re-reads the canvas size (CSS pixels) and backing store size (device pixels). */
@@ -1620,30 +1623,43 @@ export class Renderer {
     const ky1 = o ? Math.floor(o.y / px) : Math.floor(r.y1 / step);
     if (kx1 - kx0 > GRID_MAX_LINES || ky1 - ky0 > GRID_MAX_LINES) return;
 
+    // a look may colour the grid (View › Work Like): minor and major lines, and the X and Y axes
+    const look = lookCanvas()?.gridColors;
+    // with an axis colour the two axes are stroked apart; otherwise both share one path, as before
+    const split = look?.xAxis !== undefined || look?.yAxis !== undefined;
     const minor = new Path2D();
     const major = new Path2D();
     const axes = new Path2D();
-    const pick = (k: number): Path2D => {
-      if (k === 0) return axes;
+    const xAxis = split ? new Path2D() : axes; // y = 0, drawn across
+    const yAxis = split ? new Path2D() : axes; // x = 0, drawn up
+    const pick = (k: number, axis: Path2D): Path2D => {
+      if (k === 0) return axis;
       return (k * stride) % GRID_MAJOR_EVERY === 0 ? major : minor;
     };
     for (let k = kx0; k <= kx1; k++) {
       const x = Math.floor(o ? o.x + k * px : (k * step - view.cx) * view.scale + W / 2) + 0.5;
-      pick(k).moveTo(x, 0);
-      pick(k).lineTo(x, H);
+      pick(k, yAxis).moveTo(x, 0);
+      pick(k, yAxis).lineTo(x, H);
     }
     for (let k = ky0; k <= ky1; k++) {
       const y = Math.floor(o ? o.y - k * px : H / 2 - (k * step - view.cy) * view.scale) + 0.5;
-      pick(k).moveTo(0, y);
-      pick(k).lineTo(W, y);
+      pick(k, xAxis).moveTo(0, y);
+      pick(k, xAxis).lineTo(W, y);
     }
 
     ctx.lineWidth = 1;
-    ctx.strokeStyle = GRID_MINOR;
+    ctx.strokeStyle = look?.minor ?? GRID_MINOR;
     ctx.stroke(minor);
-    ctx.strokeStyle = GRID_MAJOR;
+    ctx.strokeStyle = look?.major ?? GRID_MAJOR;
     ctx.stroke(major);
-    ctx.strokeStyle = GRID_AXIS;
-    ctx.stroke(axes);
+    if (split) {
+      ctx.strokeStyle = look?.xAxis ?? GRID_AXIS;
+      ctx.stroke(xAxis);
+      ctx.strokeStyle = look?.yAxis ?? GRID_AXIS;
+      ctx.stroke(yAxis);
+    } else {
+      ctx.strokeStyle = GRID_AXIS;
+      ctx.stroke(axes);
+    }
   }
 }

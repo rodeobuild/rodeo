@@ -191,3 +191,15 @@
 :root[data-look="autocad"] .menu-sep {
   border-color: #3b4453;
 }
+
+/* the coloured icons in AutoCAD's colours, light on its dark ribbon */
+:root[data-look="autocad"] {
+  --g-ink: #e3e8ef;
+  --g-fill: #5aa9ec;
+  --g-fill2: #2f6fb0;
+  --g-hi: #f5c242;
+  --g-pt: #ff6a5f;
+  --g-add: #4cc35a;
+  --g-del: #ff5c55;
+  --g-paper: #4b5667;
+}

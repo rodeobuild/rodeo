@@ -489,9 +489,17 @@ export const look: LookSpec = {
     ],
   },
   modeBar: "options",
-  viewBar: "foot",
+  // the View Control Bar under the drawing in place of Rodeo's view bar
+  viewBar: "hidden",
+  viewControl: "revit",
   snapPill: false,
   rails: false,
+  icons: "color",
+  // the Project Browser in the Navigation palette's place; plans without a grid
+  panels: { navigation: { kind: "browser", style: "revit" } },
+  grid: false,
+  // Revit's ViewCube is in its 3D views only; Rodeo's shows in the plan too
+  viewCube: false,
   statusBar: {
     rows: [[{ kind: "hint" }, { kind: "spacer" }, { kind: "text", text: "Main Model" }, { kind: "selection" }]],
   },

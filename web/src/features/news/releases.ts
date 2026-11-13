@@ -22,6 +22,19 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T12:20:00Z",
+    "work-like-commands",
+    "Work Like: typed commands and icons you can tell apart",
+    `Rhino's and AutoCAD's command lines now take what their users type, and every look but Vectorworks has coloured icons.
+- Zoom, then E for extents, works; so do Rhino's _Line and -Layer forms, a command's first letters, and options in brackets you can click or type.
+- Points and distances typed as 10,20, @5,0, 10<45 or a single number go into the running tool.
+- Move, Copy, Join, Boolean Union and the other commands on objects ask you to select them first, then Enter runs them.
+- Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.
+- Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.
+- The icons are drawn for Rodeo, one picture per command, in each application's colours.`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T12:10:00Z",
     "work-like",
     "Work like the application you know",
@@ -30,7 +43,7 @@ export const RELEASES: readonly Release[] = [
 - Revit and AutoCAD get their ribbon and Quick Access Toolbar, with Revit's Modify tab for what is selected.
 - Rhino and AutoCAD get a command line: type LINE or L, then Enter. Enter again repeats it.
 - SketchUp's single-letter keys, Revit's two-letter shortcuts and the function keys work as they do there, and the mouse orbits and pans the 3D view as each application's does.
-- Every button runs Rodeo's own tools, with Rodeo's icons. View › Work Like › Rodeo goes back.`,
+- Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.`,
     "workspace",
   ),
   release(

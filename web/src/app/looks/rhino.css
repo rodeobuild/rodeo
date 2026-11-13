@@ -384,3 +384,16 @@
 :root[data-look="rhino"] .lk-ribbon-tab {
   cursor: default;
 }
+
+/* the coloured icons in Rhino's colours, at Rhino's toolbar size */
+:root[data-look="rhino"] {
+  --g-ink: #1e1e1e;
+  --g-fill: #a8cdf2;
+  --g-fill2: #4f8fd6;
+  --g-hi: #f2c12e;
+  --g-pt: #e0332e;
+  --g-add: #2e9d3f;
+  --g-del: #d93a32;
+  --g-paper: #ffffff;
+  --lk-icon-size: 22px;
+}

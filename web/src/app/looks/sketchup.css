@@ -224,3 +224,35 @@
 :root[data-look="sketchup"] .canvas-wrap {
   border: 0;
 }
+
+/* the coloured icons in SketchUp's warm colours */
+:root[data-look="sketchup"] {
+  --g-ink: #2b2b2b;
+  --g-fill: #f7d774;
+  --g-fill2: #d9a53b;
+  --g-hi: #e4473b;
+  --g-pt: #2f74d0;
+  --g-add: #2f9e44;
+  --g-del: #e4473b;
+  --g-paper: #ffffff;
+}
+
+/* SketchUp's tools are big pictures: 22px icons on 32px buttons, in the toolbar and the Large Tool Set */
+:root[data-look="sketchup"] {
+  --lk-icon-size: 22px;
+}
+
+:root[data-look="sketchup"] .lk-toolbar .lk-btn.lk-icon-only,
+:root[data-look="sketchup"] .lk-toolbox .lk-btn.lk-icon-only {
+  width: 32px;
+  height: 32px;
+}
+
+:root[data-look="sketchup"] .lk-toolbar .lk-btn-more,
+:root[data-look="sketchup"] .lk-toolbox .lk-btn-more {
+  height: 32px;
+}
+
+:root[data-look="sketchup"] .lk-cols-2 .lk-toolbox-grid {
+  grid-template-columns: repeat(2, 32px);
+}

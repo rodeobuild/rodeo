@@ -217,3 +217,15 @@
 :root[data-look="revit"] .lk-btn.off {
   opacity: 0.4;
 }
+
+/* the coloured icons in Revit's colours */
+:root[data-look="revit"] {
+  --g-ink: #26323f;
+  --g-fill: #c4dcf2;
+  --g-fill2: #5a8fc4;
+  --g-hi: #f0a830;
+  --g-pt: #d2403a;
+  --g-add: #2f9e44;
+  --g-del: #d2403a;
+  --g-paper: #ffffff;
+}

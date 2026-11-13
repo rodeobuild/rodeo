@@ -14,7 +14,7 @@ import { gridStep } from "./snap.ts";
 import { toggleSmartOptions } from "./smartOptions.ts";
 import { dataBar } from "./databar.ts";
 import { runMenuCommand } from "./menubar.ts";
-import { lookKey } from "./looks/looks.ts";
+import { lookEscape, lookKey, lookSpace, lookTypeKey } from "./looks/looks.ts";
 
 export interface ShortcutActions {
   fit(): void;
@@ -186,11 +186,18 @@ export function installShortcuts(deps: ShortcutDeps): void {
     if (e.code === "Space") {
       if (isControl(e.target)) return; // let Space press a focused button
       e.preventDefault();
+      // View › Work Like: Space is Enter in a look with a command line (Rhino, AutoCAD)
+      if (!e.repeat && lookSpace()) return;
       if (!e.repeat) deps.controller.setSpace(true);
       return;
     }
 
     if (e.key === "Escape") {
+      // View › Work Like: Escape ends a typed command waiting for a selection or an option
+      if (lookEscape()) {
+        e.preventDefault();
+        return;
+      }
       if (deps.controller.handleKey(e)) {
         e.preventDefault();
         return;
@@ -204,6 +211,12 @@ export function installShortcuts(deps: ShortcutDeps): void {
       return;
     }
     if (e.altKey) return;
+
+    // View › Work Like: in Rhino and AutoCAD what is typed over the drawing goes to the command line
+    if (lookTypeKey(e)) {
+      e.preventDefault();
+      return;
+    }
 
     // a number typed while the data bar shows starts its first field, if Data Bar Options allows it
     if (dataBar.instantKey(e)) {

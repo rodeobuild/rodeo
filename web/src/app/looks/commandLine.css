@@ -60,6 +60,40 @@
   color: var(--lk-bar-text);
 }
 
+/* a command's options in its prompt: each one a button, its key letters underlined */
+.lk-cmd-opt {
+  display: inline;
+  margin: 0;
+  padding: 0 1px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.lk-cmd-opt:hover {
+  background: var(--lk-btn-hover);
+}
+
+.lk-cmd-opt u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* AutoCAD marks its keywords as boxes in the prompt, its key letters coloured, not underlined */
+.lk-cmd[data-options="autocad"] .lk-cmd-opt {
+  padding: 0 3px;
+  background: var(--lk-btn-on);
+  color: var(--lk-field-text);
+}
+
+.lk-cmd[data-options="autocad"] .lk-cmd-opt u {
+  text-decoration: none;
+  color: var(--lk-accent);
+}
+
 .lk-cmd-input {
   flex: 1;
   min-width: 0;

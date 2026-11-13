@@ -310,7 +310,14 @@ export const look: LookSpec = {
   snapPill: false,
   rails: false,
   modeBar: "options",
-  viewBar: "foot",
+  // the Quick Options under the drawing in place of Rodeo's view bar
+  viewBar: "hidden",
+  viewControl: "archicad",
+  icons: "color",
+  // the Navigator's Project Map in the Navigation palette's place; plans without a grid or a view cube
+  panels: { navigation: { kind: "browser", style: "archicad" } },
+  grid: false,
+  viewCube: false,
   // Standard toolbar under the menus, with Archicad's order: file, edit, views, zoom, style
   toolbars: {
     showTabs: false,

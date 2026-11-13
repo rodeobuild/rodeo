@@ -1,0 +1,256 @@
+/* View › Work Like: the layer table a look puts in a palette (Rhino's Layers panel, AutoCAD's Layer
+   Properties Manager, SketchUp's Tags). Compact rows, the look's colours from its --lk-* values, and
+   every rule scoped to the table so Rodeo's own panels keep theirs. Buttons and fields use the arrow. */
+
+.lk-layer-table {
+  --lt-row-h: 22px;
+  --lt-line: var(--lk-bar-border);
+  --lt-sel: var(--lk-btn-on);
+  --lt-hover: var(--lk-btn-hover);
+  --lt-ok: #2a8a43;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--lk-panel);
+  color: var(--lk-bar-text);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  cursor: default;
+  user-select: none;
+}
+
+.lk-layer-table[data-style="rhino"] {
+  --lt-row-h: 20px;
+}
+
+.lk-layer-table[data-style="autocad"] {
+  --lt-row-h: 22px;
+}
+
+.lk-layer-table[data-style="sketchup"] {
+  --lt-row-h: 26px;
+}
+
+.lk-layer-table button,
+.lk-layer-table input {
+  font: inherit;
+  cursor: default;
+}
+
+/* the caption over AutoCAD's table */
+.lk-layer-table .lt-caption {
+  flex: 0 0 auto;
+  padding: 4px 8px 2px;
+  color: var(--lk-bar-text);
+  white-space: nowrap;
+}
+
+/* the row of buttons and the search field */
+.lk-layer-table .lt-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--lk-panel-sep);
+}
+
+.lk-layer-table .lt-tool {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--lk-radius);
+  background: transparent;
+  color: var(--lk-btn-text);
+}
+
+.lk-layer-table .lt-tool:hover:not(:disabled) {
+  background: var(--lk-btn-hover);
+  border-color: var(--lk-btn-hover-border);
+}
+
+.lk-layer-table .lt-tool:disabled {
+  opacity: 0.4;
+}
+
+.lk-layer-table .lt-tool svg {
+  width: 16px;
+  height: 16px;
+}
+
+.lk-layer-table .lt-search {
+  flex: 0 1 150px;
+  min-width: 60px;
+  height: 22px;
+  margin-left: auto;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 1px solid var(--lk-field-border);
+  border-radius: var(--lk-radius);
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+}
+
+/* the column titles */
+.lk-layer-table .lt-head {
+  flex: 0 0 auto;
+  display: grid;
+  align-items: center;
+  height: var(--lt-row-h);
+  background: var(--lk-panel-title-bar, var(--lk-panel));
+  color: var(--lk-panel-title);
+  border-bottom: 1px solid var(--lk-panel-sep);
+}
+
+.lk-layer-table .lt-head .lt-cell {
+  height: 100%;
+  white-space: nowrap;
+}
+
+/* the rows */
+.lk-layer-table .lt-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.lk-layer-table .lt-row {
+  display: grid;
+  align-items: center;
+  height: var(--lt-row-h);
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.lk-layer-table .lt-row:hover:not(.selected) {
+  background: var(--lt-hover);
+}
+
+.lk-layer-table .lt-row.selected {
+  background: var(--lt-sel);
+}
+
+.lk-layer-table .lt-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  padding: 0 6px;
+  overflow: hidden;
+}
+
+.lk-layer-table .lt-c-current,
+.lk-layer-table .lt-c-visible,
+.lk-layer-table .lt-c-lock,
+.lk-layer-table .lt-c-color {
+  justify-content: center;
+  padding: 0;
+}
+
+.lk-layer-table .lt-empty {
+  padding: 8px;
+  color: var(--lk-panel-title);
+}
+
+/* icons inside the rows */
+.lk-layer-table .lt-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lk-bar-text);
+}
+
+.lk-layer-table .lt-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.lk-layer-table .lt-icon.off {
+  opacity: 0.35;
+}
+
+.lk-layer-table .lt-icon.lt-lock.on {
+  color: var(--lk-accent);
+}
+
+.lk-layer-table .lt-mark {
+  display: grid;
+  place-items: center;
+  color: var(--lk-bar-text);
+}
+
+.lk-layer-table .lt-mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.lk-layer-table .lt-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border: 1px solid var(--lk-bar-border);
+  box-sizing: border-box;
+}
+
+.lk-layer-table .lt-dash {
+  display: inline-flex;
+  color: var(--lk-bar-text);
+}
+
+.lk-layer-table .lt-dash svg {
+  display: block;
+}
+
+.lk-layer-table .lt-c-count,
+.lk-layer-table .lt-c-lineweight,
+.lk-layer-table .lt-c-linetype {
+  color: var(--lk-bar-text);
+}
+
+/* Rhino: flat rows, the current layer's check and the name plain */
+.lk-layer-table[data-style="rhino"] .lt-head {
+  background: var(--lk-tabs, var(--lk-panel));
+}
+
+.lk-layer-table[data-style="rhino"] .lt-head .lt-cell {
+  padding: 0 6px;
+}
+
+/* AutoCAD: grid lines between the columns and under each row; the current status is a green check */
+.lk-layer-table[data-style="autocad"] .lt-head .lt-cell,
+.lk-layer-table[data-style="autocad"] .lt-row > .lt-cell {
+  border-right: 1px solid var(--lt-line);
+}
+
+.lk-layer-table[data-style="autocad"] .lt-row {
+  border-bottom: 1px solid var(--lt-line);
+}
+
+.lk-layer-table[data-style="autocad"] .lt-c-current .lt-mark {
+  color: var(--lt-ok);
+}
+
+/* SketchUp: a tall list; the current tag is set in bold */
+.lk-layer-table[data-style="sketchup"] .lt-row {
+  padding: 0 4px;
+}
+
+.lk-layer-table[data-style="sketchup"] .lt-row.current .lt-name {
+  font-weight: 700;
+}
+
+.lk-layer-table[data-style="sketchup"] .lt-c-visible {
+  justify-content: center;
+  padding: 0;
+  width: 100%;
+}

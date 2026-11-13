@@ -5,8 +5,9 @@
 // exporting `look: LookSpec`, with a stylesheet of its own scoped to :root[data-look="<id>"].
 // Every button, key and typed command runs one of Rodeo's own tools or menu commands, so nothing a
 // look offers is a copy of the other application's code: it is Rodeo, laid out the way they are.
-// Icons are always Rodeo's own (TOOL_ICON, UI_ICON, PALETTE_ICON): the other applications' icons,
-// logos and artwork are theirs and never copied.
+// Icons are Rodeo's own: its line icons (TOOL_ICON, UI_ICON, PALETTE_ICON), or the coloured set in
+// glyphs/, drawn for Rodeo from what each command does. The other applications' icons, logos and
+// artwork are theirs and never copied.
 
 import type { ToolId } from "../state.ts";
 import type { PaneArrangement } from "../viewPanes.ts";
@@ -87,6 +88,41 @@ export interface ToolboxSpec {
   readonly groups: readonly { readonly title?: string; readonly buttons: readonly LookButton[] }[];
 }
 
+/** An option a typed command offers at its prompt: clicked, or typed by its name or its key letters. */
+export interface LineOption {
+  /** its name as the application writes it ("Extents", "Selected", "2Point") */
+  readonly name: string;
+  readonly do: Command;
+  /**
+   * the letters that pick it when typed, besides its whole name: by default its capital letters
+   * ("SElected" → "SE") or else its first letter. Matched without regard to case.
+   */
+  readonly key?: string;
+}
+
+/**
+ * A typed command the application's way: what it runs, the words it asks with and the options it
+ * offers. A plain Command runs straight away with Rodeo's own prompt.
+ */
+export interface LineCommand {
+  /** what it runs once it has what it needs; none for a command that only offers options (Rhino's Zoom) */
+  readonly do?: Command;
+  /**
+   * It works on a selection: with nothing selected it first asks for one in these words ("Select
+   * objects to move. Press Enter when done", "Select objects"), each pick adding to the selection,
+   * and Enter then runs it. With objects already selected it runs at once.
+   */
+  readonly select?: string;
+  /** its first prompt in the application's words ("Start of line", "Specify first point"), shown till its tool moves on to the next step */
+  readonly prompt?: string;
+  /** the options shown after its prompt, which a click or their name or key letters picks */
+  readonly options?: readonly LineOption[];
+  /** what Enter or Space does at its prompt (Rhino's Zoom: Extents); with none they end the command */
+  readonly enter?: Command;
+  /** the option Enter takes, shown as the default (AutoCAD's "<real time>", Rhino's "Press Enter for extents") */
+  readonly enterLabel?: string;
+}
+
 /** A command line: type a command's name or alias and press Enter or Space; Enter or Space on its own repeats the last one. */
 export interface CommandLineSpec {
   /** over the drawing, under the menus (Rhino), or along the foot of the window (AutoCAD) */
@@ -96,11 +132,21 @@ export interface CommandLineSpec {
   /** how many lines of history show above (bottom) or below (top) the prompt */
   readonly history: number;
   /** the application's commands by their full names as typed ("Line", "ExtrudeCrv", "PLINE"), matched without regard to case */
-  readonly commands: Readonly<Record<string, Command>>;
+  readonly commands: Readonly<Record<string, Command | LineCommand>>;
   /** short names for commands: alias to a full name in `commands` ("L": "LINE", "M": "Move") */
   readonly aliases?: Readonly<Record<string, string>>;
   /** names shown in capitals (AutoCAD) */
   readonly upper?: boolean;
+  /**
+   * How options are written after a prompt: Rhino's "( Extents Selected )" or AutoCAD's
+   * "[Extents/Selected]". Rhino's by default.
+   */
+  readonly options?: "rhino" | "autocad";
+  /**
+   * Rodeo's tool prompts in the application's words, by the prompt's first part (before " · "):
+   * "Click or drag to draw a line": "Start of line". A prompt not listed shows Rodeo's own words.
+   */
+  readonly prompts?: Readonly<Record<string, string>>;
 }
 
 /** One thing along a status bar. */
@@ -190,10 +236,11 @@ export interface LookSpec {
   readonly statusBar?: StatusBarSpec;
   /**
    * Where Rodeo's Mode bar (the tool's modes and options) goes: over the drawing as Rodeo has it,
-   * in a row under the ribbon or toolbars (Revit's Options Bar, Archicad's Info Box), or at the
-   * start of the status bar.
+   * in a row under the ribbon or toolbars (Revit's Options Bar, Archicad's Info Box), at the start
+   * of the status bar, or into the command line as the prompt's options (Rhino, AutoCAD: the bar
+   * itself is hidden and its modes are clicked or typed there).
    */
-  readonly modeBar: "hud" | "options" | "status";
+  readonly modeBar: "hud" | "options" | "status" | "line";
   /** Rodeo's View bar (layer, class, view): over the drawing, along the foot of the drawing (Revit's View Control Bar, Archicad's Quick Options), or gone */
   readonly viewBar: "hud" | "foot" | "hidden";
   /** Rodeo's snapping pill and cursor position over the drawing (a status bar usually shows them instead) */
@@ -214,4 +261,60 @@ export interface LookSpec {
   readonly background3d?: string;
   /** the view panes it starts with (Rhino's four views) */
   readonly panes?: PaneArrangement;
+  /**
+   * The panes' names the application's way, in place of Rodeo's "Plan" and "3D · Right": the
+   * plan's, a 3D pane's by its standard view ("Right Isometric": "Perspective"), and a 3D pane
+   * turned from them.
+   */
+  readonly paneNames?: { readonly plan: string; readonly views: Readonly<Record<string, string>>; readonly turned: string };
+  /**
+   * Its buttons' icons: Rodeo's own line icons (Vectorworks, and any look leaving it out), or
+   * Rodeo's coloured set (glyphs/), painted in the look's colours by its stylesheet's --g-* values.
+   */
+  readonly icons?: "rodeo" | "color";
+  /**
+   * Palettes whose content shows the application's way while the look is on, by Rodeo's palette
+   * id: Rhino's and AutoCAD's layer tables, SketchUp's Tags, Revit's Project Browser, Archicad's
+   * Project Map. Rodeo's own content comes back when the look goes.
+   */
+  readonly panels?: Readonly<Record<string, LookPanel>>;
+  /** a bar along the foot of the drawing in place of Rodeo's View bar: Revit's View Control Bar, Archicad's Quick Options */
+  readonly viewControl?: "revit" | "archicad";
+  /** AutoCAD's Model and Layout tabs along the foot of the drawing: the design layers, then each sheet layer */
+  readonly layoutTabs?: boolean;
+  /** the 2D drawing's grid: shown (Rhino, AutoCAD, Vectorworks) or not (Revit, Archicad and SketchUp draw none) */
+  readonly grid?: boolean;
+  /** the 2D grid's colours, minor then major lines, and the X and Y axes through the origin in theirs (Rhino's red and green) */
+  readonly gridColors?: { readonly minor: string; readonly major: string; readonly xAxis?: string; readonly yAxis?: string };
+  /** Rodeo's view cube over the drawing (the TOP / 3D box): shown, or gone where the application has none */
+  readonly viewCube?: boolean;
+  /** the docks' palettes stacked as a tray of sections each rolled up or out by its title (SketchUp's Default Tray), not tabs */
+  readonly tray?: boolean;
 }
+
+/** One column of a layer table: what each layer's row shows there. */
+export type LayerColumn =
+  | "name"
+  /** a check mark on the layer new objects go on; clicking another makes it the current one */
+  | "current"
+  /** shown or hidden (a light bulb, an eye) */
+  | "visible"
+  /** greyed: shown but not to be picked (Rodeo's grey) */
+  | "lock"
+  /** the layer's colour: its pen colour */
+  | "color"
+  | "linetype"
+  | "lineweight"
+  /** how many objects are on it */
+  | "count";
+
+/** A palette's content the application's way (LookSpec.panels). */
+export type LookPanel =
+  /**
+   * A table of layers: Rodeo's classes, one row each, as Rhino's Layers panel, AutoCAD's Layer
+   * Properties Manager and SketchUp's Tags list them. `none` is the name Rodeo's class None goes by
+   * ("Default", "0", "Untagged"); `style` picks the look of the rows and the buttons over them.
+   */
+  | { readonly kind: "layerTable"; readonly style: "rhino" | "autocad" | "sketchup"; readonly columns: readonly LayerColumn[]; readonly none: string }
+  /** a tree of the project's views, sheets and resources: Revit's Project Browser, Archicad's Navigator Project Map */
+  | { readonly kind: "browser"; readonly style: "revit" | "archicad" };
