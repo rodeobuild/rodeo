@@ -18326,5 +18326,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Tabele warstw w Rhino, AutoCAD i SketchUp, Przeglądarka projektu i Pasek sterowania widokiem w Revit, Mapa projektu i Szybkie opcje w Archicad, karty Model i Układ w AutoCAD.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Okna widoku w Rhino nazywają się Góra, Przód, Prawo i Perspektywa, z czerwoną i zieloną osią; Revit, Archicad i SketchUp nie rysują siatki.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "Ikony zostały narysowane dla Rodeo, po jednym obrazku na polecenie, w kolorach każdej aplikacji.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Każdy przycisk uruchamia własne narzędzia Rodeo. Widok › Pracuj jak › Rodeo przywraca domyślny układ."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Każdy przycisk uruchamia własne narzędzia Rodeo. Widok › Pracuj jak › Rodeo przywraca domyślny układ.",
+  "Rhino files for whole sites": "Pliki Rhino dla całych terenów",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Eksportuj Rhino 3DM zapisuje teraz w metrach rysunek sięgający dalej niż 100 m od początku układu, taki jak zaimportowane otoczenie, jak Rhino zaleca dla tak dużych modeli.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "W modelu w milimetrach o rozmiarze kilometrów Make2D, operacje logiczne i przecięcia w Rhino mogą pomijać obiekty.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "Warstwice modelu terenu trafiają do pliku jako linie na swojej wysokości, nazwane jej wartością, więc Make2D i widoki z góry w Rhino pokazują teren.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "Rysunki mieszczące się w 100 m od początku układu nadal trafiają do pliku w milimetrach."
 }

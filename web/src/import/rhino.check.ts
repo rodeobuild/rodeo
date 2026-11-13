@@ -24,7 +24,7 @@ import type { File3dm, InstanceReference, Mesh, ObjectAttributes, Transform, Uni
 import { parse3dm, type Rhino } from "./rhino.ts";
 import { MAX_FACES, tooMany, unfoldTree, type MeshFile } from "./mesh.ts";
 import { checkSymbolTrip, SYMBOL_MODEL } from "./symbols.fixture.ts";
-import { export3dm } from "../export/rhino.ts";
+import { export3dm, METRES_BEYOND_MM, reach } from "../export/rhino.ts";
 import type { FlatObject, Model3D } from "../export/scene3d.ts";
 import type { BBox, Pt, Shape, ShapeKind } from "../core/types.ts";
 
@@ -575,6 +575,76 @@ check(partNamed(ext, "Cyl").length === 0 && skipped(ext, SKIP_NO_MESH) === 1, "a
   }
   check(refs === 2, `symbols: the two Chairs written as block instances (${refs})`);
   checkSymbolTrip("3DM", parse3dm(bytes, rhino), check);
+}
+
+// ---- a site, in metres -----------------------------------------------------------------------------------
+
+{
+  // a model reaching past METRES_BEYOND_MM is written in metres, at 1 mm tolerance; a nearer one in millimetres
+  const near0 = rhino.File3dm.fromByteArray(bytes).settings();
+  check(near0.modelUnitSystem === rhino.UnitSystem.Millimeters && near(near0.modelAbsoluteTolerance, 0.001, 1e-12), "a building near the origin: millimetres, 0.001 mm");
+  const far = METRES_BEYOND_MM + 50_000;
+  const site: Model3D = {
+    layers: [
+      {
+        id: "site",
+        name: "Site",
+        elevation: 0,
+        objects: [
+          { id: "b", name: "Building", className: "Buildings", pieces: [{ color: "#cccccc", opacity: 1, triangles: boxTriangles(far, 0, 2000, far + 10000, 8000, 8000) }] },
+          { id: "p", name: "Pad", className: "Paths", pieces: [{ color: "#888888", opacity: 1, triangles: tri([-far, 0, 500], [-far + 4000, 0, 500], [-far, 3000, 500]) }] },
+          // two triangles folded along their diagonal: a mesh
+          { id: "g", name: "Ground", className: "Terrain", pieces: [{ color: "#9db57d", opacity: 1, triangles: new Float32Array([...tri([0, 0, 0], [far, 0, 1000], [0, far, 2000]), ...tri([far, 0, 1000], [far, far, 0], [0, far, 2000])]) }] },
+        ],
+      },
+    ],
+  };
+  const lines: FlatObject[] = [
+    { layerId: "site", className: "Terrain", z: 1500, color: "#000000", scale: 1, name: "1.50 m", shape: shape({ kind: "polyline", points: [{ x: 1000, y: 2000 }, { x: 30000, y: 40000 }, { x: 60000, y: 9000 }] }) },
+    { layerId: "site", className: "Facilities", z: 0, color: "#000000", scale: 1, shape: shape({ kind: "arc", center: { x: 20000, y: -30000 }, rx: 5000, ry: 5000, startAngle: 0, sweepAngle: 360 }) },
+    { layerId: "site", className: "Facilities", z: 0, color: "#000000", scale: 200, shape: shape({ kind: "text", anchor: { x: 20000, y: -30000 }, text: "Fountain", textSize: 12 * MM_PER_PT * 200 }) },
+  ];
+  check(reach(site, lines) === far + 10000 && reach(model, flat) < METRES_BEYOND_MM, `reach: the farthest coordinate (${reach(site, lines)})`);
+  const siteBytes = export3dm(site, lines, new Map([["site", "Site"]]), rhino);
+  const f = rhino.File3dm.fromByteArray(siteBytes);
+  const settings = f.settings();
+  check(settings.modelUnitSystem === rhino.UnitSystem.Meters && near(settings.modelAbsoluteTolerance, 0.001, 1e-12), "a site past 100 m: metres, 1 mm tolerance");
+  const boxOf = (g: unknown): { min: number[]; max: number[] } | null => (g ? (g as { getBoundingBox(): { min: number[]; max: number[] } }).getBoundingBox() : null);
+  const named = (name: string) => {
+    for (let i = 0; i < f.objects().count; i++) if (f.objects().get(i).attributes().name === name) return f.objects().get(i).geometry();
+    return null;
+  };
+  const building = named("Building");
+  const bb = boxOf(building);
+  check(
+    building instanceof rhino.Extrusion && !!bb && samePts([...bb.min, ...bb.max], [far / 1000, 0, 2, far / 1000 + 10, 8, 8]),
+    `a site: the building an extrusion in metres (${bb ? [...bb.min, ...bb.max].map((v) => +v.toFixed(3)) : "none"})`,
+  );
+  const pad = named("Pad");
+  const pb = boxOf(pad);
+  check(pad instanceof rhino.Brep && !!pb && samePts([...pb.min, ...pb.max], [-far / 1000, 0, 0.5, -far / 1000 + 4, 3, 0.5]), "a site: a flat piece a surface in metres");
+  const ground = named("Ground");
+  const gb = boxOf(ground);
+  check(ground instanceof rhino.Mesh && !!gb && samePts([...gb.min, ...gb.max], [0, 0, 0, far / 1000, far / 1000, 2]), "a site: a mesh in metres");
+  const contour = named("1.50 m");
+  const pl = contour instanceof rhino.Curve ? (contour as unknown as { tryGetPolyline(): { count: number; get(i: number): number[] } }).tryGetPolyline() : null;
+  check(!!pl && pl.count === 3 && samePts(pl.get(1), [30, 40, 1.5]), "a site: a named line at its own height, in metres");
+  const read = parse3dm(siteBytes, rhino);
+  check(read.frame?.mm === 1000, "a site: read back in metres");
+  // a line through a corner at its level repeats the point: Rhino calls such a polyline bad, so the repeat goes
+  const twice: FlatObject = { layerId: "site", className: "Terrain", z: 0, color: "#000000", scale: 1, name: "repeats",
+    shape: shape({ kind: "polygon", closed: true, points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 0 }] }) };
+  const once = rhino.File3dm.fromByteArray(export3dm({ layers: [] }, [twice], new Map([["site", "Site"]]), rhino)).objects().get(0).geometry() as unknown as { isValid: boolean; pointCount: number };
+  check(once.isValid && once.pointCount === 4, `a repeated point and a repeated closing point left out: a valid closed polyline of 3 corners (${once.pointCount} points)`);
+  const circle = read.shapes?.find((x) => x.shape.kind === "arc");
+  check(!!circle, `a site: the circle comes back (${read.shapes?.map((x) => x.shape.kind)})`);
+  const text = read.shapes?.find((x) => x.shape.kind === "text");
+  check(!!text && text.points === 12, `a site: a text keeps its size in points (${text?.points})`);
+  // blocks in a site: their geometry and where they go in metres
+  const farLine: FlatObject = { layerId: "ground", className: "None", z: 0, color: "#000000", scale: 1, shape: shape({ kind: "line", points: [{ x: far, y: 0 }, { x: far + 1000, y: 0 }] }) };
+  const symbolBytes = export3dm(SYMBOL_MODEL, [farLine], new Map([["ground", "Ground"]]), rhino);
+  check(rhino.File3dm.fromByteArray(symbolBytes).settings().modelUnitSystem === rhino.UnitSystem.Meters, "symbols in a site: metres");
+  checkSymbolTrip("3DM in metres", parse3dm(symbolBytes, rhino), check);
 }
 
 // ---- blocks --------------------------------------------------------------------------------------------

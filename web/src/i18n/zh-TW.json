@@ -18335,5 +18335,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Rhino、AutoCAD 與 SketchUp 的圖層表，Revit 的專案瀏覽器與檢視控制列，Archicad 的專案地圖與快速選項，以及 AutoCAD 的模型與配置頁籤。",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Rhino 的視埠名稱為上視圖、前視圖、右視圖與透視圖，並帶有紅色與綠色座標軸；Revit、Archicad 與 SketchUp 不繪製格線。",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "圖示為 Rodeo 重新繪製，每個指令一張圖，並依各應用程式的配色呈現。",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "每個按鈕都會執行 Rodeo 自己的工具。選擇「視圖 › 仿照 › Rodeo」即可返回。"
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "每個按鈕都會執行 Rodeo 自己的工具。選擇「視圖 › 仿照 › Rodeo」即可返回。",
+  "Rhino files for whole sites": "適合整個基地的 Rhino 檔案",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "匯出 Rhino 3DM 現在會將離原點超過 100 m 的圖面（例如匯入的基地）以公尺為單位寫出，這正是 Rhino 對這麼大模型的建議。",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "在跨度數公里的公釐模型中，Rhino 的 Make2D、布林運算和求交可能會漏掉物件。",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "基地模型的等高線會作為位於各自高度的線匯出，並以高度命名，因此 Rhino 的 Make2D 和平面視圖都能顯示地形。",
+  "Drawings within 100 m of their origin still go out in millimetres.": "離原點 100 m 以內的圖面仍以公釐為單位匯出。"
 }

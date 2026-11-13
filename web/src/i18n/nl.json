@@ -18292,5 +18292,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Laagtabellen in Rhino, AutoCAD en SketchUp, Projectbrowser en Beeldschermbalk van Revit, Projectkaart en Snelle opties van Archicad, en de tabbladen Model en Lay-out van AutoCAD.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "De viewports van Rhino heten Boven, Voor, Rechts en Perspectief, met rode en groene assen; Revit, Archicad en SketchUp tonen geen raster.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "De pictogrammen zijn voor Rodeo getekend, één beeld per opdracht, in de kleuren van elke toepassing.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Elke knop start de eigen gereedschappen van Rodeo. Beeld › Werken als › Rodeo brengt je terug."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Elke knop start de eigen gereedschappen van Rodeo. Beeld › Werken als › Rodeo brengt je terug.",
+  "Rhino files for whole sites": "Rhino-bestanden voor hele locaties",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Rhino 3DM exporteren schrijft een tekening die meer dan 100 m van haar oorsprong reikt, zoals een geïmporteerde omgeving, nu in meters, zoals Rhino aanraadt voor zulke grote modellen.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "In een millimetermodel van kilometers groot kunnen Make2D, booleaanse bewerkingen en snijdingen van Rhino objecten weglaten.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "De hoogtelijnen van een terreinmodel gaan mee als lijnen op hun hoogte, naar die hoogte genoemd, zodat Make2D en bovenaanzichten in Rhino het terrein tonen.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "Tekeningen binnen 100 m van hun oorsprong gaan nog steeds in millimeters mee."
 }

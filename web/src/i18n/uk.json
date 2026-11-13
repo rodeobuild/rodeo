@@ -18439,5 +18439,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Таблиці шарів у Rhino, AutoCAD і SketchUp, Провідник проєкту та Панель керування виглядом у Revit, Карта проєкту та Швидкі параметри в Archicad, вкладки «Модель» і «Лист» в AutoCAD.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Видові екрани в Rhino називаються «Зверху», «Спереду», «Справа» і «Перспектива», з червоною та зеленою осями; Revit, Archicad і SketchUp сітку не показують.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "Піктограми намальовано для Rodeo: по одному малюнку на команду, у кольорах кожного застосунку.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Кожна кнопка запускає власні інструменти Rodeo. «Вид › Працювати як › Rodeo» повертає все назад."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Кожна кнопка запускає власні інструменти Rodeo. «Вид › Працювати як › Rodeo» повертає все назад.",
+  "Rhino files for whole sites": "Файли Rhino для цілих ділянок",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Експорт Rhino 3DM тепер записує в метрах креслення, що сягає від початку координат далі ніж на 100 м, наприклад імпортовану ділянку, як Rhino радить для таких великих моделей.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "У міліметровій моделі завбільшки в кілометри Make2D, булеві операції та перетини Rhino можуть пропускати об'єкти.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "Горизонталі моделі ділянки виводяться лініями на своїй висоті й названі за нею, тож Make2D і види згори в Rhino показують рельєф.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "Креслення в межах 100 м від початку координат і далі виводяться в міліметрах."
 }

@@ -84,6 +84,7 @@ import { workingPlanesPalette } from "./workingPlanes.ts";
 import { visualizationPalette } from "./panels/visualization.ts";
 import { Renderer } from "./renderer.ts";
 import { Scene } from "./scene.ts";
+import { contourCurves } from "./siteModel.ts";
 import { installShortcuts } from "./shortcuts.ts";
 import { installSmartOptions, openSmartOptions } from "./smartOptions.ts";
 import { Snapper } from "./snap.ts";
@@ -3012,7 +3013,8 @@ export class App {
     if (!session) return;
     const layers = this.layers3d();
     const doc = withoutHidden(session.doc);
-    const flat = format === "3dm" ? flatOf(doc, layers) : [];
+    // a Rhino file takes the 2D, and each site model's contours at their heights
+    const flat = format === "3dm" ? [...flatOf(doc, layers), ...contourCurves(doc, layers)] : [];
     if (!doc.model3d().some((m) => layers.has(m.layerId) && m.triangles.length > 0) && flat.length === 0) {
       toast(format === "3dm" ? "No 3D objects or 2D linework on the visible design layers." : "No 3D objects on the visible design layers.", "info");
       return;

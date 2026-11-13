@@ -22,6 +22,16 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T12:30:00Z",
+    "rhino-sites",
+    "Rhino files for whole sites",
+    `Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.
+- In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.
+- A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.
+- Drawings within 100 m of their origin still go out in millimetres.`,
+    "site",
+  ),
+  release(
     "2026-11-13T12:20:00Z",
     "work-like-commands",
     "Work Like: typed commands and icons you can tell apart",

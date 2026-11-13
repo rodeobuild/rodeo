@@ -18376,5 +18376,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Rhino, AutoCAD ve SketchUp'taki katman tabloları; Revit'in Proje Tarayıcısı ve Görünüm Kontrol Çubuğu; Archicad'in Proje Haritası ve Hızlı Seçenekleri; AutoCAD'in Model ve yerleşim sekmeleri.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Rhino'nun görünüm pencereleri Üst, Ön, Sağ ve Perspektif olarak adlandırılır ve kırmızı ile yeşil eksenleri vardır; Revit, Archicad ve SketchUp ızgara çizmez.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "Simgeler Rodeo için çizildi; her komut için bir resim var ve her uygulamanın renklerinde.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Her düğme Rodeo'nun kendi araçlarını çalıştırır. Görünüm › Gibi çalış › Rodeo ile geri dönersiniz."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Her düğme Rodeo'nun kendi araçlarını çalıştırır. Görünüm › Gibi çalış › Rodeo ile geri dönersiniz.",
+  "Rhino files for whole sites": "Tüm alanlar için Rhino dosyaları",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Rhino 3DM dışa aktar artık orijininden 100 m'den uzağa uzanan bir çizimi, örneğin içe aktarılmış bir alanı, Rhino'nun bu büyüklükteki modeller için önerdiği gibi metre cinsinden yazar.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "Kilometrelerce genişlikte milimetre cinsinden bir modelde Rhino'nun Make2D, Boolean ve kesişim işlemleri nesneleri atlayabilir.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "Bir arazi modelinin tesviye eğrileri kendi yüksekliklerinde, yükseklikleriyle adlandırılmış çizgiler olarak çıkar; böylece Rhino'da Make2D ve plan görünümleri araziyi gösterir.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "Orijininden 100 m içinde kalan çizimler yine milimetre cinsinden çıkar."
 }

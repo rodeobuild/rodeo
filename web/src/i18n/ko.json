@@ -18329,5 +18329,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Rhino, AutoCAD, SketchUp의 레이어 표, Revit의 프로젝트 탐색기와 뷰 컨트롤 바, Archicad의 프로젝트 맵과 빠른 옵션, AutoCAD의 모형 및 배치 탭.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Rhino의 뷰포트 이름은 상단, 정면, 오른쪽, 투시도이며 빨간색과 초록색 축이 표시됩니다. Revit, Archicad, SketchUp에는 그리드가 표시되지 않습니다.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "아이콘은 Rodeo를 위해 명령마다 한 장씩 새로 그렸으며, 각 앱의 색깔을 따릅니다.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "모든 버튼은 Rodeo 고유의 도구를 실행합니다. 보기 › 다른 앱처럼 작업 › Rodeo를 선택하면 원래대로 돌아갑니다."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "모든 버튼은 Rodeo 고유의 도구를 실행합니다. 보기 › 다른 앱처럼 작업 › Rodeo를 선택하면 원래대로 돌아갑니다.",
+  "Rhino files for whole sites": "대지 전체를 위한 Rhino 파일",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Rhino 3DM 내보내기는 이제 가져온 대지처럼 원점에서 100 m 넘게 뻗은 도면을 Rhino가 그 정도 크기의 모델에 권하는 대로 미터 단위로 씁니다.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "수 킬로미터에 이르는 밀리미터 단위 모델에서는 Rhino의 Make2D, 불리언 연산, 교차가 객체를 빠뜨릴 수 있습니다.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "대지 모델의 등고선은 각자의 높이에 놓인 선으로 높이를 이름 삼아 내보내지므로, Rhino의 Make2D와 평면 뷰에 지형이 나타납니다.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "원점에서 100 m 안에 있는 도면은 계속 밀리미터 단위로 내보냅니다."
 }

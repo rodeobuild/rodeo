@@ -18305,5 +18305,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Tabel layer di Rhino, AutoCAD, dan SketchUp; Project Browser dan View Control Bar di Revit; Project Map dan Quick Options di Archicad; tab Model dan layout di AutoCAD.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Viewport Rhino bernama Atas, Depan, Kanan, dan Perspektif, dengan sumbu merah dan hijau; Revit, Archicad, dan SketchUp tidak menggambar grid.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "Ikon digambar untuk Rodeo, satu gambar per perintah, dalam warna setiap aplikasi.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Setiap tombol menjalankan alat Rodeo sendiri. Tampilan › Bekerja Seperti › Rodeo untuk kembali."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Setiap tombol menjalankan alat Rodeo sendiri. Tampilan › Bekerja Seperti › Rodeo untuk kembali.",
+  "Rhino files for whole sites": "Berkas Rhino untuk seluruh tapak",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Ekspor Rhino 3DM kini menulis gambar yang menjangkau lebih dari 100 m dari titik asalnya, seperti tapak yang diimpor, dalam meter, seperti yang disarankan Rhino untuk model sebesar itu.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "Dalam model milimeter selebar berkilometer, Make2D, operasi Boolean, dan perpotongan Rhino dapat melewatkan objek.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "Kontur model tapak diekspor sebagai garis pada ketinggiannya, dinamai sesuai ketinggian itu, sehingga Make2D dan tampak denah di Rhino menampilkan medan.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "Gambar dalam jarak 100 m dari titik asalnya tetap diekspor dalam milimeter."
 }

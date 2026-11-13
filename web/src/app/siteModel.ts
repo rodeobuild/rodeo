@@ -6,7 +6,8 @@
 // the model wears a striped border until then. Heights are above the model's layer. It is its own plug-in, so
 // Vectorworks' site models in a drawing are left alone.
 
-import type { Attributes, EditSession, NewShape, ObjectInfo, PluginFieldSpec, Pt, RecordFieldSpec, RecordValue, VwxDocument } from "../core/index.ts";
+import type { Attributes, EditSession, NewShape, ObjectInfo, PluginFieldSpec, Pt, RecordFieldSpec, RecordValue, Shape, VwxDocument } from "../core/index.ts";
+import type { FlatObject } from "../export/scene3d.ts";
 import { attempt, setSelection, turnAbout, zoomToSelection } from "./commands.ts";
 import { appContext, followEdits, otherSiteModifiers, registerPluginDrivers, siteModelsUpdated, type PluginDriver, type PluginWidget, sentToSurface } from "./ext.ts";
 import { distToSegment, offsetPolyline } from "./geom.ts";
@@ -403,6 +404,42 @@ const linesAt = (m: Model, surface: Surface, z: number): ContourLine[] => {
   const lines = contourLines(surface, z);
   return String(m.value(FIELD.style2d)) === "2D Contours (Smoothed)" ? lines.map(smoothed) : lines;
 };
+
+/**
+ * The contours of each site model on the design layers `layerIds` as lines for a 3D file (Rhino), so the file has the
+ * terrain's lines and not only its surface: at the levels its plan draws, each on the surface its 3D shows, at its
+ * height there (the layer's elevation added, as its 3D has it), named by its height, in the model's class. Only for a
+ * model shown in 3D as a surface (Existing Only or Proposed Only), whose plan drawing, its contours with it, a 3D file
+ * leaves out.
+ */
+export function contourCurves(doc: VwxDocument, layerIds: ReadonlySet<string>): FlatObject[] {
+  const models = modelsIn(doc).filter((m) => layerIds.has(m.layerId));
+  if (!models.length) return [];
+  const shown = new Set(doc.model3d().filter((x) => x.triangles.length >= 9).map((x) => x.objectId));
+  const out: FlatObject[] = [];
+  for (const m of models) {
+    const display = String(m.value(FIELD.display3d));
+    if (!shown.has(m.id) || (display !== "Existing Only" && display !== "Proposed Only")) continue;
+    let t: Terrain;
+    try {
+      t = terrainOf(m);
+    } catch {
+      continue;
+    }
+    const surface = display === "Existing Only" ? t.existing : t.proposed;
+    const layer = doc.layers().find((l) => l.id === m.layerId);
+    const className = doc.object(m.id)?.className || "None";
+    for (const level of levelsOf(m)) {
+      const name = formatLength(level.z, doc.info.units);
+      for (const line of contourLines(surface, level.z)) {
+        if (line.points.length < 2) continue;
+        const shape: Shape = { kind: "polyline", points: [...line.points], closed: line.closed, bbox: null };
+        out.push({ layerId: m.layerId, className, z: level.z + (layer?.elevation ?? 0), color: COLOUR.line, scale: layer?.scale || 1, shape, name });
+      }
+    }
+  }
+  return out;
+}
 
 /** How far along a contour its labels go when they're left to place themselves. */
 function automaticStations(m: Model, line: ContourLine, major: boolean, width: number): number[] {

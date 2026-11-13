@@ -1,4 +1,5 @@
-// Rhino .3dm export, the writing side (no DOM). export3dm writes a Rhino file in millimetres, z up, through
+// Rhino .3dm export, the writing side (no DOM). export3dm writes a Rhino file, z up, in millimetres, or in metres
+// when the model reaches more than 100 m from the origin (a site), through
 // rhino3dm (openNURBS compiled to WebAssembly; the app loads it and passes it in): a Rhino layer per design
 // layer, with a sublayer per class its objects use ("Layer::Class"); each 3D object piece that is an upright
 // prism (an extrude, a slab, a plain wall, an imported building: prism.ts) as a capped extrusion with its holes,
@@ -11,7 +12,8 @@
 // meshes (and the blocks placed in it), on the sublayers of the first layer that places it, and each instance as
 // a block instance through its matrix; and the 2D objects that stand for nothing in 3D as lines, polylines (a
 // closed one repeats its first point, and a fill's outline round its holes comes apart into its rings, its cuts
-// left out), circles and arcs (a sampled polyline when elliptical), points and text. Text is a text dot, since
+// left out; a site model's contours at their heights, named by them), circles and arcs (a sampled polyline when
+// elliptical), points and text. Text is a text dot, since
 // rhino3dm can't make a text entity: a dot is drawn the same size on screen however near, so its size is the
 // text's in points (its world size over its layer's scale), whole and at least 3, and it keeps no rotation.
 // Imports nothing from rhino3dm at run time, so it can be checked under Node.
@@ -24,6 +26,15 @@ import { flatOf, type Flat, type FlatRegion } from "./flat.ts";
 import { prismOf, type Prism } from "./prism.ts";
 import type { Rhino } from "../import/rhino.ts";
 import type { Brep, Extrusion, File3dm, GeometryBase, InstanceReference, Mesh, ObjectAttributes, Plane, Transform } from "rhino3dm";
+
+/**
+ * A model reaching further than this from the origin (mm) is written in metres, else in millimetres. Rhino works to
+ * the file's tolerance, and its Make2D, intersections and booleans lose whole objects when the numbers grow too
+ * large for it (McNeel: model architecture in metres, near the origin); a Site Context area spans kilometres.
+ */
+export const METRES_BEYOND_MM = 100_000;
+/** The file's absolute tolerance in its own units: 0.001 mm for a model in millimetres, 1 mm for one in metres. */
+const TOLERANCE = 0.001;
 
 /** Segments a sampled ellipse or elliptical arc takes. */
 const ELLIPSE_SEGMENTS = 64;
@@ -41,24 +52,28 @@ const QUAD_FLAT = Math.cos(Math.PI / 90);
 const QUAD_TURN = Math.sin(Math.PI / 180);
 
 /**
- * The drawing as a Rhino file (.3dm bytes) in millimetres: `model`'s pieces as extrusions where they are upright
- * prisms and meshes where not, and `flat`'s 2D objects
- * as linework and text, each on a layer named after its design layer (`layerNames` names the layers that only
- * have flat objects) under a sublayer for its class. The objects in a group are put in a Rhino group named after
- * it, and in the groups holding that one, as Rhino nests groups. The model's symbols are block definitions, and
- * an object placing one a block instance.
+ * The drawing as a Rhino file (.3dm bytes), in millimetres, or in metres when it reaches more than METRES_BEYOND_MM
+ * from the origin: `model`'s pieces as extrusions where they are upright prisms and meshes where not, and `flat`'s
+ * 2D objects as linework and text, each on a layer named after its design layer (`layerNames` names the layers
+ * that only have flat objects) under a sublayer for its class. The objects in a group are put in a Rhino group
+ * named after it, and in the groups holding that one, as Rhino nests groups. The model's symbols are block
+ * definitions, and an object placing one a block instance.
  */
 export function export3dm(model: Model3D, flat: readonly FlatObject[], layerNames: ReadonlyMap<string, string>, rhino: Rhino): Uint8Array {
   const file = new rhino.File3dm();
+  const metres = reach(model, flat) > METRES_BEYOND_MM;
+  // the file's units for a millimetre
+  const k = metres ? 0.001 : 1;
   const settings = file.settings();
-  settings.modelUnitSystem = rhino.UnitSystem.Millimeters;
+  settings.modelUnitSystem = metres ? rhino.UnitSystem.Meters : rhino.UnitSystem.Millimeters;
+  settings.modelAbsoluteTolerance = TOLERANCE;
   free(settings);
   const objects = file.objects();
   try {
     const placedOn = symbolLayers(model);
     const at = addLayers(file, rhino, model, flat, layerNames, placedOn);
     const index = (layerId: string, className: string): number => at.get(keyOf(layerId, className)) ?? 0;
-    const blocks = addBlocks(file, rhino, model, (k, className) => index(placedOn[k], className));
+    const blocks = addBlocks(file, rhino, model, k, (s, className) => index(placedOn[s], className));
     const groups = new Map<string, number>();
     const groupTable = file.groups();
     const groupOf = (group: { id: string; name: string }): number => {
@@ -76,7 +91,7 @@ export function export3dm(model: Model3D, flat: readonly FlatObject[], layerName
     for (const layer of model.layers) {
       for (const obj of layer.objects) {
         if (obj.instance) {
-          const ref = blockOf(rhino, blocks, obj);
+          const ref = blockOf(rhino, blocks, obj, k);
           if (!ref) continue;
           const attrs = attributes(rhino, index(layer.id, obj.className), undefined, obj.name);
           for (const g of obj.groups ?? []) attrs.addToGroup(groupOf(g));
@@ -89,7 +104,7 @@ export function export3dm(model: Model3D, flat: readonly FlatObject[], layerName
           continue;
         }
         for (const piece of obj.pieces) {
-          const made = pieceGeometry(rhino, piece);
+          const made = pieceGeometry(rhino, piece, k);
           try {
             for (const geometry of made) {
               const attrs = attributes(rhino, index(layer.id, obj.className), piece.color, obj.name);
@@ -108,11 +123,42 @@ export function export3dm(model: Model3D, flat: readonly FlatObject[], layerName
         }
       }
     }
-    for (const f of flat) writeFlat(rhino, objects, f, index(f.layerId, f.className));
+    for (const f of flat) writeFlat(rhino, objects, f, index(f.layerId, f.className), k);
     return file.toByteArray();
   } finally {
     free(file);
   }
+}
+
+/**
+ * How far the model reaches from the origin, mm: the largest coordinate of its pieces, of where its instances
+ * place their symbols (with the symbol's own reach) and of its 2D objects.
+ */
+export function reach(model: Model3D, flat: readonly FlatObject[]): number {
+  let far = 0;
+  const pieces = (objects: readonly ModelObject[]): number => {
+    let r = 0;
+    for (const o of objects) for (const p of o.pieces) for (let i = 0; i < p.triangles.length; i++) r = Math.max(r, Math.abs(p.triangles[i]));
+    return r;
+  };
+  const own = (model.symbols ?? []).map((s) => pieces(s.objects));
+  const objects = (list: readonly ModelObject[]): void => {
+    for (const o of list) {
+      const m = o.instance?.matrix;
+      // where its origin goes, and the symbol's reach as its longest axis stretches it
+      const stretch = m ? Math.max(Math.hypot(m[0], m[1], m[2]), Math.hypot(m[3], m[4], m[5]), Math.hypot(m[6], m[7], m[8])) : 0;
+      if (m) far = Math.max(far, Math.max(Math.abs(m[9]), Math.abs(m[10]), Math.abs(m[11])) + stretch * (own[o.instance!.symbol] ?? 0));
+    }
+    far = Math.max(far, pieces(list));
+  };
+  for (const layer of model.layers) objects(layer.objects);
+  for (const f of flat) {
+    const s = f.shape;
+    const r = Math.max(Math.abs(s.rx ?? 0), Math.abs(s.ry ?? 0));
+    for (const p of [...s.points, ...(s.center ? [s.center] : []), ...(s.anchor ? [s.anchor] : [])]) far = Math.max(far, Math.abs(p.x) + r, Math.abs(p.y) + r);
+    far = Math.max(far, Math.abs(f.z));
+  }
+  return far;
 }
 
 /** The first layer placing each of the model's symbols, itself or through another symbol, by symbol. */
@@ -132,30 +178,30 @@ function symbolLayers(model: Model3D): string[] {
 
 /**
  * The model's symbols as block definitions, each of its objects' solids and meshes and the blocks placed in it, named
- * after the symbol, its objects on `layerOf`'s layer for their class. Each one's id, by symbol; null for one
- * left with nothing to hold.
+ * after the symbol, its objects on `layerOf`'s layer for their class, `k` file units to the millimetre. Each one's
+ * id, by symbol; null for one left with nothing to hold.
  */
-function addBlocks(file: File3dm, rhino: Rhino, model: Model3D, layerOf: (symbol: number, className: string) => number): (string | null)[] {
+function addBlocks(file: File3dm, rhino: Rhino, model: Model3D, k: number, layerOf: (symbol: number, className: string) => number): (string | null)[] {
   const ids: (string | null)[] = [];
   const table = file.instanceDefinitions();
   const taken = new Set<string>();
-  for (const [k, symbol] of (model.symbols ?? []).entries()) {
+  for (const [at, symbol] of (model.symbols ?? []).entries()) {
     const geometry: GeometryBase[] = [];
     const attrs: ObjectAttributes[] = [];
     try {
       for (const obj of symbol.objects) {
         if (obj.instance) {
-          const ref = blockOf(rhino, ids, obj);
+          const ref = blockOf(rhino, ids, obj, k);
           if (ref) {
             geometry.push(ref);
-            attrs.push(attributes(rhino, layerOf(k, obj.className), undefined, obj.name));
+            attrs.push(attributes(rhino, layerOf(at, obj.className), undefined, obj.name));
           }
           continue;
         }
         for (const piece of obj.pieces) {
-          for (const g of pieceGeometry(rhino, piece)) {
+          for (const g of pieceGeometry(rhino, piece, k)) {
             geometry.push(g);
-            attrs.push(attributes(rhino, layerOf(k, obj.className), piece.color, obj.name));
+            attrs.push(attributes(rhino, layerOf(at, obj.className), piece.color, obj.name));
           }
         }
       }
@@ -171,11 +217,17 @@ function addBlocks(file: File3dm, rhino: Rhino, model: Model3D, layerOf: (symbol
   return ids;
 }
 
-/** An instance of the block an object places, through its matrix; null when that block wasn't made. */
-function blockOf(rhino: Rhino, blocks: readonly (string | null)[], obj: ModelObject): InstanceReference | null {
+/**
+ * An instance of the block an object places, through its matrix, where it puts the symbol's origin in file units (`k`
+ * to the millimetre; the block's own geometry is in them too); null when that block wasn't made.
+ */
+function blockOf(rhino: Rhino, blocks: readonly (string | null)[], obj: ModelObject, k: number): InstanceReference | null {
   const id = obj.instance ? blocks[obj.instance.symbol] : null;
   if (!id) return null;
-  const xf = transformOf(rhino, obj.instance!.matrix);
+  const xf = transformOf(
+    rhino,
+    obj.instance!.matrix.map((x, i) => (i >= 9 ? x * k : x)),
+  );
   try {
     return new (rhino.InstanceReference as unknown as new (id: string, xf: Transform) => InstanceReference)(id, xf);
   } finally {
@@ -280,24 +332,56 @@ function uniqueName(raw: string, fallback: string, taken: Set<string>): string {
 const givenAway: Mesh[] = [];
 
 /**
- * A piece as Rhino geometry: an extrusion when it is an upright prism, a trimmed planar surface for each of its parts
- * when it is flat (flat.ts), else a mesh; none when it has no faces.
+ * A piece as Rhino geometry, `k` file units to the millimetre: an extrusion when it is an upright prism, a trimmed
+ * planar surface for each of its parts when it is flat (flat.ts), else a mesh; none when it has no faces. Its shape is
+ * found in millimetres, as the triangles are, and scaled as it is written.
  */
-function pieceGeometry(rhino: Rhino, piece: ModelPiece): (Extrusion | Brep | Mesh)[] {
+function pieceGeometry(rhino: Rhino, piece: ModelPiece, k: number): (Extrusion | Brep | Mesh)[] {
   const prism = prismOf(piece.triangles);
   if (!prism) {
     const flat = flatOf(piece.triangles);
-    const faces = flat ? flatFaces(rhino, flat) : null;
+    const faces = flat ? flatFaces(rhino, scaledFlat(flat, k)) : null;
     if (faces) return faces;
   }
-  const mesh = pieceMesh(rhino, piece);
+  const mesh = pieceMesh(rhino, piece, k);
   if (!mesh) return [];
-  const solid = prism ? prismExtrusion(rhino, prism) : null;
+  const solid = prism ? prismExtrusion(rhino, scaledPrism(prism, k)) : null;
   if (!solid) return [mesh];
   // the triangles stay as its render mesh, for readers that draw only what a file has meshed
   solid.setMesh(mesh, rhino.MeshType.Render);
   givenAway.push(mesh);
   return [solid];
+}
+
+/** A prism scaled by `k` (its outline, holes and heights). */
+function scaledPrism(p: Prism, k: number): Prism {
+  if (k === 1) return p;
+  const ring = (pts: readonly Pt[]): Pt[] => pts.map((q) => ({ x: q.x * k, y: q.y * k }));
+  return { ...p, z0: p.z0 * k, z1: p.z1 * k, outer: ring(p.outer), holes: p.holes.map(ring) };
+}
+
+/**
+ * A flat surface scaled by `k`: its plane's point and its rings (the axes stay of length 1), each ring's point still
+ * the piece's own corner, scaled, where it was one.
+ */
+function scaledFlat(flat: Flat, k: number): Flat {
+  if (k === 1) return flat;
+  const world = new Map<Pt, Flat["origin"]>();
+  const ring = (pts: readonly Pt[]): Pt[] =>
+    pts.map((p) => {
+      const q = { x: p.x * k, y: p.y * k };
+      const w = flat.at(p);
+      world.set(q, [w[0] * k, w[1] * k, w[2] * k]);
+      return q;
+    });
+  const origin: Flat["origin"] = [flat.origin[0] * k, flat.origin[1] * k, flat.origin[2] * k];
+  const { u, v } = flat;
+  return {
+    ...flat,
+    origin,
+    regions: flat.regions.map((r) => ({ outer: ring(r.outer), holes: r.holes.map(ring) })),
+    at: (p) => world.get(p) ?? [origin[0] + p.x * u[0] + p.y * v[0], origin[1] + p.x * u[1] + p.y * v[1], origin[2] + p.x * u[2] + p.y * v[2]],
+  };
 }
 
 /** A flat surface's parts, each a trimmed planar surface with its holes and a render mesh; null if rhino3dm refuses one. */
@@ -413,7 +497,7 @@ function cappedFace(
   }
 }
 
-/** How far a flat part with holes is extruded to take its cap (any length does). */
+/** How far a flat part with holes is extruded to take its cap, in file units (any length does). */
 const EXTRUDE_MM = 1;
 
 /** Whether every edge of a Brep starts and ends on a flat surface's plane (a tenth of EXTRUDE_MM off at most). */
@@ -515,9 +599,10 @@ function prismExtrusion(rhino: Rhino, p: Prism): Extrusion | null {
  * that meet smoothly, with their normal, and its own copy, with its own normal, on each side of a crease (faces at
  * more than CREASE); then each pair of triangles on one plane that make a good quad joined into it. A flat sliver
  * (three corners in a line) stays, joined to the first group at each corner, as it closes the mesh where a run is
- * split on one side and not the other. Null when no face is left.
+ * split on one side and not the other. Its corners are written `k` file units to the millimetre. Null when no face
+ * is left.
  */
-function pieceMesh(rhino: Rhino, piece: ModelPiece): Mesh | null {
+function pieceMesh(rhino: Rhino, piece: ModelPiece, k: number): Mesh | null {
   const t = piece.triangles;
   // the corners, by exact position, and the triangles kept, their corners and their area-weighted normals
   const at = new Map<string, number>();
@@ -591,7 +676,7 @@ function pieceMesh(rhino: Rhino, piece: ModelPiece): Mesh | null {
         }
       }
       for (const g of groups) {
-        const v = verts.add(xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]);
+        const v = verts.add(xyz[3 * c] * k, xyz[3 * c + 1] * k, xyz[3 * c + 2] * k);
         // a corner only slivers meet at points up, having no better way
         const len = Math.hypot(...g.sum);
         if (len > 0) vnormals.add(g.sum[0] / len, g.sum[1] / len, g.sum[2] / len);
@@ -688,37 +773,40 @@ function attributes(rhino: Rhino, layerIndex: number, colour: string | undefined
   return a;
 }
 
-/** A 2D object written as its Rhino counterpart at its z; shapes with no Rhino form are left out. */
-function writeFlat(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, f: FlatObject, layerIndex: number): void {
+/** A 2D object written as its Rhino counterpart at its z, `k` file units to the millimetre; shapes with no Rhino form are left out. */
+function writeFlat(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, f: FlatObject, layerIndex: number, k: number): void {
   const s: Shape = f.shape;
-  const attrs = attributes(rhino, layerIndex, f.color);
+  const attrs = attributes(rhino, layerIndex, f.color, f.name);
+  const at = (p: Pt): number[] => [p.x * k, p.y * k, f.z * k];
   try {
     switch (s.kind) {
       case "line": {
         if (s.points.length < 2) break;
         const [a, b] = s.points;
-        objects.addLine(at3(a, f.z), at3(b, f.z), attrs);
+        objects.addLine(at(a), at(b), attrs);
         break;
       }
       case "rect":
       case "polygon":
       case "polyline": {
         for (const ring of s.closed ? ringsOf(s.points) : [s.points]) {
-          const pts = ring.map((p) => at3(p, f.z));
+          // a point repeated straight after itself makes a polyline Rhino calls bad (a contour through a corner at its level)
+          const pts = ring.map(at).filter((p, i, all) => i === 0 || !samePoint(p, all[i - 1]));
+          if (s.closed && pts.length > 1 && samePoint(pts[0], pts[pts.length - 1])) pts.pop();
           if (s.closed && pts.length) pts.push([...pts[0]]);
           if (pts.length >= 2) objects.addPolyline(pts, attrs);
         }
         break;
       }
       case "arc":
-        writeArc(rhino, objects, s, f.z, attrs);
+        writeArc(rhino, objects, s, f.z, k, attrs);
         break;
       case "text":
-        writeText(rhino, objects, s, f.z, f.scale, attrs);
+        writeText(rhino, objects, s, at, f.scale, attrs);
         break;
       case "locus": {
         const p = s.points[0];
-        if (p) objects.addPoint(at3(p, f.z), attrs);
+        if (p) objects.addPoint(at(p), attrs);
         break;
       }
       default:
@@ -731,11 +819,13 @@ function writeFlat(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, f: Fla
 
 /**
  * An arc: a circle when complete, an arc when circular (its radius the x one) and a sampled polyline when
- * elliptical. Its sweep counts from its start, counter-clockwise when positive.
+ * elliptical. Its sweep counts from its start, counter-clockwise when positive. Written `k` file units to the millimetre.
  */
-function writeArc(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, s: Shape, z: number, attrs: ObjectAttributes): void {
+function writeArc(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, shape: Shape, zMm: number, k: number, attrs: ObjectAttributes): void {
+  if (!shape.center || shape.rx === undefined || shape.ry === undefined) return;
+  const s = { ...shape, center: { x: shape.center.x * k, y: shape.center.y * k }, rx: shape.rx * k, ry: shape.ry * k };
   const c = s.center;
-  if (!c || s.rx === undefined || s.ry === undefined) return;
+  const z = zMm * k;
   const rx = Math.abs(s.rx);
   const ry = Math.abs(s.ry);
   const a0 = s.startAngle ?? 0;
@@ -773,14 +863,14 @@ function writeArc(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, s: Shap
 
 /**
  * Text as a text dot at the anchor, its font height the text's size in points on a layer at 1:`scale` (whole, at
- * least MIN_DOT_POINTS; a dot keeps no finer size and no rotation).
+ * least MIN_DOT_POINTS; a dot keeps no finer size and no rotation). `place` gives a plan point's place in the file.
  */
-function writeText(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, s: Shape, z: number, scale: number, attrs: ObjectAttributes): void {
+function writeText(rhino: Rhino, objects: ReturnType<File3dm["objects"]>, s: Shape, place: (p: Pt) => number[], scale: number, attrs: ObjectAttributes): void {
   const at = s.anchor ?? (s.bbox ? { x: s.bbox.x0, y: s.bbox.y0 } : null);
   if (!s.text || !at) return;
   const text = s.text.replace(/\r\n|\r/g, "\n");
   const points = s.textSize !== undefined && s.textSize > 0 ? s.textSize / (MM_PER_PT * (scale > 0 ? scale : 1)) : DEFAULT_POINTS;
-  const id = objects.addTextDot(text, at3(at, z), attrs);
+  const id = objects.addTextDot(text, place(at), attrs);
   const o = objects.findId(id);
   try {
     const g = o.geometry();
@@ -826,6 +916,11 @@ export function ringsOf(points: readonly Pt[]): Pt[][] {
     if (ring.length >= 3) rings.push(ring);
   }
   return rings;
+}
+
+/** Whether two points are the same point. */
+function samePoint(a: readonly number[], b: readonly number[]): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
 /** A plan point at z, as rhino3dm takes a point. */

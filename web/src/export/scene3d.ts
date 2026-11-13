@@ -76,6 +76,8 @@ export interface FlatObject {
   /** the layer's drawing scale (50 for 1:50), which sizes its text in points */
   scale: number;
   shape: Shape;
+  /** what the writer names it, if anything (a contour's height) */
+  name?: string;
 }
 
 /** What modelOf reads of an object: a drawing's (ObjectInfo) or one in a symbol definition. */

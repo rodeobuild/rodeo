@@ -288,12 +288,13 @@ The reader is `web/src/import/rvt.ts`, with `cfb.ts` for the compound file aroun
 
 ### Rhino 3DM
 
-**Export Rhino 3DM** writes a Rhino file in millimetres: a Rhino layer per design layer with a sublayer per class, and each object's pieces in their colours, named after the object.
+**Export Rhino 3DM** writes a Rhino file in millimetres: a Rhino layer per design layer with a sublayer per class, and each object's pieces in their colours, named after the object. A drawing that reaches more than 100 m from its origin, such as an imported site, goes out in metres with a 1 mm tolerance instead. Rhino's own advice is to model sites in metres, because its Make2D, booleans and intersections can leave out objects in a millimetre model kilometres across.
 
 - A piece that stands upright with a flat top and bottom (an extrude, a slab, a wall without openings, a building from **Import Site Context**) becomes a closed extrusion, courtyards and all. Rhino shows only its real edges, and it can be edited, booleaned and filleted as a solid.
 - A piece whose triangles all lie in one plane (a lawn, a pond, a path, a floor, a roof plane) becomes a trimmed flat surface, holes and all, so Rhino shows its outline and holes and not its triangles. Roads, paths, water and green spaces from **Import Site Context** with Terrain off come out this way. A piece in up to 16 separate parts becomes a surface per part.
 - Other pieces become meshes. Triangles that lie flat together are joined into four-sided faces, and edges sharper than 30° stay sharp in the shading, so flat faces don't show triangle diagonals.
 - Each symbol becomes a block, placed where the drawing places it.
+- A site model shown in 3D as a surface also goes out as its contour lines, at the heights its plan shows them, each line at its own height on the surface and named by it. Make2D draws only a smooth mesh's outline, so the contours are what gives a terrain lines in a Make2D drawing.
 - The 2D linework that stands for nothing in 3D (lines, rectangles, polygons, polylines, arcs, circles, and text as text dots sized in points by its layer's scale) goes at its layer's elevation. A fill with holes goes out as its outline and each hole, without the cuts between them. 2D drawn in a group beside a 3D object is that object's plan drawing and is left out.
 
 **Limits:**

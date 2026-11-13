@@ -18301,5 +18301,10 @@
   "Layer tables in Rhino, AutoCAD and SketchUp, Revit's Project Browser and View Control Bar, Archicad's Project Map and Quick Options, AutoCAD's Model and layout tabs.": "Bảng lớp của Rhino, AutoCAD và SketchUp; Trình duyệt dự án và Thanh điều khiển chế độ xem của Revit; Bản đồ dự án và Tùy chọn nhanh của Archicad; các thẻ Model và Layout của AutoCAD.",
   "Rhino's viewports are named Top, Front, Right and Perspective, with red and green axes; Revit, Archicad and SketchUp draw no grid.": "Các khung nhìn của Rhino có tên Trên, Trước, Phải và Phối cảnh, với trục đỏ và xanh lá; Revit, Archicad và SketchUp không vẽ lưới.",
   "The icons are drawn for Rodeo, one picture per command, in each application's colours.": "Biểu tượng được vẽ cho Rodeo, mỗi lệnh một hình, theo màu của từng ứng dụng.",
-  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Mọi nút đều chạy công cụ riêng của Rodeo. Xem › Làm việc như › Rodeo để quay lại."
+  "Every button runs Rodeo's own tools. View › Work Like › Rodeo goes back.": "Mọi nút đều chạy công cụ riêng của Rodeo. Xem › Làm việc như › Rodeo để quay lại.",
+  "Rhino files for whole sites": "Tệp Rhino cho cả khu đất",
+  "Export Rhino 3DM now writes a drawing that reaches more than 100 m from its origin, such as an imported site, in metres, as Rhino advises for models that big.": "Xuất Rhino 3DM giờ ghi bằng mét một bản vẽ trải xa hơn 100 m tính từ gốc, chẳng hạn một khu đất đã nhập, như Rhino khuyên cho mô hình lớn như vậy.",
+  "In a millimetre model kilometres across, Rhino's Make2D, booleans and intersections can leave objects out.": "Trong một mô hình tính bằng milimét rộng hàng kilômét, Make2D, phép toán Boolean và phép giao của Rhino có thể bỏ sót đối tượng.",
+  "A site model's contours go out as lines at their heights, named by them, so Make2D and plan views in Rhino show the terrain.": "Các đường đồng mức của mô hình địa hình được xuất thành đường ở đúng cao độ của chúng, đặt tên theo cao độ đó, để Make2D và hình chiếu bằng trong Rhino hiển thị địa hình.",
+  "Drawings within 100 m of their origin still go out in millimetres.": "Bản vẽ nằm trong phạm vi 100 m tính từ gốc vẫn được xuất bằng milimét."
 }

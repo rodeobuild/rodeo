@@ -382,14 +382,15 @@ async function exportFile(d: DrawingRef, format: Format, layerIds: string[], nam
       return { name: file, blob: new Blob([exportStlBinary(meshes) as Uint8Array<ArrayBuffer>], { type: "model/stl" }) };
     }
     case "3dm": {
-      const [{ export3dm }, { flatOf, modelOf }, { rhinoLib }] = await Promise.all([
+      const [{ export3dm }, { flatOf, modelOf }, { rhinoLib }, { contourCurves }] = await Promise.all([
         import("../../export/rhino.ts"),
         import("../../export/scene3d.ts"),
         import("../../import/rhino3dm.ts"),
+        import("../../app/siteModel.ts"),
       ]);
       const layers = new Set(exportLayers(d, layerIds, ["design"]));
       const names = new Map(doc.layers().map((l) => [l.id, l.name]));
-      const bytes = export3dm(modelOf(doc, layers, true), flatOf(doc, layers), names, await rhinoLib());
+      const bytes = export3dm(modelOf(doc, layers, true), [...flatOf(doc, layers), ...contourCurves(doc, layers)], names, await rhinoLib());
       return { name: file, blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "model/vnd.3dm" }) };
     }
     case "fbx": {
@@ -973,7 +974,7 @@ const TOOLS: Tool[] = [
   {
     spec: spec(
       "export_file",
-      "Exports the drawing as a file the user can download from the chat: vwx (the drawing itself), pdf, svg, png, dxf, ifc, obj, glb, 3ds, stl (binary, millimetres), 3dm (Rhino: the 3D model plus 2D linework, millimetres), fbx, dae (Collada), ply or skp (SketchUp: symbols as components, groups as groups, classes as tags). layerIds chooses layers (the default is those drawn now; 3D formats take design layers).",
+      "Exports the drawing as a file the user can download from the chat: vwx (the drawing itself), pdf, svg, png, dxf, ifc, obj, glb, 3ds, stl (binary, millimetres), 3dm (Rhino: the 3D model plus 2D linework and site model contours, in millimetres, or metres when the drawing reaches past 100 m from its origin), fbx, dae (Collada), ply or skp (SketchUp: symbols as components, groups as groups, classes as tags). layerIds chooses layers (the default is those drawn now; 3D formats take design layers).",
       { format: { type: "string", enum: FORMATS }, layerIds: { type: "array", items: { type: "string" } }, name: { type: "string", description: "file name without extension" }, widthPx: { type: "integer", description: "png only, default 3000" }, download: { type: "boolean", description: "also start the download now" } },
       ["format"],
     ),
