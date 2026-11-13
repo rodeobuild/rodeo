@@ -14,7 +14,7 @@
 import "./view3d.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { lookBackground, lookMouse, onLookView } from "./looks/viewLook.ts";
+import { lookBackground, lookMouse, lookOwnsKey, onLookView } from "./looks/viewLook.ts";
 import { lookCanvas, onLookCanvas, type LookCanvas } from "./looks/canvasLook.ts";
 import type { Light3D, Mesh3D, ResourceInfo, Vec3 } from "../core/index.ts";
 import { beamGroup, boxReach, disposeBeams, surfaceReaches } from "./beams.ts";
@@ -83,6 +83,28 @@ export interface FaceHit {
   readonly point: Vec3;
   readonly normal: Vec3;
   readonly objectId: string | null;
+}
+
+/**
+ * A 2D tool drawing in the 3D view, on the active layer's plane (draw3d.ts): it takes the left button's
+ * presses, moves and releases, and every move of the pointer over the view, in place of orbiting and
+ * picking, and paints its preview over the view.
+ */
+export interface ViewDrawer {
+  down(e: PointerEvent): void;
+  move(e: PointerEvent): void;
+  up(e: PointerEvent): void;
+  /** the pointer left the view, or its press was cancelled */
+  leave(): void;
+  /** paints over the view on `ctx`, in CSS px of a canvas `width` × `height`: after each frame, and when asked (repaintDrawer) */
+  paint(ctx: CanvasRenderingContext2D, width: number, height: number): void;
+}
+
+/** Where a model point shows on the canvas (CSS px from its top-left), and how far in front of the camera's near plane it is (≤ 0: behind it, not drawn). */
+export interface CanvasPoint {
+  readonly x: number;
+  readonly y: number;
+  readonly depth: number;
 }
 
 /** What a tool does with a click on the model in place of picking (View3D.onFacePick). */
@@ -302,6 +324,16 @@ export class View3D {
     this.canvas.classList.toggle("picking", pick !== null);
   }
   private facePick: FacePick | null = null;
+  /** the 2D tool drawing in the view, and the pointer of its press under way */
+  private drawer: ViewDrawer | null = null;
+  private drawPress: number | null = null;
+  /** the canvas the drawer paints on, over the view, made the first time one is set */
+  private drawLayer: HTMLCanvasElement | null = null;
+  private drawFrame = 0;
+  /** the 2D objects lying on their layers' planes, and those selected (setFlatLines) */
+  private flatLines: THREE.LineSegments[] = [];
+  /** faces, edges and content shown by the last visibility pass, for the "No 3D objects" message */
+  private modelItems = 0;
   /** the working plane's grid and axes, when one is shown */
   private planeGrid: THREE.Group | null = null;
   /** the look's construction-plane grid (Rhino's viewports), built for the plane and size the view needs */
@@ -491,6 +523,14 @@ export class View3D {
       if (this.down.size > 0) this.canvas.classList.add("moving");
     });
     this.canvas.addEventListener("pointerdown", (e) => {
+      // a 2D tool draws with the left button (a mouse's or a pen's); fingers still orbit
+      if (this.drawer && e.button === 0 && e.pointerType !== "touch" && this.down.size === 0) {
+        this.drawPress = e.pointerId;
+        this.canvas.setPointerCapture(e.pointerId);
+        this.canvas.focus({ preventScroll: true });
+        this.drawer.down(e);
+        return;
+      }
       if (this.down.size === 0) {
         this.press = e.button === 0 ? { id: e.pointerId, x: e.clientX, y: e.clientY, touch: e.pointerType === "touch", more: false } : null;
       } else if (this.press) {
@@ -506,7 +546,8 @@ export class View3D {
     });
     // Flyover: a double-click makes the point under it the centre the view orbits about (a finger's double tap does too, see release)
     this.canvas.addEventListener("dblclick", (e) => {
-      if (!this.fingerDown) this.orbitAbout(e);
+      // a drawing tool's double-click is its own (it ends a polyline)
+      if (!this.fingerDown && !this.drawer) this.orbitAbout(e);
     });
     this.canvas.addEventListener("keydown", (e) => {
       if (this.walk(e)) {
@@ -515,6 +556,8 @@ export class View3D {
       }
     });
     this.canvas.addEventListener("pointermove", (e) => {
+      // the drawing tool follows the pointer, but not while another button turns or slides the view
+      if (this.drawer && e.pointerType !== "touch" && (this.drawPress === e.pointerId || this.down.size === 0)) this.drawer.move(e);
       const steer = this.steer;
       if (!steer || steer.id !== e.pointerId) return;
       this.steerBy(e.clientX - steer.x, e.clientY - steer.y);
@@ -522,8 +565,25 @@ export class View3D {
       steer.y = e.clientY;
       this.canvas.classList.add("moving");
     });
-    this.canvas.addEventListener("pointerup", (e) => this.release(e, false));
-    this.canvas.addEventListener("pointercancel", (e) => this.release(e, true));
+    this.canvas.addEventListener("pointerup", (e) => {
+      if (this.drawPress === e.pointerId) {
+        this.drawPress = null;
+        this.drawer?.up(e);
+        return;
+      }
+      this.release(e, false);
+    });
+    this.canvas.addEventListener("pointercancel", (e) => {
+      if (this.drawPress === e.pointerId) {
+        this.drawPress = null;
+        this.drawer?.leave();
+        return;
+      }
+      this.release(e, true);
+    });
+    this.canvas.addEventListener("pointerleave", () => {
+      if (this.drawPress === null) this.drawer?.leave();
+    });
 
     this.empty = h("div", {
       cls: "view3d-empty",
@@ -688,6 +748,11 @@ export class View3D {
 
   setView(preset: ViewPreset): void {
     this.frameView(new THREE.Vector3(...VIEW_DIRS[preset]));
+  }
+
+  /** Frames the visible model looking along `toward` (from the model to the viewer), as a standard view does. */
+  frameFrom(toward: Vec3): void {
+    this.frameView(new THREE.Vector3(...toward));
   }
 
   /**
@@ -1068,6 +1133,8 @@ export class View3D {
     this.offLookCanvas();
     this.dropLookGrid();
     this.dropLookAxes();
+    this.setFlatLines(null);
+    cancelAnimationFrame(this.drawFrame);
     clearTimeout(this.lampTimer);
     this.resizeObserver.disconnect();
     this.controls.dispose();
@@ -1284,6 +1351,8 @@ export class View3D {
       this.lookSerial++;
     }
     for (const fn of this.afterRender) fn();
+    // the drawing tool's preview follows the camera
+    if (this.drawer) this.paintDrawer();
   }
 
   /** The Render palette's settings changed: the view draws again, and the panes' pictures with it. */
@@ -1744,7 +1813,8 @@ export class View3D {
    * down and up; Shift goes four times as far. Returns whether the key was one of them.
    */
   private walk(e: KeyboardEvent): boolean {
-    if (e.metaKey || e.ctrlKey || e.altKey) return false;
+    // a look's own keys (SketchUp's A, E, Q, S; whatever goes to Rhino's command line) stay its own
+    if (e.metaKey || e.ctrlKey || e.altKey || lookOwnsKey(e)) return false;
     const step = (this.modelRadius() / 40) * (e.shiftKey ? 4 : 1);
     const ahead = this.controls.target.clone().sub(this.camera.position).setZ(0);
     if (ahead.lengthSq() === 0) ahead.set(0, 1, 0);
@@ -1830,11 +1900,123 @@ export class View3D {
   /** The buttons' drags: the left as the navigation has it, the middle and right as Rodeo or the look (setLookMouse) has them. */
   applyButtons(): void {
     const nav = this.nav;
-    const left = nav === "orbit" || nav === "origin" ? THREE.MOUSE.ROTATE : nav === "pan" ? THREE.MOUSE.PAN : null;
+    const drawing = this.drawer !== null;
+    const left = drawing ? null : nav === "orbit" || nav === "origin" ? THREE.MOUSE.ROTATE : nav === "pan" ? THREE.MOUSE.PAN : null;
     const look = lookMouse();
-    const middle = look ? BUTTON[look.middle] : THREE.MOUSE.DOLLY;
+    let middle: THREE.MOUSE | null = look ? BUTTON[look.middle] : THREE.MOUSE.DOLLY;
     const right = look ? (look.right === "menu" ? null : BUTTON[look.right]) : THREE.MOUSE.PAN;
+    // a drawing tool has the left button: where no other button orbits, the middle does (the wheel still zooms)
+    if (drawing && middle !== THREE.MOUSE.ROTATE && right !== THREE.MOUSE.ROTATE) middle = THREE.MOUSE.ROTATE;
     this.controls.mouseButtons = { LEFT: left, MIDDLE: middle, RIGHT: right };
+  }
+
+  /**
+   * Has a 2D tool draw in the view (draw3d.ts), or no tool (null): while one does, the left button is
+   * its and the view's cursor a crosshair, and it paints over the view.
+   */
+  setDrawer(d: ViewDrawer | null): void {
+    if (d === this.drawer) return;
+    if (this.drawPress !== null) {
+      this.drawPress = null;
+      this.drawer?.leave();
+    }
+    this.drawer = d;
+    this.canvas.classList.toggle("drawing", d !== null);
+    this.applyButtons();
+    if (d && !this.drawLayer) {
+      this.drawLayer = h("canvas", { cls: "view3d-draw-layer", attrs: { "aria-hidden": "true" } }) as HTMLCanvasElement;
+      this.canvas.after(this.drawLayer);
+    }
+    this.paintDrawer();
+  }
+
+  /** The drawing tool's preview is painted again at the next frame (its pointer moved, or what it draws changed). */
+  repaintDrawer(): void {
+    if (this.drawFrame !== 0) return;
+    this.drawFrame = requestAnimationFrame(() => {
+      this.drawFrame = 0;
+      this.paintDrawer();
+    });
+  }
+
+  /** Paints the drawing tool's preview over the view now (and clears it without one). */
+  private paintDrawer(): void {
+    const layer = this.drawLayer;
+    if (!layer) return;
+    const w = this.canvas.clientWidth;
+    const hgt = this.canvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.max(1, Math.round(w * dpr));
+    const bh = Math.max(1, Math.round(hgt * dpr));
+    if (layer.width !== bw || layer.height !== bh) {
+      layer.width = bw;
+      layer.height = bh;
+    }
+    const ctx = layer.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bw, bh);
+    if (!this.drawer || !this.shown || w === 0 || hgt === 0) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.drawer.paint(ctx, w, hgt);
+  }
+
+  /**
+   * Places model points on the canvas as the camera stands now (CanvasPoint), for painting many of
+   * them: the camera is read once.
+   */
+  projector(): (x: number, y: number, z: number) => CanvasPoint {
+    this.camera.updateMatrixWorld();
+    this.shearOblique();
+    const toView = this.camera.matrixWorldInverse.clone();
+    const proj = this.camera.projectionMatrix.clone();
+    const persp = this.camera === this.persp;
+    const near = this.camera.near;
+    const w = this.canvas.clientWidth;
+    const hgt = this.canvas.clientHeight;
+    const v = new THREE.Vector3();
+    return (x, y, z) => {
+      v.set(x, y, z).applyMatrix4(toView);
+      // an orthogonal view draws everything in it, behind the camera's point or not
+      const depth = persp ? -v.z - near : 1;
+      v.applyMatrix4(proj);
+      return { x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * hgt, depth };
+    };
+  }
+
+  /**
+   * Shows 2D objects on their layers' planes (line segments, 6 numbers each, world mm), drawn as the
+   * model's edges are, and the selected ones in the selection's colour, so what a 2D tool draws in the
+   * view shows there; null takes them away.
+   */
+  setFlatLines(segments: ArrayLike<number> | null, selected?: ArrayLike<number>): void {
+    for (const lines of this.flatLines) {
+      lines.removeFromParent();
+      lines.geometry.dispose();
+      (lines.material as THREE.Material).dispose();
+    }
+    this.flatLines = [];
+    const add = (segs: ArrayLike<number> | null | undefined, color: string | number): void => {
+      if (!segs?.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(Float32Array.from(segs), 3));
+      const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, toneMapped: false }));
+      this.scene.add(lines);
+      this.flatLines.push(lines);
+    };
+    add(segments, EDGE_COLOR);
+    add(selected, ACCENT);
+    this.showEmpty();
+    this.requestRender();
+  }
+
+  /**
+   * Says "No 3D objects" only when the view has nothing to show: no visible model, no 2D objects on
+   * their planes, and no look grid or axes (Rhino's and SketchUp's give the empty view something to show).
+   */
+  private showEmpty(): void {
+    const look = lookCanvas();
+    this.empty.hidden = this.modelItems > 0 || this.flatLines.length > 0 || look?.grid3d === true || look?.axes3d !== undefined;
   }
 
   /**
@@ -2357,9 +2539,8 @@ export class View3D {
       obj.visible = this.isLayerVisible(c.layer);
       if (obj.visible) items++;
     }
-    // a look's construction grid (Rhino) is drawn even with nothing to show, so the message waits for Rodeo's own look
-    // a look's grid or axes give the empty view something to show, as Rhino's and SketchUp's do
-    this.empty.hidden = items > 0 || lookCanvas()?.grid3d === true || lookCanvas()?.axes3d !== undefined;
+    this.modelItems = items;
+    this.showEmpty();
     this.staleShadows();
     this.requestRender();
   }

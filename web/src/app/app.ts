@@ -76,6 +76,8 @@ import { confirmDialog, mountMenuBar } from "./menubar.ts";
 import { drawingRows, mountDocTabs, type DocTab, type DocTabActions } from "./docTabs.ts";
 import { mountMenuStrip } from "./menuStrip.ts";
 import { installLooks } from "./looks/looks.ts";
+import { lookCanvas, onLookCanvas } from "./looks/canvasLook.ts";
+import { installDraw3d } from "./draw3d.ts";
 import { mountPanels } from "./panels/navigation.ts";
 import { resourceViewRows, symbolNameOf } from "./panels/resources.ts";
 import { attributeUtilityRows } from "./attributeCommands.ts";
@@ -365,6 +367,9 @@ interface OpenDrawing {
 /** Tools a command takes up for its clicks: each hands back to the tool used before the command. */
 const CLICK_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(["hatch", "dividing", "alignleaders", "rotate3dcentre", "roofaxis"]);
 
+/** Where a drawing opening in 3D is seen from (toward the viewer): the front right, about 9° above the ground, under the 35° lens's top edge. */
+const START_3D_TOWARD: [number, number, number] = [1, -1, 0.22];
+
 export class App {
   readonly view = new View();
   readonly scene = new Scene();
@@ -430,8 +435,12 @@ export class App {
     if (last && last.projection !== store.viz3d.projection) setViz({ projection: last.projection });
     applyTurnSteps();
     this.text = new TextEditor(byId("text-host"), this.view);
+    // a tool drawing in the 3D view measures by the plan view standing in for it there (draw3d.ts)
+    const app = this;
     const env: ToolEnv = {
-      view: this.view,
+      get view(): View {
+        return app.controller?.standInView ?? app.view;
+      },
       scene: this.scene,
       snap: this.snap,
       text: this.text,
@@ -848,6 +857,8 @@ export class App {
       new TorusTool(env),
     ]);
     this.renderer = new Renderer(this.canvas, this.view, this.scene, this.controller);
+    // the 2D tools draw in the 3D view too, on the active layer's plane
+    installDraw3d({ controller: this.controller, plan: this.view, scene: this.scene, view3d: () => this.view3d });
     installViewHistory(this.view);
     installSmartOptions(this.canvas, (id) => this.controller.setTool(id));
     setToolHelp((id) => this.controller.helpOf(id));
@@ -1087,6 +1098,13 @@ export class App {
     store.on(["session", "view3d"], () => {
       stage.classList.toggle("no-doc", !store.session);
       stage.classList.toggle("is-3d", store.view3d);
+    });
+    // View › Work Like › SketchUp: the drawing open goes to the 3D view as the look comes on
+    let starts3d = lookCanvas()?.start3d === true;
+    onLookCanvas(() => {
+      const now = lookCanvas()?.start3d === true;
+      if (now && !starts3d) void this.openIn3d();
+      starts3d = now;
     });
     // Flyover, Translate View and Walkthrough set what a left drag does in the 3D view, showing it first
     let standing: number | null = null;
@@ -1952,6 +1970,19 @@ export class App {
     }
   }
 
+  /** The 3D view alone in perspective, as a look with only a 3D view (SketchUp's) shows a drawing; nothing with several panes or the 3D view showing. */
+  private async openIn3d(): Promise<void> {
+    if (!store.session || multiPane() || store.view3d) return;
+    if (store.viz3d.projection !== "perspective") setViz({ projection: "perspective" });
+    const layer = store.session.doc.layers().find((l) => l.id === store.activeLayerId);
+    // as lookAsLayer takes it: a design layer's view saved in 3D
+    const saved = layer?.kind === "design" && (layer.view?.projection === "perspective" || layer.view?.projection === "orthogonal");
+    await this.show3d();
+    // from the front right, a little above the ground, so the horizon and the sky show as SketchUp opens
+    // (a layer's saved 3D view is kept)
+    if (store.view3d && !saved) this.view3d?.frameFrom(START_3D_TOWARD);
+  }
+
   /** The top bar's 2D: the plan alone, in one pane (from several, the live plan, at its zoom and place). */
   private planAlone(): void {
     if (!multiPane()) {
@@ -2610,6 +2641,8 @@ export class App {
     } else {
       this.fit();
     }
+    // a look with only a 3D view (SketchUp's) shows a drawing there the first time it comes to the front
+    if (!d.view && lookCanvas()?.start3d) void this.openIn3d();
     // several panes: the first drawing opened shows its 3D views beside the plan
     this.paneCams.clear();
     this.planViews.clear();

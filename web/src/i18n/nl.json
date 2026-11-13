@@ -18446,5 +18446,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "Ortho houdt nu ook een gesleepte selectie horizontaal of verticaal, en Verplaatsen via punten heeft een modus Meerdere keren kopiëren.",
   "Info Box › Main:": "Algemeen:",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "Start"
+  "Tab › Start": "Start",
+  "Draw in the 3D view": "Tekenen in het 3D-aanzicht",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "De tekengereedschappen van Rodeo tekenen nu in het 3D-aanzicht, op de grond, en de SketchUp-weergave opent in 3D, zoals SketchUp dat doet.",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Lijn, Rechthoek, Cirkel, Boog, Veelhoek en de andere 2D-gereedschappen tekenen op het vlak van de actieve laag waar u klikt in het 3D-aanzicht, met hun voorbeeld, snappen en de gegevensbalk.",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Geëxtrudeerde rechthoek, Cilinder, Bol en Kegel tekenen daar ook hun basis, en Duwen/trekken tilt op wat u hebt getekend.",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Zolang een tekengereedschap gekozen is, draait de middelste knop het aanzicht en tonen 2D-objecten zich als lijnen op het vlak van hun laag.",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "De SketchUp-weergave opent een tekening in één 3D-aanzicht in perspectief, met zijn lucht en assen; 3 gaat naar de plattegrond en terug."
 }

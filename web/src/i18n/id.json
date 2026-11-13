@@ -18459,5 +18459,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "Ortho kini juga menjaga pilihan yang diseret tetap datar atau tegak, dan Pindahkan dengan titik memiliki mode Salin Banyak.",
   "Info Box › Main:": "Utama:",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "Mulai"
+  "Tab › Start": "Mulai",
+  "Draw in the 3D view": "Menggambar di tampilan 3D",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Alat gambar Rodeo kini menggambar di tampilan 3D, di atas tanah, dan tampilan SketchUp terbuka dalam 3D seperti SketchUp.",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Garis, Persegi panjang, Lingkaran, Busur, Poligon, dan alat 2D lainnya menggambar pada bidang layer aktif di tempat Anda mengklik di tampilan 3D, dengan pratinjau, snap, dan bilah data.",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Persegi panjang ekstrusi, Silinder, Bola, dan Kerucut juga menggambar alasnya di sana, dan Dorong/Tarik mengangkat apa yang Anda gambar.",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Selama alat gambar dipilih, tombol tengah memutar tampilan dan objek 2D tampil sebagai garis pada bidang layernya.",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Tampilan SketchUp membuka gambar dalam satu tampilan 3D perspektif, dengan langit dan sumbunya; 3 berpindah ke denah dan kembali."
 }

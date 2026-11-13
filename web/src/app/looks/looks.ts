@@ -318,9 +318,11 @@ async function putUp(chosen: LookSpec): Promise<void> {
   setLookMenus(menusOf(look));
   window.dispatchEvent(new Event("rodeo:menus"));
   h0.palettes.setRails(look.rails);
-  setLookView(look.id === "rodeo" ? null : look.mouse, look.background3d ?? null);
+  setLookView(look.id === "rodeo" ? null : look.mouse, look.background3d ?? null, look.id === "rodeo" ? null : ownsKey);
   setPaper(look.paper ?? null);
-  setLookCanvas(look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true, grid3d: look.grid3d ?? false, axes3d: look.axes3d });
+  setLookCanvas(
+    look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true, grid3d: look.grid3d ?? false, axes3d: look.axes3d, start3d: look.start3d ?? false },
+  );
   const names = look.paneNames;
   setPaneNames(names ? (kind, view) => (kind === "plan" ? names.plan : view === null ? names.turned : (names.views[view] ?? view)) : null);
   if (look.titleBar) parts.push(mountTitle(s.title, look));
@@ -548,6 +550,14 @@ function modifiedName(e: KeyboardEvent): string {
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
   return [...parts, key].join("+");
+}
+
+/** Whether the look on takes a key typed over the drawing: its command line takes every one, or the key is one of its own or starts a two-key shortcut. */
+function ownsKey(e: KeyboardEvent): boolean {
+  if (current === "rodeo" || document.documentElement.classList.contains("lk-phone")) return false;
+  if (lineOn() || spec.keys?.[keyName(e)]) return true;
+  const typed = e.key.toLowerCase();
+  return !!spec.sequences && Object.keys(spec.sequences).some((n) => n.startsWith(typed));
 }
 
 /**

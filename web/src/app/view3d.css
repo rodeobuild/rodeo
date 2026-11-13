@@ -26,6 +26,20 @@
   cursor: crosshair;
 }
 
+/* a 2D tool drawing on the layer's plane (draw3d.ts) */
+.view3d-canvas.drawing {
+  cursor: crosshair;
+}
+
+/* what the drawing tool paints over the view: its preview and the snap marker */
+.view3d-draw-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 /* Flyover, Translate View, Walkthrough: dragging is the tool */
 .view3d-canvas.viewing {
   cursor: grab;

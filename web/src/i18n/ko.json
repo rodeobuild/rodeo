@@ -18483,5 +18483,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "직교도 이제 끌어서 선택한 항목을 수평 또는 수직으로 유지하며, 점으로 이동에 다중 복사 모드가 생겼습니다.",
   "Info Box › Main:": "기본:",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "시작"
+  "Tab › Start": "시작",
+  "Draw in the 3D view": "3D 뷰에서 그리기",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Rodeo의 그리기 도구가 이제 3D 뷰의 바닥 위에 그리며, SketchUp 모양은 SketchUp처럼 3D로 열립니다.",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "선, 사각형, 원, 호, 다각형 및 다른 2D 도구는 3D 뷰에서 클릭한 곳의 활성 레이어 평면 위에 미리보기, 스냅, 데이터 막대와 함께 그립니다.",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "돌출 사각형, 원기둥, 구, 원뿔도 그곳에 밑면을 그리며, 밀기/당기기로 그린 것을 들어 올릴 수 있습니다.",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "그리기 도구가 선택된 동안에는 가운데 버튼으로 궤도 회전하며, 2D 오브젝트는 레이어 평면 위에 선으로 표시됩니다.",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "SketchUp 모양은 도면을 하늘과 축이 있는 하나의 원근 3D 뷰로 엽니다. 3을 누르면 평면으로 갔다가 돌아옵니다."
 }

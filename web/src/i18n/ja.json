@@ -18508,5 +18508,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "直交 を使うと、ドラッグした選択を水平または垂直に保てるようになり、点から移動に複数コピーモードが加わりました。",
   "Info Box › Main:": "メイン：",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "スタート"
+  "Tab › Start": "スタート",
+  "Draw in the 3D view": "3Dビューで作図",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Rodeoの作図ツールが3Dビューの地面上で作図できるようになり、SketchUp風の表示はSketchUpと同じく3Dで開きます。",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "線、長方形、円、円弧、多角形などの2Dツールは、3Dビューでクリックした位置のアクティブレイヤの平面上に、プレビュー、スナップ、データバー付きで作図します。",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "押し出し長方形、円柱、球、円錐もそこに底面を作図し、プッシュ/プルで描いたものを持ち上げられます。",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "作図ツールを選んでいる間は中ボタンでオービットし、2Dオブジェクトはレイヤの平面上に線で表示されます。",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "SketchUp風の表示では、図面を空と軸のある1つのパースの3Dビューで開きます。3キーで平面との間を切り替えます。"
 }

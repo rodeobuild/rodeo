@@ -429,6 +429,13 @@ export class ToolController implements ToolOverlay {
   private swallowUp = false;
   /** Set datum if mouse stops: the timer since the pointer last moved */
   private datumTimer = 0;
+  /**
+   * The plan view standing in for the 3D view while a tool draws there (feed): the tool measures and
+   * snaps by it, as env.view, until the plan's own canvas is used again
+   */
+  private standIn: View | null = null;
+  /** the pointer is over the 3D view, drawing there */
+  private hovering3d = false;
 
   /** Adds tools once the editor runs (a feature's), which `setTool` can then pick. */
   addTools(build: (env: ToolEnv) => readonly Tool[]): void {
@@ -477,6 +484,11 @@ export class ToolController implements ToolOverlay {
     return this.active.id;
   }
 
+  /** The plan view standing in for the 3D view while a tool draws there (env.view returns it); null while the plan is drawn in. */
+  get standInView(): View | null {
+    return this.standIn;
+  }
+
   /** What tool `id` says to do (its Mode bar help), for its screen tip. */
   helpOf(id: ToolId): string {
     return this.tools.get(id)?.hint() ?? "";
@@ -487,6 +499,8 @@ export class ToolController implements ToolOverlay {
     if (!next || next === this.active) return;
     this.closeLoupe();
     this.active.cancel();
+    this.standIn = null;
+    this.hovering3d = false;
     this.active = next;
     store.tool = id;
     store.emit("tool");
@@ -543,7 +557,8 @@ export class ToolController implements ToolOverlay {
    */
   snapLoupe(): boolean {
     const last = this.lastInfo;
-    if (!this.hovering || !last || !store.session || this.panAnchor || VIEW_TOOLS.has(this.active.id)) return false;
+    // the loupe magnifies the plan: none over the 3D view
+    if (!this.hovering || !last || !store.session || this.panAnchor || this.standIn || VIEW_TOOLS.has(this.active.id)) return false;
     const overlay: ToolOverlay = { moveDelta: () => this.moveDelta(), fillPreview: () => this.fillPreview(), drawOverlay: (p) => this.paintOverlay(p) };
     this.loupe ??= new SnapLoupe(this.canvas, this.view, this.env.scene, overlay);
     this.loupe.open(last.screen);
@@ -682,7 +697,11 @@ export class ToolController implements ToolOverlay {
     const loupe = this.loupe?.contains(screen) ? this.loupe : null;
     const view = loupe?.view ?? this.view;
     const at = loupe?.local(screen) ?? screen;
-    const raw = view.toWorld(at.x, at.y);
+    return this.snapAt(view.toWorld(at.x, at.y), view, shift);
+  }
+
+  /** The point `raw` snapped as `view` measures, with Ortho from the tool's last point. */
+  private snapAt(raw: Pt, view: View, shift: boolean): Pick<PointerInfo, "raw" | "pos" | "snap" | "guides"> {
     const anchor = this.active.snapFrom?.() ?? null;
     const s = this.env.snap.snap(raw, view, undefined, anchor);
     // Ortho: from the tool's last point the point runs level or upright. An object snap still wins,
@@ -691,6 +710,75 @@ export class ToolController implements ToolOverlay {
       return { raw, pos: orthoPoint(anchor, s.pos), snap: null, guides: undefined };
     }
     return { raw, pos: s.pos, snap: s.kind, guides: s.guides };
+  }
+
+  /**
+   * A pointer event from the 3D view, where the 2D tools draw on the active layer's plane (draw3d.ts).
+   * `raw` is the drawing's point under the pointer there, and `view` a plan view standing in for the 3D
+   * one about that point (turned as the plan is, at the size things show there, `raw` at `screen` in
+   * it); the tool measures and snaps by it, as its env.view, until the plan's canvas is used again.
+   */
+  feed(phase: "down" | "move" | "up", e: PointerEvent, screen: Pt, raw: Pt, view: View): void {
+    this.standIn = view;
+    this.hovering = true;
+    this.hovering3d = true;
+    const blocked = blockedReason(this.env, this.active);
+    const shift = e.shiftKey || this.latch.shift;
+    const info = (detail: number): PointerInfo => ({
+      screen,
+      ...this.snapAt(raw, view, shift),
+      shift,
+      mod: e.metaKey || e.ctrlKey,
+      alt: e.altKey || this.latch.alt,
+      detail,
+      button: e.button,
+    });
+    if (phase === "down") {
+      if (e.button !== 0) return;
+      if (blocked) {
+        this.refreshHint();
+        return;
+      }
+      this.lastInfo = info(this.clickCount(e, screen));
+      this.active.down(this.lastInfo);
+    } else if (phase === "move") {
+      this.lastInfo = info(0);
+      store.cursor = this.lastInfo.pos;
+      store.emit("cursor");
+      this.pauseForDatum(this.lastInfo);
+      if (!blocked) this.active.move(this.lastInfo);
+    } else {
+      if (e.button !== 0 || blocked) return;
+      this.lastInfo = info(0);
+      this.active.up(this.lastInfo);
+    }
+    this.afterEvent();
+  }
+
+  /** The pointer left the 3D view (no snap marker shows there now); `drop` also ends the stand-in, the 3D view having gone or the tool no longer drawing there. */
+  leave3d(drop = false): void {
+    if (!this.hovering3d && !(drop && this.standIn)) return;
+    this.hovering3d = false;
+    this.hovering = false;
+    clearTimeout(this.datumTimer);
+    if (drop) this.standIn = null;
+    this.env.requestDraw();
+  }
+
+  /** The active tool's preview for the 3D view, painted by `g`: the stand-in's plan, which draw3d.ts lays on the layer's plane. */
+  standInOverlay(g: Painter): void {
+    if (this.standIn) this.active.overlay(g);
+  }
+
+  /** The datum, the smart points and the snap marker for the 3D view, painted by `g`, whose toScreen puts a drawing's point where it shows there. */
+  standInMarks(g: Painter): void {
+    const info = this.lastInfo;
+    if (!this.standIn || !store.session) return;
+    if (store.datum) drawDatum(g, store.datum);
+    const drawing = this.active.id !== "select" && !VIEW_TOOLS.has(this.active.id);
+    if (!drawing || !this.hovering3d || !info || blockedReason(this.env, this.active)) return;
+    if (store.snapObjects && store.snapKinds.smart) drawSmartPoints(g, this.env.snap.acquiredPoints);
+    if (info.snap) drawSnapMarker(g, info.pos, info.snap, info.guides);
   }
 
   private infoFor(e: MouseEvent, screen: Pt, detail = 0): PointerInfo {
@@ -720,6 +808,7 @@ export class ToolController implements ToolOverlay {
   private onDown(e: PointerEvent): void {
     const screen = this.screenOf(e);
     this.hovering = true;
+    this.planAgain();
     // Commit whatever holds focus (text editor, inputs) before acting on the canvas.
     const focused = document.activeElement;
     if (focused instanceof HTMLElement && focused !== document.body) focused.blur();
@@ -760,6 +849,7 @@ export class ToolController implements ToolOverlay {
     if (this.gate?.(e, "move")) return;
     const screen = this.screenOf(e);
     this.hovering = true;
+    this.planAgain();
     if (this.panAnchor) {
       this.view.pan(screen.x - this.panAnchor.x, screen.y - this.panAnchor.y);
       this.panAnchor = screen;
@@ -801,6 +891,7 @@ export class ToolController implements ToolOverlay {
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
+    this.planAgain();
     stopGlide();
     this.closeLoupe();
     const screen = this.screenOf(e);
@@ -815,6 +906,12 @@ export class ToolController implements ToolOverlay {
     }
     store.emit("view");
     this.env.requestDraw();
+  }
+
+  /** The plan's canvas is used again: the tool measures by the plan's view, not the 3D view's stand-in. */
+  private planAgain(): void {
+    this.standIn = null;
+    this.hovering3d = false;
   }
 
   private afterEvent(): void {

@@ -18460,5 +18460,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "Орто теперь также удерживает перетаскиваемый выбор горизонтально или вертикально, а «Перемещение по точкам» имеет режим «Копировать несколько».",
   "Info Box › Main:": "Основное:",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "Начало"
+  "Tab › Start": "Начало",
+  "Draw in the 3D view": "Рисование в 3D-виде",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Инструменты рисования Rodeo теперь рисуют в 3D-виде, на земле, а облик SketchUp открывается в 3D, как сам SketchUp.",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Линия, Прямоугольник, Окружность, Дуга, Многоугольник и другие 2D-инструменты рисуют на плоскости активного слоя там, где вы щёлкаете в 3D-виде, с предпросмотром, привязкой и строкой данных.",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Выдавленный прямоугольник, Цилиндр, Сфера и Конус тоже рисуют там свои основания, а Тяни/толкай поднимает нарисованное.",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Пока выбран инструмент рисования, средняя кнопка вращает вид, а 2D-объекты показываются линиями на плоскости своего слоя.",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Облик SketchUp открывает чертёж в одном 3D-виде в перспективе, с небом и осями; клавиша 3 переключает на план и обратно."
 }

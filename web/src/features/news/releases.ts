@@ -22,6 +22,17 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T20:30:00Z",
+    "draw-in-3d",
+    "Draw in the 3D view",
+    `Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.
+- Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.
+- Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.
+- While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.
+- The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.`,
+    "plan3d",
+  ),
+  release(
     "2026-11-13T18:50:00Z",
     "work-like-bars",
     "Work Like: each application's own bars, and Copy as they copy",

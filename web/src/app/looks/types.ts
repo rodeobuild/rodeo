@@ -337,6 +337,11 @@ export interface LookSpec {
    * the horizon ("sketchup"). Nothing for the others.
    */
   readonly axes3d?: "sketchup";
+  /**
+   * A drawing opens in the 3D view, in perspective, and 2D objects show there on their layer's plane,
+   * as in SketchUp, which has no plan view (the 2D tools draw in the 3D view in every look).
+   */
+  readonly start3d?: boolean;
   /** the docks' palettes stacked as a tray of sections each rolled up or out by its title (SketchUp's Default Tray), not tabs */
   readonly tray?: boolean;
   /** Rhino's viewport tabs under the viewports, above the status bar: Perspective, Top, Front, Right and a "+" (paneTabs.ts) */

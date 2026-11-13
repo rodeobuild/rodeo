@@ -11,6 +11,11 @@ export interface LookCanvas {
   readonly grid3d?: boolean;
   /** the 3D view's axes through the origin (solid positive half, dotted negative) and its sky, as SketchUp draws them; absent for the others */
   readonly axes3d?: "sketchup";
+  /**
+   * a drawing opens in the 3D view, in perspective, and 2D objects show there on their layer's plane,
+   * as SketchUp has only its 3D view; absent or false for the others
+   */
+  readonly start3d?: boolean;
 }
 
 let canvas: LookCanvas | null = null;

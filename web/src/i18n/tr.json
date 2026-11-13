@@ -18530,5 +18530,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "Orto artık sürüklenen seçimi de yatay veya dikey tutar; Noktalarla Taşı'nın Birden çok kopyala modu vardır.",
   "Info Box › Main:": "Ana:",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "Başlangıç"
+  "Tab › Start": "Başlangıç",
+  "Draw in the 3D view": "3B görünümde çizim",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Rodeo'nun çizim araçları artık 3B görünümde, zeminin üzerinde çiziyor ve SketchUp görünümü, SketchUp'ta olduğu gibi 3B olarak açılıyor.",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Çizgi, Dikdörtgen, Daire, Yay, Çokgen ve diğer 2B araçlar, 3B görünümde tıkladığınız yerde etkin katmanın düzlemine önizleme, yakalama ve veri çubuğuyla çizer.",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Ekstrüze dikdörtgen, Silindir, Küre ve Koni de tabanlarını orada çizer; İt/çek çizdiğinizi yükseltir.",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Bir çizim aracı seçiliyken orta düğme görünümü döndürür ve 2B nesneler katmanlarının düzleminde çizgi olarak görünür.",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "SketchUp görünümü bir çizimi gökyüzü ve eksenleriyle tek bir perspektif 3B görünümde açar; 3 plana gider ve geri döner."
 }

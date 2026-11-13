@@ -18489,5 +18489,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "正交現在也會讓拖曳的選取保持水平或直立，按點移動新增了多重複製模式。",
   "Info Box › Main:": "主要：",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "開始"
+  "Tab › Start": "開始",
+  "Draw in the 3D view": "在 3D 檢視中繪圖",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Rodeo 的繪圖工具現在可以在 3D 檢視中的地面上繪圖，SketchUp 外觀也像 SketchUp 一樣以 3D 開啟。",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "線、矩形、圓、圓弧、多邊形等 2D 工具會在 3D 檢視中點按處，於作用中圖層的平面上繪圖，並帶有預覽、鎖點和資料列。",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "擠出矩形、圓柱、球體和圓錐也在那裡繪製底面，推/拉可將所畫的形狀升起。",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "選取繪圖工具時，滑鼠中鍵用於環繞檢視，2D 物件以線條顯示在其圖層的平面上。",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "SketchUp 外觀會在單一透視 3D 檢視中開啟圖面，帶有天空和座標軸；按 3 可切換到平面並返回。"
 }

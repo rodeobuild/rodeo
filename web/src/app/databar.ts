@@ -206,8 +206,15 @@ export function parseValue(text: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
+/** Where the bar goes for a place a tool asks for, in another view of the drawing (setRedirect). */
+export type BarRedirect = (
+  screen: Pt,
+  box: object,
+) => { readonly screen: Pt; readonly box: { readonly width: number; readonly height: number } } | null | undefined;
+
 export class DataBar {
   private root: HTMLElement | null = null;
+  private redirect: BarRedirect | null = null;
   private stage: BarStage | null = null;
   private handlers: BarHandlers | null = null;
   private readonly inputs = new Map<string, HTMLInputElement>();
@@ -322,10 +329,25 @@ export class DataBar {
     this.refresh();
   }
 
+  /**
+   * Has `position` go through `r` (the 3D view, where a tool draws): the place and box it gives instead
+   * of those asked for, null to leave the bar where it is (another view asked), undefined to place it as
+   * asked; null ends it.
+   */
+  setRedirect(r: BarRedirect | null): void {
+    this.redirect = r;
+  }
+
   /** Repositions the bar beside `screen` (CSS px in the canvas host), flipping it to stay inside `box`. */
   position(screen: Pt, box: { readonly width: number; readonly height: number }): void {
     const root = this.root;
     if (!root || root.hidden) return;
+    const to = this.redirect?.(screen, box);
+    if (to === null) return;
+    if (to) {
+      screen = to.screen;
+      box = to.box;
+    }
     const w = root.offsetWidth;
     const hgt = root.offsetHeight;
     let x = screen.x + GAP;

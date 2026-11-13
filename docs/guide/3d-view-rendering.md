@@ -39,6 +39,21 @@ Vectorworks saves a solid's faces as Parasolid data beside its edges. Most solid
 
 The active design layer's saved view opens with the drawing: a layer saved in a perspective, an isometric or an elevation shows it, with its render mode, the first time the 3D view is shown. Saving stores the 3D view's camera, projection and render mode on the active layer (or Top/Plan, when the plan is showing).
 
+### Drawing in the 3D view
+
+The 2D drawing tools draw in the 3D view as well as in the plan: **Line**, **Rectangle**, **Rounded Rectangle**, **Circle**, **Arc**, **Quarter Arc**, **Oval**, **Polygon**, **Polyline**, **Regular Polygon**, **Triangle** and **Freehand Polygon**, and **Extruded Rectangle**, **Extruded Polygon**, **Cylinder**, **Sphere**, **Hemisphere** and **Cone**, whose bases are drawn the same way. Choose the tool and click on the ground: what you draw lies on the active design layer's plane, at its elevation, as it would if you had drawn it in the plan. The tool's preview, the snap marker and the data bar show where the pointer meets that plane (a circle shows as the ellipse it makes there). Clicks, drags, double-clicks, Shift, Tab and typed values, and snapping to objects work as they do in the plan.
+
+While one of these tools is chosen, the left button is the tool's. The middle button orbits (or the button that orbits in your [Work Like](workspace.md#work-like) look, such as Rhino's right button), and the wheel zooms. Choose the Selection tool to orbit with the left button again.
+
+While a drawing tool is chosen, and always in the SketchUp look, the 2D objects on the visible design layers show in the 3D view as lines on their layer's plane, the selected ones highlighted, so you can see what you have drawn and raise a shape with **Push/Pull**.
+
+**Limits:**
+- A working plane isn't drawn on: 2D objects lie on their layer's plane, as in the plan.
+- In a perspective, a point above the horizon never meets the plane, so the tool waits for the pointer to come back below it.
+- 2D objects shown as lines can't be clicked in the 3D view; a shape you have just drawn is selected, and others can be selected in the plan.
+- Text, dimensions, walls and the tools that move or change objects still work in the plan only.
+- Up to 5,000 2D objects show as lines, the active layer's first.
+
 ## Moving around
 
 ### Orbit, pan and zoom

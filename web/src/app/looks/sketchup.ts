@@ -312,4 +312,6 @@ export const look: LookSpec = {
   background3d: "#dfe9f2",
   // a sky above the horizon and the drawing axes through the origin in the 3D view
   axes3d: "sketchup",
+  // one 3D view in perspective, where the drawing tools draw on the ground, as SketchUp opens
+  start3d: true,
 };

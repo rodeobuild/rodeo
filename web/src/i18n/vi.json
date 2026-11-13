@@ -18455,5 +18455,11 @@
   "Ortho now also keeps a dragged selection level or upright, and Move by Points has a Copy Multiple mode.": "Trực giao giờ cũng giữ vùng chọn đang kéo nằm ngang hoặc thẳng đứng, còn Di chuyển theo điểm có chế độ Sao chép nhiều.",
   "Info Box › Main:": "Chính:",
   "Ctrl+9": "Ctrl+9",
-  "Tab › Start": "Bắt đầu"
+  "Tab › Start": "Bắt đầu",
+  "Draw in the 3D view": "Vẽ trong khung nhìn 3D",
+  "Rodeo's drawing tools now draw in the 3D view, on the ground, and the SketchUp look opens in 3D as SketchUp does.": "Các công cụ vẽ của Rodeo giờ vẽ được trong khung nhìn 3D, trên mặt đất, và giao diện SketchUp mở ở 3D như SketchUp.",
+  "Line, Rectangle, Circle, Arc, Polygon and the other 2D tools draw on the active layer's plane where you click in the 3D view, with their preview, snapping and the data bar.": "Đường thẳng, Hình chữ nhật, Đường tròn, Cung tròn, Đa giác và các công cụ 2D khác vẽ trên mặt phẳng của layer đang hoạt động tại chỗ bạn nhấp trong khung nhìn 3D, kèm bản xem trước, bắt điểm và thanh dữ liệu.",
+  "Extruded Rectangle, Cylinder, Sphere and Cone draw their bases there too, and Push/Pull raises what you drew.": "Hình chữ nhật đùn, Hình trụ, Hình cầu và Hình nón cũng vẽ đáy của chúng ở đó, và Đẩy/Kéo nâng những gì bạn đã vẽ lên.",
+  "While a drawing tool is chosen, the middle button orbits and 2D objects show as lines on their layer's plane.": "Khi một công cụ vẽ đang được chọn, nút giữa xoay quanh khung nhìn và các đối tượng 2D hiện thành đường trên mặt phẳng của layer chứa chúng.",
+  "The SketchUp look opens a drawing in one 3D view in perspective, with its sky and axes; 3 goes to the plan and back.": "Giao diện SketchUp mở bản vẽ trong một khung nhìn 3D phối cảnh duy nhất, có bầu trời và các trục; phím 3 chuyển sang mặt bằng và quay lại."
 }
