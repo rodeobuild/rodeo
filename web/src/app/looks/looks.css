@@ -426,3 +426,17 @@
   display: block;
   overflow: visible;
 }
+
+/* Rhino and SketchUp: one drawing per window, so no tabs of open drawings */
+:root[data-lk-doc-tabs="off"]:not(.lk-phone) .doc-tabs {
+  display: none !important;
+}
+
+/* and the drawing (and what floats over it) takes the strip's room */
+:root[data-lk-doc-tabs="off"]:not(.lk-phone) .stage.has-tabs .canvas-wrap {
+  top: 0;
+}
+
+:root[data-lk-doc-tabs="off"]:not(.lk-phone) .stage.has-tabs .hud-top {
+  top: 12px;
+}

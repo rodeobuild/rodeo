@@ -34,6 +34,30 @@
   color: var(--lk-status-text);
 }
 
+/* what AREA or LIST printed: over the drawing next to the line, as AutoCAD floats its prompt history */
+.lk-cmd-printed {
+  position: absolute;
+  left: 0;
+  z-index: 30;
+  min-width: 320px;
+  max-width: min(720px, 90vw);
+  padding: 4px 8px;
+  background: var(--lk-bar, #fff);
+  color: var(--lk-status-text, #222);
+  border: 1px solid var(--lk-border, #b9b9b9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  cursor: default;
+}
+.lk-cmd-at-top .lk-cmd-printed {
+  top: 100%;
+}
+.lk-cmd-at-bottom .lk-cmd-printed {
+  bottom: 100%;
+}
+.lk-cmd-printed[hidden] {
+  display: none;
+}
+
 .lk-cmd-line {
   height: 18px;
   overflow: hidden;
@@ -58,6 +82,21 @@
   white-space: pre;
   text-overflow: ellipsis;
   color: var(--lk-bar-text);
+}
+
+/* AutoCAD's command-line mark before the empty field */
+.lk-cmd-glyph {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: -1px;
+  opacity: 0.8;
+}
+
+.lk-cmd-input::placeholder {
+  color: var(--lk-bar-text);
+  opacity: 0.55;
+  /* "Type a command" as AutoCAD writes it, though what's typed shows in capitals */
+  text-transform: none;
 }
 
 /* a command's options in its prompt: each one a button, its key letters underlined */

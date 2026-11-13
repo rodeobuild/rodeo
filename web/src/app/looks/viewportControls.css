@@ -1,0 +1,89 @@
+/* View › Work Like › AutoCAD's drawing-area chrome (viewportControls.ts): the viewport words at the
+   top-left, the navigation bar under the view cube, the UCS icon at the bottom-left. Scoped to the
+   look; the layer lets clicks through except on its words, its strip and its icons. */
+
+:root[data-look="autocad"] .vpc {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+/* [-][Top][2D Wireframe]: light grey words on the drawing's dark ground, each a button */
+:root[data-look="autocad"] .vpc-words {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 0;
+  pointer-events: none;
+}
+
+:root[data-look="autocad"] .vpc-btn {
+  pointer-events: auto;
+  cursor: default;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #c8c8c8;
+  font: inherit;
+  line-height: 1.2;
+  white-space: pre;
+}
+
+:root[data-look="autocad"] .vpc-btn:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* the navigation bar: a slim vertical strip, rounded, under the view cube */
+:root[data-look="autocad"] .vpc-nav {
+  position: absolute;
+  top: 92px;
+  right: 24px;
+  width: 28px;
+  box-sizing: border-box;
+  padding: 3px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  background: #3b4453;
+  border: 1px solid #59637a;
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+:root[data-look="autocad"] .vpc-nav-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #d0d0d0;
+  cursor: default;
+}
+
+:root[data-look="autocad"] .vpc-nav-btn:hover {
+  background: #4f5a6e;
+}
+
+/* the UCS icon: its corner at the drawing's bottom-left, never in the way of a click */
+:root[data-look="autocad"] .vpc-ucs {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+}
+
+:root[data-look="autocad"] .vpc-ucs svg {
+  display: block;
+}

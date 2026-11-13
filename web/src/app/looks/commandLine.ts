@@ -9,6 +9,7 @@ import "./commandLine.css";
 import { allTools } from "../toolbar.ts";
 import { dataBar } from "../databar.ts";
 import { setSelection } from "../commands.ts";
+import { language, onLanguage, t } from "../i18n.ts";
 import { store, type ToolId } from "../state.ts";
 import { runCommand } from "./commands.ts";
 import type { CommandLineHandle } from "./looks.ts";
@@ -17,8 +18,24 @@ import type { Command, CommandLineSpec, LineCommand, LineOption } from "./types.
 /** Suggestions listed under the prompt at most, so the list stays short over the drawing. */
 const MAX_SUGGEST = 10;
 
-/** A typed letter, digit or sign that starts a command, an option or a value. */
-const STARTS = /^[A-Za-z0-9_.,@<'!-]$/;
+/** A typed letter (in any language, for options in its words), digit or sign that starts a command, an option or a value. */
+const STARTS = /^[\p{L}\p{N}_.,@<'!-]$/u;
+
+/** The most printed lines (AREA, LIST) that float over the drawing; the rest stay in the history. */
+const MAX_PRINTED = 14;
+
+/** The mounted command line's printer: lines into its history (none while no look has a command line). */
+let printer: ((text: readonly string[]) => void) | null = null;
+
+/**
+ * Prints `text` in the command line's history, each line in the interface's language (AutoCAD's
+ * AREA and LIST, Rhino's Area, Length and What); false when no command line is showing.
+ */
+export function printLines(text: readonly string[]): boolean {
+  if (!printer) return false;
+  printer(text);
+  return true;
+}
 
 /** The signs before a name that both applications accept and that change nothing here: _Line, -LAYER, 'ZOOM, !Line. */
 const NAME_SIGNS = /^[_'!-]+(?=[A-Za-z])/;
@@ -67,15 +84,28 @@ function asLine(c: Command | LineCommand): LineCommand {
   return isCommand(c) ? { do: c } : c;
 }
 
+/** The English words of options made from Mode bar buttons, kept to look them up in another language. */
+const labelOf = new WeakMap<LineOption, string>();
+
+/**
+ * An option's name as the prompt shows it: in the interface's language where that has its words, one
+ * word as both applications write options ("NoScaling"), else its English name.
+ */
+function optionName(o: LineOption): string {
+  const label = labelOf.get(o);
+  return label !== undefined ? t(label).replace(/\s+/g, "") : t(o.name);
+}
+
 /**
  * The letters that pick each option when typed: its own key, else the shortest start of its name
- * that no other option's name starts with ("Extents" → "E", "Previous"/"Pan" → "PR"/"PA").
+ * that no other option's name starts with ("Extents" → "E", "Previous"/"Pan" → "PR"/"PA"). `named`
+ * gives the names to go by: as shown (the interface's language) or in English.
  */
-function optionKeys(options: readonly LineOption[]): Map<string, LineOption> {
+function optionKeys(options: readonly LineOption[], named: (o: LineOption) => string = (o) => o.name): Map<string, LineOption> {
   const out = new Map<string, LineOption>();
-  const names = options.map((o) => o.name.toUpperCase());
+  const names = options.map((o) => named(o).toLocaleUpperCase());
   options.forEach((o, i) => {
-    if (o.key) {
+    if (o.key && named(o) === o.name) {
       out.set(o.key.toUpperCase(), o);
       return;
     }
@@ -129,6 +159,17 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   const history = el("div", "lk-cmd-history");
   const row = el("div", "lk-cmd-row");
   const prompt = el("span", "lk-cmd-prompt");
+  // both are put in the interface's language here, piece by piece, so the page's translator leaves them be
+  history.setAttribute("translate", "no");
+  prompt.setAttribute("translate", "no");
+  // what AREA or LIST printed, floating over the drawing beside the line until the next command or Escape
+  const printedBox = el("div", "lk-cmd-printed");
+  printedBox.setAttribute("translate", "no");
+  printedBox.hidden = true;
+  const unprint = (): void => {
+    printedBox.hidden = true;
+    printedBox.replaceChildren();
+  };
   const input = el("input", "lk-cmd-input");
   input.type = "text";
   input.spellcheck = false;
@@ -140,7 +181,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   const list = el("div", "lk-cmd-suggest");
   list.hidden = true;
   row.append(prompt, input, list);
-  root.append(history, row);
+  root.append(history, row, printedBox);
   into.append(root);
 
   /** Names that start with the text (aliases first), then names that only contain it. */
@@ -152,7 +193,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     for (const { alias, name } of aliasList) {
       if (alias.toUpperCase().startsWith(t)) starts.push({ label: `${show(alias)} → ${show(name)}`, name });
     }
-    for (const name of names) {
+    for (const name of byUse(names)) {
       const u = name.toUpperCase();
       if (u.startsWith(t)) starts.push({ label: show(name), name });
       else if (u.includes(t)) inside.push({ label: show(name), name });
@@ -166,13 +207,24 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     return byUpper.get(u) ?? aliasByUpper.get(u) ?? null;
   }
 
-  /** The one command whose name starts with the text, or the first alphabetically when several do. */
+  /**
+   * Names in the order a typed start offers them, as the applications' autocomplete does: those run
+   * lately first (the latest first), then the look's table order, which lists the everyday commands
+   * first, so Rhino's "L" is Line rather than Left.
+   */
+  function byUse(list: readonly string[]): string[] {
+    const order = new Map(names.map((n, i) => [n, i] as const));
+    const last = (n: string): number => ran.lastIndexOf(n);
+    return [...list].sort((a, b) => last(b) - last(a) || (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  }
+
+  /** The one command whose name starts with the text, or the first by byUse when several do. */
   function startingWith(text: string): string | null {
     const u = text.trim().replace(NAME_SIGNS, "").toUpperCase();
     if (!u) return null;
     const alias = aliasList.find((a) => a.alias.toUpperCase().startsWith(u));
     if (alias) return alias.name;
-    return names.filter((n) => n.toUpperCase().startsWith(u)).sort((a, b) => a.length - b.length || a.localeCompare(b))[0] ?? null;
+    return byUse(names.filter((n) => n.toUpperCase().startsWith(u)))[0] ?? null;
   }
 
   function renderSuggest(): void {
@@ -254,28 +306,44 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
       const label = (b.getAttribute("aria-label") || b.title || b.textContent || "").trim();
       if (!label || label === "Tool preferences" || b.disabled) continue;
       // option names are one word in both applications: "NoScaling", "SingleObject"
-      out.push({ name: label.replace(/\s+/g, ""), do: { run: () => b.click(), checked: () => b.classList.contains("on") } });
+      const o: LineOption = { name: label.replace(/\s+/g, ""), do: { run: () => b.click(), checked: () => b.classList.contains("on") } };
+      labelOf.set(o, label);
+      out.push(o);
     }
     return out;
   }
 
   /** The prompt with its options, each a button: "Zoom ( All Extents Selected ):", "ZOOM [All/Extents] <real time>:". */
   function renderPrompt(): void {
-    const { lead, words } = promptParts();
+    const idle = pending === null && store.tool === "select";
+    // AutoCAD waits with ">_" and "Type a command" greyed inside the empty field, not as a prompt
+    if (autocad) {
+      input.placeholder = idle ? t(spec.prompt) : "";
+      root.classList.toggle("lk-cmd-busy", !idle);
+      if (idle) {
+        prompt.replaceChildren(el("span", "lk-cmd-glyph", ">_"));
+        return;
+      }
+    }
+    const { lead, words: english } = promptParts();
+    const words = english ? t(english) : "";
     const options = currentOptions();
     const parts: (string | HTMLElement)[] = [words];
     const enterLabel = pending && pending.stage !== "select" ? pending.cmd.enterLabel : undefined;
-    if (!autocad && enterLabel && pending?.stage === "options" && !/press enter/i.test(words)) parts[0] = `${words ? words + ". " : ""}Press Enter for ${enterLabel}`;
+    if (!autocad && enterLabel && pending?.stage === "options" && !/press enter/i.test(english)) {
+      parts[0] = `${words ? words.replace(/[.。]?\s*$/, "") + ". " : ""}${t(`Press Enter for ${enterLabel}`)}`;
+    }
     if (options.length > 0) {
-      const keys = optionKeys(options);
+      const keys = optionKeys(options, optionName);
       const keyOf = (o: LineOption): string => [...keys].find(([, v]) => v === o)?.[0] ?? "";
       const buttons = options.map((o) => {
         const b = el("button", "lk-cmd-opt");
         b.type = "button";
         const k = keyOf(o);
+        const name = optionName(o);
         // the letters that pick it are underlined, as the applications mark them
-        if (k && o.name.toUpperCase().startsWith(k)) b.append(el("u", "", o.name.slice(0, k.length)), document.createTextNode(o.name.slice(k.length)));
-        else b.textContent = o.name;
+        if (k && name.toLocaleUpperCase().startsWith(k)) b.append(el("u", "", name.slice(0, k.length)), document.createTextNode(name.slice(k.length)));
+        else b.textContent = name;
         if ("run" in o.do && o.do.checked?.()) b.classList.add("on");
         b.addEventListener("mousedown", (e) => e.preventDefault());
         b.addEventListener("click", () => pick(o));
@@ -297,10 +365,10 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
         parts.push(" )");
       }
     }
-    if (autocad && enterLabel) parts.push(` <${enterLabel}>`);
+    if (autocad && enterLabel) parts.push(` <${t(enterLabel)}>`);
     // the closing colon, unless the words already end with one (AutoCAD's "Select objects:")
     const last = parts[parts.length - 1];
-    if (!(typeof last === "string" && /[:?]\s*$/.test(last))) parts.push(":");
+    if (!(typeof last === "string" && /[:?：？]\s*$/.test(last))) parts.push(language().colon);
     // the command's name in a span of its own, so the words after it translate as they are
     const name = lead ? [el("span", "lk-cmd-name", lead), document.createTextNode(" ")] : [];
     prompt.replaceChildren(...name, ...parts.map((p) => (typeof p === "string" ? document.createTextNode(p) : p)));
@@ -354,7 +422,9 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
       pending = null;
       if (store.tool !== "select") runCommand({ tool: "select" });
     }
-    say(`${spec.prompt}: ${show(name)}`);
+    unprint();
+    // AutoCAD writes "Command: LINE" above, whatever its empty field says
+    say(`${t(autocad ? "Command" : spec.prompt)}${language().colon} ${show(name)}`);
     ran.push(name);
     const cmd = asLine(entry);
     if (cmd.select && store.selection.size === 0) {
@@ -368,7 +438,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   /** An option clicked or typed: it runs, and a command of options alone is then done. */
   function pick(o: LineOption): void {
     const p = pending;
-    say(`${promptText()} ${o.name}`);
+    say(`${promptText()} ${optionName(o)}`);
     clearInput();
     if (p?.stage === "options") pending = null;
     runCommand(o.do);
@@ -384,7 +454,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     const p = pending;
     if (p?.stage === "select") {
       if (store.selection.size === 0) {
-        say(`${promptText()} (nothing selected)`);
+        say(`${promptText()} ${t("(nothing selected)")}`);
         pending = null;
         renderPrompt();
         return true;
@@ -396,7 +466,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     if (p?.stage === "options") {
       pending = null;
       if (p.cmd.enter) {
-        say(`${promptText()} ${p.cmd.enterLabel ?? ""}`.trim());
+        say(`${promptText()} ${p.cmd.enterLabel ? t(p.cmd.enterLabel) : ""}`.trim());
         runCommand(p.cmd.enter);
       }
       renderPrompt();
@@ -413,13 +483,17 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
   function optionFor(text: string): LineOption | null {
     const options = currentOptions();
     if (options.length === 0) return null;
-    const u = text.trim().toUpperCase();
-    const byKey = optionKeys(options).get(u);
-    if (byKey) return byKey;
-    const exact = options.find((o) => o.name.toUpperCase() === u);
-    if (exact) return exact;
-    const starting = options.filter((o) => o.name.toUpperCase().startsWith(u));
-    return starting.length === 1 ? starting[0] : null;
+    const u = text.trim().replace(NAME_SIGNS, "").toLocaleUpperCase();
+    // in the words the prompt shows them in first, then in English (typed as the English manuals give them)
+    for (const named of [optionName, (o: LineOption) => o.name]) {
+      const byKey = optionKeys(options, named).get(u);
+      if (byKey) return byKey;
+      const exact = options.find((o) => named(o).toLocaleUpperCase() === u);
+      if (exact) return exact;
+      const starting = options.filter((o) => named(o).toLocaleUpperCase().startsWith(u));
+      if (starting.length === 1) return starting[0];
+    }
+    return null;
   }
 
   /**
@@ -506,8 +580,8 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
       start(name);
       return;
     }
-    if (pending && pending.stage !== "running") say(autocad ? `Invalid option keyword.` : `Unknown command option: ${raw}`);
-    else say(autocad ? `Unknown command "${raw.toUpperCase()}".  Press F1 for help.` : `Unknown command: ${raw}`);
+    if (pending && pending.stage !== "running") say(autocad ? t("Invalid option keyword.") : t(`Unknown command option: ${raw}`));
+    else say(autocad ? t(`Unknown command "${raw.toUpperCase()}". Press F1 for help.`) : t(`Unknown command: ${raw}`));
     clearInput();
   }
 
@@ -531,6 +605,7 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
         e.preventDefault();
         e.stopPropagation();
         if (input.value === "" && (pending || store.tool !== "select")) cancel();
+        unprint();
         clearInput();
         return;
       case "ArrowDown":
@@ -614,6 +689,18 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
     : null;
   watch?.observe(modeBar!, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "disabled", "aria-pressed"] });
 
+  printer = (text) => {
+    const shown = text.map((line) => t(line));
+    lines.push(...shown);
+    renderHistory();
+    const last = shown.slice(-MAX_PRINTED);
+    printedBox.replaceChildren(...last.map((line) => el("div", "lk-cmd-line", line)));
+    printedBox.hidden = false;
+  };
+  onLanguage(() => {
+    if (root.isConnected) renderPrompt();
+  });
+
   const offTool = store.on(["tool", "hint"], () => {
     if (pending?.stage === "running" && store.tool !== pending.tool) pending = null;
     renderPrompt();
@@ -648,11 +735,16 @@ export function mountCommandLine(into: HTMLElement, spec: CommandLineSpec, modeB
       return false;
     },
     escape(): boolean {
+      if (!printedBox.hidden && !pending) {
+        unprint();
+        return true;
+      }
       if (!pending) return false;
       cancel();
       return true;
     },
     unmount(): void {
+      printer = null;
       offTool();
       watch?.disconnect();
       offSelection();

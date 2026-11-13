@@ -25,6 +25,7 @@ import { imageBytes, withContainers } from "../core/index.ts";
 import { unionBBox } from "./geom.ts";
 import { graysOthers, snapsToOthers, store } from "./state.ts";
 import { hiddenObjects } from "./hiddenObjects.ts";
+import { lockedObjects } from "./lockedObjects.ts";
 import { buildGeom, type Geom } from "./shapes.ts";
 
 /** Vectorworks' object types: a wall, and the plug-in objects and symbols set in one */
@@ -222,6 +223,11 @@ export class Scene {
   /** Whether View > Hide Selected Objects (or Object Visibility) hid the object, or a container it is in. */
   isHidden(obj: ObjectInfo): boolean {
     return this.within(obj, hiddenObjects());
+  }
+
+  /** Whether View > Lock Selection locked the object, or a container it is in. Locked objects still draw, but can't be picked. */
+  isLocked(obj: ObjectInfo): boolean {
+    return this.within(obj, lockedObjects());
   }
 
   /** How an object is drawn: as its class is, unless a container's class hides or grays it, or it is hidden. */
@@ -507,6 +513,7 @@ export class Scene {
     const out: TopEntry[] = [];
     const units = scope === null ? idx.objects.filter((o) => o.parentId === null) : (idx.children.get(scope) ?? []);
     const pickable = (classIndex: number): boolean => this.isClassPickable(classIndex);
+    const locked = (o: ObjectInfo): boolean => this.isLocked(o);
     for (const o of units) {
       const classIndex = o.classIndex;
       out.push({
@@ -514,7 +521,7 @@ export class Scene {
         bbox: this.subtreeBBox(o, idx),
         // a getter: class options (and hiding) change pickability without rebuilding this cached list
         get visible() {
-          return pickable(classIndex) && !hiddenObjects().has(o.id);
+          return pickable(classIndex) && !hiddenObjects().has(o.id) && !locked(o);
         },
       });
     }

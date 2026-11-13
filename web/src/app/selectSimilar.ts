@@ -8,6 +8,7 @@
 import type { ObjectInfo, VwxDocument } from "../core/index.ts";
 import { setSelection } from "./commands.ts";
 import { h } from "./dom.ts";
+import { isLockedObject } from "./lockedObjects.ts";
 import { showDialog } from "./menubar.ts";
 import { isDerivedId } from "./scene.ts";
 import { store } from "./state.ts";
@@ -154,7 +155,7 @@ export function similarScope(doc: VwxDocument): ObjectInfo[] {
   const layerId = store.activeLayerId;
   if (!layerId) return [];
   const scope = store.editGroupId;
-  return doc.objects(layerId).filter((o) => o.parentId === scope && !isDerivedId(o.id));
+  return doc.objects(layerId).filter((o) => o.parentId === scope && !isDerivedId(o.id) && !isLockedObject(doc, o));
 }
 
 /** True when some attribute is ticked to match on; says so when none is. */

@@ -703,6 +703,10 @@ export const TOOL_ICON: Record<ToolId, string> = {
   hemisphere: svg('<path d="M4 16a8 8 0 0116 0"/><ellipse cx="12" cy="16" rx="8" ry="2.5"/>'),
   // cone: a point over an elliptical base
   cone: svg('<path d="M12 3.5L4.5 17M12 3.5L19.5 17"/><ellipse cx="12" cy="17" rx="7.5" ry="2.8"/>'),
+  // cylinder: a can standing on its base, its top the size of its base
+  cylinder: svg('<ellipse cx="12" cy="6.5" rx="6.5" ry="2.5"/><path d="M5.5 6.5v11M18.5 6.5v11"/><path d="M5.5 17.5a6.5 2.5 0 0 0 13 0"/>'),
+  // torus: a ring, its hole seen through its outer edge
+  torus: svg('<ellipse cx="12" cy="12" rx="8.5" ry="5"/><ellipse cx="12" cy="12" rx="3.5" ry="1.8"/>'),
 };
 
 /** Bar and palette icons. */

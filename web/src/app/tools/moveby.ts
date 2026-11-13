@@ -58,6 +58,11 @@ export class MoveByPointsTool extends BaseTool {
     if (mode) this.mode = mode;
   }
 
+  /** The point picked up, once it is: snaps and Ortho (View › Ortho) work from it. */
+  snapFrom(): Pt | null {
+    return this.from;
+  }
+
   hint(): string {
     if (store.selection.size === 0) return "Select objects first";
     if (!this.from) return "Click the point to move from · 1–2 mode";

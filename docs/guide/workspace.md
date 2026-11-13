@@ -258,6 +258,10 @@ A typed X or Y places the point there, else a typed ΔX or ΔY, else the tool's 
 
 While the Selection tool moves things, the data bar shows how far, and where the dragged point is from the datum.
 
+### Ortho
+
+**View › Ortho** (F8 in the Rhino and AutoCAD looks) keeps a tool's next point level or upright from its last one: at 0, 90, 180 or 270 degrees. An object snap still wins, and holding Shift lets go of Ortho for that moment. It works in the tools that draw from a point, and in Move; the Selection tool's drag and Duplicate don't follow it yet. The setting is kept for the next visit.
+
 ### Snap Loupe
 
 The Snap Loupe, as Vectorworks keys it: <kbd>Z</kbd> over the drawing opens a round window magnifying it 4× at the pointer (<kbd>Z</kbd> again doubles it, up to 64×), where snap points too close to pick come apart.
@@ -292,6 +296,12 @@ The View menu has:
 - **Object Visibility…**: show, show only or hide the objects meeting criteria, as Custom Selection sets them.
 
 Hidden objects aren't drawn, selected or snapped to, in plan, 3D or viewports, nor exported or printed, until **Unhide Objects** or the button the drawing shows. They stay hidden while the drawing is open, not in the saved file.
+
+### Locking objects
+
+**Modify › Lock** locks the selected objects and **Modify › Unlock** unlocks them all, as Rhino's Lock and Unlock (Ctrl+L and Ctrl+Alt+L in the Rhino look) and Revit's Pin and Unpin (PN and UP) do. A locked object is still drawn, grey in plan, but a click, a marquee, Select All, Select Similar and Invert Selection pass it by, so it can't be moved, edited or deleted; object snaps still find it.
+
+**Limits:** objects stay locked while the drawing is open, not in the saved file.
 
 ### Naming objects
 
@@ -461,10 +471,10 @@ A look changes:
 
 - the menu bar: the application's menus in its order, each holding the Rodeo commands that do what its commands do. Commands it has no place for go at the end of the nearest menu, after a line, so nothing is lost.
 - its words: Object Info is Properties in Revit, Entity Info in SketchUp; symbols are blocks in AutoCAD, families in Revit, components in SketchUp; classes are layers in Archicad, tags in SketchUp. Menus, palette titles, tabs and labels show them.
-- the rows round the drawing: Revit's and AutoCAD's ribbon and Quick Access Toolbar, Rhino's command line and tabbed toolbars, SketchUp's Getting Started toolbar and Large Tool Set, Archicad's Standard toolbar, Toolbox and Info Box, Revit's View Control Bar, Archicad's Quick Options, AutoCAD's Model and layout tabs, and each application's status bar.
+- the rows round the drawing: Revit's and AutoCAD's ribbon and Quick Access Toolbar, Rhino's command line, tabbed toolbars, OSnap panel and viewport tabs, SketchUp's Getting Started toolbar, Large Tool Set and Default Tray, Archicad's Standard toolbar, Toolbox and Info Box, Revit's View Control Bar, Archicad's Quick Options, AutoCAD's viewport controls, navigation bar, Model and layout tabs, and each application's status bar.
 - where the palettes sit, what they are called and what they show: a layer table in Rhino (Layers), AutoCAD (Layer Properties) and SketchUp (Tags), Revit's Project Browser and Archicad's Project Map (see below).
-- the drawing area: Rhino's grey viewports named Top, Front, Right and Perspective, with a red X and a green Y axis through the grid; no grid in Revit, Archicad or SketchUp; no view cube where the application has none.
-- its keys: SketchUp's single letters (L, R, P, M, Q…), Revit's two-letter shortcuts (WA, DR, VV…), AutoCAD's and Rhino's function keys.
+- the drawing area: Rhino's grey viewports named Top, Front, Right and Perspective, each with its construction plane's grid and a red X and a green Y axis; SketchUp's red, green and blue axes, dotted on their negative side, and its sky in 3D; no grid in Revit, Archicad or SketchUp; no view cube where the application has none.
+- its keys: SketchUp's single letters (L, R, P, M, Q, K…), Revit's two-letter shortcuts (WA, DR, VV, ZE, PN…), AutoCAD's and Rhino's function keys (F8 is Ortho), and each application's Ctrl and Alt keys (Rhino's Ctrl+L locks, Ctrl+H hides; AutoCAD's Ctrl+1 shows Properties; Archicad's Ctrl+D moves). On a Mac, ⌘ works as Ctrl. A browser keeps Ctrl+T, Ctrl+W and Ctrl+N for its tabs and windows (and macOS keeps ⌘H and ⌘M), so those never reach Rodeo.
 - how the mouse moves the 3D view: SketchUp orbits with the wheel pressed, Rhino with a right drag, the others pan with the wheel pressed; Shift swaps orbit and pan.
 - the colours: light chrome for most, AutoCAD's dark one with its dark model space, Rhino's grey viewports and four view panes.
 
@@ -472,11 +482,21 @@ Every button, key and typed command runs Rodeo's own tool or menu command. The b
 
 ### The command line
 
-In the Rhino and AutoCAD looks, typing over the drawing goes to the command line: a command's name or its short name (L for Line, CO for Copy in AutoCAD; M for Move in Rhino), then Enter or Space. Rhino's `_Line`, `-Layer` and `'Zoom` forms work too, and so does the start of a name when only one command begins with it. As you type, the commands that match show under it (↑ and ↓ go through them, Tab completes). Enter or Space on an empty line runs the last command again; ↑ and ↓ then go back through the commands you ran. A name the look doesn't know says so and runs nothing.
+In the Rhino and AutoCAD looks, typing over the drawing goes to the command line: a command's name or its short name (L for Line, CO for Copy in AutoCAD; M for Move in Rhino), then Enter or Space. Rhino's `_Line`, `-Layer` and `'Zoom` forms work too, and so does the start of a name when only one command begins with it. As you type, the commands that match show under it (↑ and ↓ go through them, Tab completes). Enter or Space on an empty line runs the last command again; ↑ and ↓ then go back through the commands you ran. A name the look doesn't know says so and runs nothing. When several names begin with what you typed, Enter takes the one you ran last, else the everyday one the application lists first (Rhino's `L` is Line).
 
 While a command runs, the line asks for its next step in the application's words (Start of line, Specify first point:) and lists its options: Rhino's in brackets, `( All Extents Selected … )`, AutoCAD's as `[All/Extents/Previous/Window/Object] <real time>`. Click an option, or type its name or its underlined letters, then Enter. **Zoom** works this way: `zoom`, Enter, `e`, Enter zooms to everything; Enter on its own takes the default. While a drawing tool runs, its modes (Rodeo's Mode bar, which these looks hide) are the options.
 
 Type points and distances as you would there: `10,20` is a point, `@5,0` (or Rhino's `r5,0`) is from the last point, `10<45` is a length at an angle, and a single number is the first value the step asks for (a circle's radius, a line's length). Commands that work on objects (Move, Copy, Rotate, Join, Boolean Union, Explode…) ask you to select them when nothing is selected: click the objects, then Enter. Escape ends a command.
+
+### Rhino's and AutoCAD's frames
+
+The Rhino look's OSnap panel under the tools turns object snapping on and off (its points are Rodeo's own snaps). Each viewport's title is a tab, blue while that viewport is active, and the tabs under the views (Perspective, Top, Front, Right) make that view active or show it. The status bar has the CPlane coordinates, the units, the current layer with its colour, and Grid Snap, Ortho and Osnap; Planar, SmartTrack, Gumball, Record History and Filter are greyed, as Rodeo has none of them.
+
+The AutoCAD look opens, as AutoCAD does, with no palettes: Ctrl+1 (or PROPERTIES) shows Properties and LA the Layer Properties. The `[-][Top][2D Wireframe]` words at the top left of the drawing drop lists of view arrangements, views and visual styles; the navigation bar at the right pans, zooms to everything, orbits and zooms to a window. The status bar shows MODEL, Grid, Snap Mode, Ortho Mode and Object Snap; Polar Tracking, Isometric Drafting and Object Snap Tracking are greyed. With no command running the line waits with "Type a command".
+
+### Reports in the command line
+
+AutoCAD's **AREA** and **LIST** and Rhino's **Area**, **Length** and **What** print what they find in the command line, beside it over the drawing until the next command or Escape: the area and perimeter of each closed object (and the total), the length of each curve, and what each object is, its layer and class and where it lies. **REGEN** and **Redraw** draw everything again.
 
 ### The ribbon
 

@@ -165,6 +165,10 @@ The **Extruded Rectangle** and **Extruded Polygon** tools draw as the Rectangle 
 
 The **Sphere**, **Hemisphere** and **Cone** tools go from the centre out to the radius, as the Circle tool does, and make sweeps turned a full turn about their upright axis: a sphere centred on the layer's plane, and a hemisphere and a cone (its height in Preferences) standing on it.
 
+### Cylinder and Torus
+
+The **Cylinder** tool goes from the centre of the base out to its radius, as the Cone tool does, and makes a circle extruded up the height in its Preferences, standing on the layer's plane. The **Torus** tool takes three clicks: the centre, the middle of the tube (the torus's radius) and the tube's edge (the tube's radius, which must be less than the torus's). It makes a ring of that tube turned a full turn about the upright through the centre: a mesh grouped with its plan, as the other 3D tools' solids are.
+
 Like **Model › Extrude** and **Sweep…**, the Extruded Rectangle, Extruded Polygon, Sphere, Hemisphere and Cone tools copy settings from an extrude already in the drawing; each is one undo step.
 
 ### Edit a solid's edges and faces

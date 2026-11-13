@@ -1,0 +1,95 @@
+/* View › Work Like › SketchUp's Default Tray (tray.ts): the right dock as one column of sections,
+   each under a header row that rolls it up or out. Only a look with a tray puts these classes on. */
+
+/* the tray takes the dock's palette columns' place; the columns stay in the dock, hidden */
+.dock.lk-tray-on > .dock-cols {
+  display: none;
+}
+
+.lk-tray {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #ffffff;
+  color: #222222;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+/* the thin title bar over the tray */
+.lk-tray-bar {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  background: #f2f2f2;
+  border-bottom: 1px solid #c8c8c8;
+  color: #222222;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the sections, one under another; the tray scrolls when they don't fit */
+.lk-tray-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lk-tray-sec {
+  display: block;
+}
+
+/* a section's header: the full width of the tray, a triangle, then the name */
+.lk-tray-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid #c4c4c4;
+  border-radius: 0;
+  background: #e9e9e9;
+  color: #222222;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+
+.lk-tray-head:focus-visible {
+  outline: 1px solid #2b7bd6;
+  outline-offset: -1px;
+}
+
+.lk-tray-tri {
+  flex: none;
+  width: 10px;
+  color: #444444;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.lk-tray-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* a section's contents: its palette's body, as the dock lays it out, under its header */
+.lk-tray .lk-tray-body {
+  background: #ffffff;
+}
+
+.lk-tray .lk-tray-body[hidden] {
+  display: none;
+}

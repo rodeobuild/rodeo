@@ -1,0 +1,87 @@
+/* View › Work Like's viewport tabs (paneTabs.ts): the row under the viewports, above the status bar. */
+
+.lk-pane-tabs {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 4px;
+  background: #d2d2d2;
+  border-top: 1px solid #a9a9a9;
+  cursor: default;
+}
+
+.lk-pane-tab {
+  box-sizing: border-box;
+  height: 20px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: #e3e3e3;
+  color: #000;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.lk-pane-tab[aria-selected="true"],
+.lk-pane-tab.on {
+  background: #fff;
+  border-color: #8c8c8c;
+}
+
+.lk-pane-tab.lk-pane-add {
+  padding: 0 8px;
+}
+
+/* the "+" tooltip, shown for two seconds after a click */
+.lk-pane-note {
+  position: absolute;
+  right: 4px;
+  bottom: 24px;
+  z-index: 5;
+  padding: 3px 8px;
+  border: 1px solid #a9a9a9;
+  background: #fff;
+  color: #000;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Rhino's viewport titles: a small grey tab with a ▾, the active viewport's blue with white text */
+:root[data-look="rhino"] .pane-chip {
+  height: auto;
+  padding: 2px 6px;
+  gap: 3px;
+  border: 1px solid #a9a9a9;
+  border-radius: 3px 3px 0 0;
+  background: #dcdcdc;
+  color: #000;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 14px;
+}
+
+:root[data-look="rhino"] .pane-chip:hover {
+  color: #000;
+}
+
+:root[data-look="rhino"] .pane-chip svg {
+  display: none;
+}
+
+:root[data-look="rhino"] .pane-chip::after {
+  content: "▾";
+  font-size: 10px;
+}
+
+:root[data-look="rhino"] .pane-chip.active {
+  background: #3a73d9;
+  border-color: #3a73d9;
+  color: #fff;
+}

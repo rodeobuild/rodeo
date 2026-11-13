@@ -14,7 +14,7 @@ import { gridStep } from "./snap.ts";
 import { toggleSmartOptions } from "./smartOptions.ts";
 import { dataBar } from "./databar.ts";
 import { runMenuCommand } from "./menubar.ts";
-import { lookEscape, lookKey, lookSpace, lookTypeKey } from "./looks/looks.ts";
+import { lookEscape, lookKey, lookModifiedKey, lookSpace, lookTypeKey } from "./looks/looks.ts";
 
 export interface ShortcutActions {
   fit(): void;
@@ -206,6 +206,11 @@ export function installShortcuts(deps: ShortcutDeps): void {
       return;
     }
 
+    // View › Work Like: the look's own Ctrl and Alt keys before Rodeo's
+    if ((e.metaKey || e.ctrlKey || e.altKey) && lookModifiedKey(e)) {
+      e.preventDefault();
+      return;
+    }
     if (e.metaKey || e.ctrlKey) {
       if (handleModified(e, deps)) e.preventDefault();
       return;

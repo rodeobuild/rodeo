@@ -20,7 +20,7 @@ export type LookId = "rodeo" | "rhino" | "sketchup" | "revit" | "archicad" | "au
  * Top" — the paths are listed in menus.txt, never made up), shows or hides a palette, or runs code.
  */
 export type Command =
-  | { readonly tool: ToolId }
+  | { readonly tool: ToolId; readonly mode?: string }
   | { readonly menu: string }
   | { readonly palette: string }
   | { readonly run: () => void; readonly checked?: () => boolean };
@@ -163,8 +163,20 @@ export type StatusItem =
   | { readonly kind: "text"; readonly text: string }
   /** the drawing's units ("Millimeters", "Feet and Inches") */
   | { readonly kind: "units" }
-  /** the active layer, a drop-down of the layers */
-  | { readonly kind: "layer"; readonly label?: string }
+  /**
+   * the active layer, a drop-down of the layers; `of: "class"` makes it the active class instead (a
+   * drop-down of the classes), and `swatch` puts a square in its pen colour before its name
+   */
+  | {
+      readonly kind: "layer";
+      readonly label?: string;
+      readonly of?: "layer" | "class";
+      readonly swatch?: boolean;
+      /** with `of: "class"`, the name shown for Rodeo's None class (Rhino's "Default", as its layer table) */
+      readonly none?: string;
+    }
+  /** a feature Rodeo doesn't have: drawn greyed with `why` as its tooltip, and nothing happens on a click (with `icon`, drawn as that icon, and a click says `why`) */
+  | { readonly kind: "inert"; readonly label: string; readonly why: string; readonly icon?: string }
   /** how many objects are selected */
   | { readonly kind: "selection" }
   /** a box typed lengths and values go in (SketchUp's Measurements): it shows what the data bar shows */
@@ -235,6 +247,12 @@ export interface LookSpec {
   readonly commandLine?: CommandLineSpec;
   readonly statusBar?: StatusBarSpec;
   /**
+   * A small titled panel at the foot of the column of tools (Rhino's OSnap panel under its sidebar):
+   * its rows are status items, drawn and run as the status bar draws them. It sits in the toolbox's
+   * column, the right one when the toolbox is on the right.
+   */
+  readonly sidePanel?: { readonly title: string; readonly items: readonly StatusItem[] };
+  /**
    * Where Rodeo's Mode bar (the tool's modes and options) goes: over the drawing as Rodeo has it,
    * in a row under the ribbon or toolbars (Revit's Options Bar, Archicad's Info Box), at the start
    * of the status bar, or into the command line as the prompt's options (Rhino, AutoCAD: the bar
@@ -248,8 +266,9 @@ export interface LookSpec {
   /** the docks' rails of palette icons (Rodeo's own idea; the other applications have none) */
   readonly rails: boolean;
   /**
-   * Single keys over the drawing: "l", "⇧z" (Shift+Z), "F8", "Delete". They win over Rodeo's own
-   * keys; a key a look leaves out does what it does in Rodeo.
+   * Keys over the drawing: "l", "⇧z" (Shift+Z), "F8", "Delete", and held with Ctrl (⌘ on a Mac) or
+   * Alt as Windows writes them, modifiers in the order Ctrl, Alt, Shift: "Ctrl+L", "Ctrl+Shift+G",
+   * "Ctrl+Alt+H". They win over Rodeo's own keys; a key a look leaves out does what it does in Rodeo.
    */
   readonly keys?: Readonly<Record<string, Command>>;
   /** keys typed one after the other within a second (Revit's two-letter shortcuts): "wa", "dr", "vv" */
@@ -288,8 +307,25 @@ export interface LookSpec {
   readonly gridColors?: { readonly minor: string; readonly major: string; readonly xAxis?: string; readonly yAxis?: string };
   /** Rodeo's view cube over the drawing (the TOP / 3D box): shown, or gone where the application has none */
   readonly viewCube?: boolean;
+  /** false: one drawing per window and no tabs of open drawings over it (Rhino, SketchUp); Window lists them */
+  readonly docTabs?: boolean;
+  /** each 3D pane shows its construction plane's grid and axes (Rhino's viewports) */
+  readonly grid3d?: boolean;
+  /**
+   * The 3D view's drawing axes through the origin and its sky, as SketchUp draws them: red X, green Y and
+   * blue Z, each a solid line along its positive half and dotted along its negative half, with a sky above
+   * the horizon ("sketchup"). Nothing for the others.
+   */
+  readonly axes3d?: "sketchup";
   /** the docks' palettes stacked as a tray of sections each rolled up or out by its title (SketchUp's Default Tray), not tabs */
   readonly tray?: boolean;
+  /** Rhino's viewport tabs under the viewports, above the status bar: Perspective, Top, Front, Right and a "+" (paneTabs.ts) */
+  readonly paneTabs?: boolean;
+  /**
+   * AutoCAD's drawing-area chrome over the drawing: the viewport words at its top-left ("[-][Top][2D
+   * Wireframe]", each a menu), the navigation bar under the view cube and the UCS icon at its bottom-left
+   */
+  readonly viewportControls?: boolean;
 }
 
 /** One column of a layer table: what each layer's row shows there. */

@@ -8,6 +8,8 @@ import type { ToolId } from "../state.ts";
 import type { Command, CommandLineSpec, LookButton, LookSpec, RibbonTab, StatusBarSpec } from "./types.ts";
 import { lookIcon } from "./commands.ts";
 import { WORK_LIKE } from "./looks.ts";
+import { AREA, dim, LIST, MAKE2D, ORTHO, REGEN } from "./extra.ts";
+import { orthoOn, setOrtho } from "../ortho.ts";
 import "./autocad.css";
 
 /** A tool as a command. */
@@ -32,22 +34,34 @@ const big = (label: string, use: Command, keys?: string, more?: readonly LookBut
 const GRID_ICON = lookIcon('<path d="M5 5h0M12 5h0M19 5h0M5 12h0M12 12h0M19 12h0M5 19h0M12 19h0M19 19h0" stroke-width="2.8"/>');
 const SNAP_ICON = lookIcon('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="M9 9h6v6H9z"/>');
 const OSNAP_ICON = lookIcon('<circle cx="12" cy="12" r="5.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>');
-const LWT_ICON = lookIcon('<path d="M4 12h16" stroke-width="3.4"/>');
+// Ortho: a right angle with its corner square; the drafting aids Rodeo lacks, drawn greyed: a dashed circle with a radius (polar), an isometric cube, dashed tracking lines from a point
+const ORTHO_ICON = lookIcon('<path d="M6 4v14h14"/><path d="M6 12h3.5v3.5"/>');
+const POLAR_ICON = lookIcon('<circle cx="12" cy="12" r="8.5" stroke-dasharray="2 2"/><path d="M12 12l5.5-5.5"/>');
+const ISO_ICON = lookIcon('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>');
+const OTRACK_ICON = lookIcon('<circle cx="8" cy="8" r="2.4"/><path d="M8 12.5v8M3 16h14" stroke-dasharray="2 1.6"/>');
+// Customization: three lines
+const MENU_ICON = lookIcon('<path d="M4 7h16M4 12h16M4 17h16"/>');
 
 const GEAR_ICON = lookIcon('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>');
 
 const statusBar: StatusBarSpec = {
   rows: [
     [
-      { kind: "text", text: "MODEL" },
+      // the group sits at the row's right end, as AutoCAD's does: MODEL, then the drafting aids, 1:1, the gear and the menu
       { kind: "spacer" },
+      { kind: "text", text: "MODEL" },
       { kind: "toggle", label: "Grid", do: m("View › Show Grid"), style: "icon", icon: GRID_ICON },
       { kind: "toggle", label: "Snap Mode", do: m("View › Snap to Grid"), style: "icon", icon: SNAP_ICON },
+      { kind: "toggle", label: "Ortho Mode", do: ORTHO, style: "icon", icon: ORTHO_ICON },
+      { kind: "inert", label: "Polar Tracking", why: "Rodeo has no polar tracking", icon: POLAR_ICON },
+      { kind: "inert", label: "Isometric Drafting", why: "Rodeo has no isometric drafting", icon: ISO_ICON },
+      { kind: "inert", label: "Object Snap Tracking", why: "Rodeo has no object snap tracking", icon: OTRACK_ICON },
       { kind: "toggle", label: "Object Snap", do: m("View › Snap to Objects"), style: "icon", icon: OSNAP_ICON },
-      { kind: "toggle", label: "Lineweight", do: m("View › Zoom Line Thickness"), style: "icon", icon: LWT_ICON },
       { kind: "text", text: "1:1" },
       // the workspace gear: switches to another look, or back to Rodeo's own
       { kind: "toggle", label: "Workspace Switching", do: WORK_LIKE, style: "icon", icon: GEAR_ICON },
+      // the customization menu, which picks the buttons shown: greyed, as Rodeo's bar is fixed
+      { kind: "inert", label: "Customization", why: "Rodeo's status bar shows a fixed set of buttons", icon: MENU_ICON },
     ],
   ],
 };
@@ -184,6 +198,42 @@ const commandLine: CommandLineSpec = {
     PURGE: m("Tools › Utilities › Purge…"),
     AUDIT: m("Tools › Check File Health…"),
     UNITS: m("File › Document Settings › Units…"),
+    AREA: { do: AREA, select: "Select objects:" },
+    LIST: { do: LIST, select: "Select objects:" },
+    REGEN: REGEN,
+    REGENALL: REGEN,
+    REDRAW: REGEN,
+    REDRAWALL: REGEN,
+    // ORTHO on or off by its options; Enter keeps it as it is, which the prompt shows as <ON> or <OFF>
+    ORTHO: {
+      prompt: "Enter mode",
+      options: [
+        { name: "ON", do: { run: () => setOrtho(true) } },
+        { name: "OFF", do: { run: () => setOrtho(false) } },
+      ],
+      get enterLabel(): string {
+        return orthoOn() ? "ON" : "OFF";
+      },
+    },
+    DIMRADIUS: dim("radial"),
+    DIMDIAMETER: dim("diameter"),
+    DIMANGULAR: dim("angular"),
+    DIMBASELINE: dim("baseline"),
+    DIMCONTINUE: dim("chain"),
+    DIMORDINATE: dim("ordinate"),
+    DIMARC: { tool: "arclength" },
+    CYLINDER: { do: { tool: "cylinder" }, prompt: "Specify center point of base:" },
+    TORUS: { do: { tool: "torus" }, prompt: "Specify center point:" },
+    FLATSHOT: { do: MAKE2D, select: "Select objects:" },
+    REVOLVE: { do: { menu: "Model › Sweep…" }, select: "Select objects to revolve:" },
+    MLINE: { tool: "doubleline" },
+    OPTIONS: { menu: "Edit › Preferences…" },
+    ADCENTER: { palette: "resources" },
+    TOOLPALETTES: { palette: "toolsets" },
+    "3DMOVE": { select: "Select objects:", do: t("moveby") },
+    "3DROTATE": { do: { menu: "Modify › Rotate 3D…" }, select: "Select objects:" },
+    "3DARRAY": { select: "Select objects:", do: m("Edit › Duplicate Array…") },
+    ALIGN: { do: { menu: "Modify › Align › Align/Distribute…" }, select: "Select objects:" },
   },
   // short names from AutoCAD's acad.pgp, only where the full name above is in the commands
   aliases: {
@@ -240,6 +290,54 @@ const commandLine: CommandLineSpec = {
     "3DO": "3DORBIT",
     G: "GROUP",
     VS: "VSCURRENT",
+    AA: "AREA",
+    LI: "LIST",
+    LS: "LIST",
+    RE: "REGEN",
+    REA: "REGENALL",
+    R: "REDRAW",
+    RA: "REDRAWALL",
+    DRA: "DIMRADIUS",
+    DIMRAD: "DIMRADIUS",
+    DDI: "DIMDIAMETER",
+    DIMDIA: "DIMDIAMETER",
+    DAN: "DIMANGULAR",
+    DIMANG: "DIMANGULAR",
+    DBA: "DIMBASELINE",
+    DIMBASE: "DIMBASELINE",
+    DCO: "DIMCONTINUE",
+    DIMCONT: "DIMCONTINUE",
+    DOR: "DIMORDINATE",
+    DIMORD: "DIMORDINATE",
+    DAR: "DIMARC",
+    CYL: "CYLINDER",
+    TOR: "TORUS",
+    FSHOT: "FLATSHOT",
+    REV: "REVOLVE",
+    ML: "MLINE",
+    OP: "OPTIONS",
+    DC: "ADCENTER",
+    ADC: "ADCENTER",
+    TP: "TOOLPALETTES",
+    "3M": "3DMOVE",
+    "3R": "3DROTATE",
+    "3A": "3DARRAY",
+    AL: "ALIGN",
+    HI: "HIDE",
+    ORBIT: "3DORBIT",
+    TB: "TABLE",
+    UN: "UNITS",
+    PU: "PURGE",
+    SPLANE: "SECTIONPLANE",
+    SN: "SNAP",
+    MO: "PROPERTIES",
+    PROPS: "PROPERTIES",
+    EXP: "EXPORT",
+    IMP: "IMPORT",
+    ISOLATE: "ISOLATEOBJECTS",
+    UNISOLATE: "UNISOLATEOBJECTS",
+    UNHIDE: "UNISOLATEOBJECTS",
+    LEAD: "LEADER",
   },
   // Rodeo's tool prompts (the text before " · ") in AutoCAD's words; a hint shared by several tools takes words that fit all
   prompts: {
@@ -697,12 +795,12 @@ export const look: LookSpec = {
     "Vectorworks Plug-ins": "Plug-ins",
   },
   palettes: {
-    objectInfo: { where: "left", order: 0 },
+    // as AutoCAD's Drafting & Annotation opens a new drawing: no palette shown; Properties (Ctrl+1) and Layer Properties (LA) open when asked
+    objectInfo: { where: "hidden" },
     basic: { where: "hidden" },
     toolsets: { where: "hidden" },
     attributes: { where: "hidden" },
-    // the Layer Properties Manager docked under Properties
-    navigation: { where: "left", order: 1, weight: 260 },
+    navigation: { where: "hidden" },
     resources: { where: "hidden" },
     snapping: { where: "hidden" },
     visualization: { where: "hidden" },
@@ -739,13 +837,20 @@ export const look: LookSpec = {
     navigation: { kind: "layerTable", style: "autocad", columns: ["current", "name", "visible", "lock", "color", "linetype", "lineweight"], none: "0" },
   },
   layoutTabs: true,
+  viewportControls: true,
   grid: true,
   viewCube: true,
   keys: {
+    F1: m("Help › User Guide"),
     F3: m("View › Snap to Objects"),
     F7: m("View › Show Grid"),
+    F8: ORTHO,
     F9: m("View › Snap to Grid"),
     Delete: m("Edit › Delete"),
+    "Ctrl+1": p("objectInfo"),
+    "Ctrl+3": p("toolsets"),
+    "Ctrl+Z": m("Edit › Undo"),
+    "Ctrl+Y": m("Edit › Redo"),
   },
   mouse: { middle: "pan", right: "menu" },
   // the drawing is drawn light and inverted in autocad.css, so its black lines show light on a dark model space

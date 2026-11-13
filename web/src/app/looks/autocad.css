@@ -203,3 +203,14 @@
   --g-del: #ff5c55;
   --g-paper: #4b5667;
 }
+
+/* the status bar's far end: MODEL in bold after the spacer, the drafting aids Rodeo lacks greyed */
+:root[data-look="autocad"] .lk-st-spacer + .lk-st-text {
+  font-weight: 700;
+  color: #d6dce6;
+}
+
+:root[data-look="autocad"] .lk-st-inert {
+  opacity: 0.45;
+  cursor: default;
+}

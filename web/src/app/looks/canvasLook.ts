@@ -6,6 +6,11 @@
 export interface LookCanvas {
   readonly gridColors?: { readonly minor: string; readonly major: string; readonly xAxis?: string; readonly yAxis?: string };
   readonly viewCube: boolean;
+  /** each 3D pane shows its construction plane's grid with the X/Y/Z axes, as Rhino's viewports do
+   * (Top and Perspective world XY, Front world XZ, Right world YZ), in gridColors' colours */
+  readonly grid3d?: boolean;
+  /** the 3D view's axes through the origin (solid positive half, dotted negative) and its sky, as SketchUp draws them; absent for the others */
+  readonly axes3d?: "sketchup";
 }
 
 let canvas: LookCanvas | null = null;

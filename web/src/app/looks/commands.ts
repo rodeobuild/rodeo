@@ -13,6 +13,8 @@ import type { Command, LookButton } from "./types.ts";
 /** What the commands reach: set once by the engine (looks.ts) as the editor starts. */
 export interface LookDeps {
   setTool(id: ToolId): void;
+  /** picks one of the active tool's modes (a Mode bar button) */
+  setToolMode(mode: string): void;
   /** shows a closed palette, closes an open one */
   togglePalette(id: string): void;
   paletteShown(id: string): boolean;
@@ -33,6 +35,7 @@ export function lookIcon(body: string): string {
 export function runCommand(c: Command): void {
   if ("tool" in c) {
     deps?.setTool(c.tool);
+    if (c.mode !== undefined) deps?.setToolMode(c.mode);
   } else if ("menu" in c) {
     const item = menuItemAt(c.menu);
     if (!item) {
@@ -251,6 +254,8 @@ function watch(): void {
   store.on(["tool", "selection", "snap", "view", "session", "layer", "class", "display", "modes"], refresh);
   // a palette shown or closed, a menu row's state changed by a dialog: read again after any click
   window.addEventListener("pointerup", () => requestAnimationFrame(refresh));
+  // and after a key, which may have flipped a setting (F8's Ortho, F3's Osnap)
+  window.addEventListener("keyup", () => requestAnimationFrame(refresh));
 }
 
 /** Lights and greys a button as its command's state changes. */

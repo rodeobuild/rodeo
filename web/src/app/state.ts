@@ -423,6 +423,8 @@ export type ToolId =
   | "sphere"
   | "hemisphere"
   | "cone"
+  | "cylinder"
+  | "torus"
   | "hatch"
   | "dividing"
   | "alignleaders"

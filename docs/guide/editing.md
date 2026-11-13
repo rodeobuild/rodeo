@@ -378,6 +378,10 @@ It needs a 3D polygon in the drawing to copy settings from.
 
 It needs a mesh in the drawing to copy settings from.
 
+### Make 2D Drawing
+
+**Modify › Convert › Make 2D Drawing** (Rhino's Make2D, AutoCAD's FLATSHOT) draws the selected 3D objects as flat lines, seen from the direction the 3D view looks (from the top while the plan shows). The edges you would see go in the class Make2D-Visible; the edges something nearer hides go in Make2D-Hidden, dashed where the drawing has a dashed line type. The drawing is one group on the active design layer, to the right of the selection, made in one undo step.
+
 ### Replace with Symbol…
 
 **Replace with Symbol…** turns the selected objects into instances of a symbol chosen from the drawing's definitions, each in the object's layer and class:

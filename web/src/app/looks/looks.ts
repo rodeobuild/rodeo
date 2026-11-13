@@ -27,6 +27,7 @@ import { paneArrangement, readPaneArrangement, setPaneArrangement, setPaneNames 
 import { setLookCanvas } from "./canvasLook.ts";
 import { lookButton, refreshButtons, runCommand, setGlyphs, setLookDeps } from "./commands.ts";
 import { setLookView } from "./viewLook.ts";
+import { mountTray } from "./tray.ts";
 import type { Command, LookId, LookSpec } from "./types.ts";
 
 /** The looks in the menu's order: Rodeo, then the others by name. */
@@ -79,6 +80,8 @@ interface Saved {
 export interface LookHost {
   readonly palettes: Palettes;
   setTool(id: ToolId): void;
+  /** picks one of the active tool's modes, as its Mode bar button does */
+  setToolMode(mode: string): void;
   /** the menus as they stand (a look's when one is on) */
   menus(): readonly { readonly title: string; readonly rows: readonly Row[] }[];
 }
@@ -299,13 +302,16 @@ async function putUp(chosen: LookSpec): Promise<void> {
   // Revit's and Archicad's bars sit over the status bar, AutoCAD's layout tabs beside it
   if (look.layoutTabs) root.dataset.lkFoot = "row";
   else delete root.dataset.lkFoot;
+  // Rhino and SketchUp show one drawing per window: no tabs of open drawings (Window lists them)
+  if (look.docTabs === false) root.dataset.lkDocTabs = "off";
+  else delete root.dataset.lkDocTabs;
   setTerms(look.id === "rodeo" ? null : look.terms);
   setLookMenus(menusOf(look));
   window.dispatchEvent(new Event("rodeo:menus"));
   h0.palettes.setRails(look.rails);
   setLookView(look.id === "rodeo" ? null : look.mouse, look.background3d ?? null);
   setPaper(look.paper ?? null);
-  setLookCanvas(look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true });
+  setLookCanvas(look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true, grid3d: look.grid3d ?? false, axes3d: look.axes3d });
   const names = look.paneNames;
   setPaneNames(names ? (kind, view) => (kind === "plan" ? names.plan : view === null ? names.turned : (names.views[view] ?? view)) : null);
   if (look.titleBar) parts.push(mountTitle(s.title, look));
@@ -321,6 +327,12 @@ async function putUp(chosen: LookSpec): Promise<void> {
   if (look.toolbox) {
     const box = look.toolbox;
     loaders.push(import("./bars.ts").then((m) => void parts.push(m.mountToolbox(box.side === "left" ? s.left : s.right, box))));
+  }
+  // a side panel (Rhino's OSnap) under the tools, in the toolbox's column (sidePanel.ts)
+  if (look.sidePanel) {
+    const panel = look.sidePanel;
+    const column = look.toolbox?.side === "right" ? s.right : s.left;
+    loaders.push(import("./sidePanel.ts").then((m) => void parts.push(m.mountSidePanel(column, panel))));
   }
   if (look.commandLine) {
     const cl = look.commandLine;
@@ -365,6 +377,15 @@ async function putUp(chosen: LookSpec): Promise<void> {
     loaders.push(import("./viewControl.ts").then((m) => void parts.push(m.mountViewControl(s.foot, style))));
   }
   if (look.layoutTabs) loaders.push(import("./layoutTabs.ts").then((m) => void parts.push(m.mountLayoutTabs(s.foot))));
+  // AutoCAD's viewport words, navigation bar and UCS icon over the drawing's canvas (viewportControls.ts)
+  if (look.viewportControls) {
+    const wrap = document.getElementById("canvas-wrap");
+    if (wrap) loaders.push(import("./viewportControls.ts").then((m) => void parts.push(m.mountViewportControls(wrap))));
+  }
+  // Rhino's viewport tabs in the foot slot, which sits above the status bar (paneTabs.ts)
+  if (look.paneTabs) loaders.push(import("./paneTabs.ts").then((m) => void parts.push(m.mountPaneTabs(s.foot))));
+  // SketchUp's Default Tray: the right dock's palettes as rolled up or out sections (tray.ts)
+  if (look.tray) parts.push(mountTray(h0.palettes));
   await Promise.all(loaders);
   refreshButtons();
   store.emit("view");
@@ -448,6 +469,7 @@ export function installLooks(h1: LookHost): void {
   host = h1;
   setLookDeps({
     setTool: (id) => h1.setTool(id),
+    setToolMode: (mode) => h1.setToolMode(mode),
     togglePalette: (id) => h1.palettes.toggle(id),
     paletteShown: (id) => h1.palettes.isShown(id),
   });
@@ -501,6 +523,33 @@ function keyName(e: KeyboardEvent): string {
   if (/^F\d{1,2}$/.test(e.key)) return e.key;
   if (e.key.length === 1) return (e.shiftKey && /[a-z]/i.test(e.key) ? "⇧" : "") + e.key.toLowerCase();
   return e.key;
+}
+
+/**
+ * The name a key held with Ctrl (or ⌘ on a Mac), Alt or both goes by in a look's `keys`, as the
+ * applications write them on Windows: "Ctrl+L", "Ctrl+Shift+G", "Ctrl+Alt+H", "Alt+F2". The key is
+ * read from where it sits (e.code), so Alt's or Shift's other characters on a Mac don't change it.
+ */
+function modifiedName(e: KeyboardEvent): string {
+  const code = e.code;
+  const key = /^Key[A-Z]$/.test(code) ? code.slice(3) : /^Digit\d$/.test(code) ? code.slice(5) : /^F\d{1,2}$/.test(e.key) ? e.key : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push("Ctrl");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  return [...parts, key].join("+");
+}
+
+/**
+ * A key held with Ctrl, ⌘ or Alt, offered to the look before Rodeo's own shortcuts (Rhino's Ctrl+L
+ * locks where Rodeo's rotates). Only the combinations a look names; the rest stay Rodeo's. True when it took it.
+ */
+export function lookModifiedKey(e: KeyboardEvent): boolean {
+  if (current === "rodeo" || document.documentElement.classList.contains("lk-phone")) return false;
+  const command: Command | undefined = spec.keys?.[modifiedName(e)];
+  if (!command) return false;
+  if (!e.repeat) runCommand(command);
+  return true;
 }
 
 /** Whether a look's command line is on (not on a phone, which keeps Rodeo's layout). */

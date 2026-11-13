@@ -5,7 +5,7 @@
 
 import { h } from "../dom.ts";
 import { dataBar } from "../databar.ts";
-import { setActiveLayer } from "../commands.ts";
+import { setActiveClass, setActiveLayer } from "../commands.ts";
 import { store } from "../state.ts";
 import { toast } from "../toast.ts";
 import { formatLength } from "../units.ts";
@@ -49,8 +49,8 @@ export function mountStatusBar(into: HTMLElement, spec: StatusBarSpec, modeBar: 
   };
 }
 
-/** One item of a row, kept current by the store topics it reads. */
-function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
+/** One status item, kept current by the store topics it reads; its off-calls go into `offs`. Exported for side panels (sidePanel.ts). */
+export function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
   switch (it.kind) {
     case "hint": {
       const el = h("span", { cls: "lk-st-hint" });
@@ -96,7 +96,15 @@ function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
       return el;
     }
     case "layer":
-      return layer(it.label, offs);
+      return it.of === "class" ? classPicker(it, offs) : layer(it.label, offs);
+    case "inert": {
+      // a feature Rodeo lacks: its word greyed, the reason as its tooltip, nothing on a click
+      if (!it.icon) return h("span", { cls: "lk-st-inert lk-st-text", text: it.label, attrs: { title: it.why, "aria-disabled": "true" } });
+      // with an icon: drawn like a toggle, greyed, and a click says why
+      const btn = h("button", { cls: "lk-st-toggle lk-st-icon lk-st-inert", title: it.why, html: it.icon, attrs: { type: "button", "aria-label": it.label, "aria-disabled": "true" } });
+      btn.addEventListener("click", () => toast(it.why));
+      return btn;
+    }
     case "selection": {
       const el = h("span", { cls: "lk-st-selection", title: "Selected objects" });
       el.append(h("span", { cls: "lk-st-icon", html: FILTER_ICON }));
@@ -183,6 +191,39 @@ function layer(label: string | undefined, offs: (() => void)[]): HTMLElement {
   offs.push(store.on(["session", "layer"], fill));
   sel.addEventListener("change", () => {
     if (sel.value) setActiveLayer(sel.value);
+  });
+  return el;
+}
+
+/** The active class as a drop-down of the drawing's classes, with a square in its pen colour before its name (Rhino's status bar). */
+function classPicker(it: Extract<StatusItem, { kind: "layer" }>, offs: (() => void)[]): HTMLElement {
+  const el = h("span", { cls: "lk-st-layer" });
+  if (it.label) el.append(h("span", { cls: "lk-st-label", text: it.label }));
+  // a 10 by 10 square the class's pen colour fills, with a thin grey edge
+  const swatch = h("span", { cls: "lk-st-swatch", attrs: { "aria-hidden": "true" } });
+  swatch.style.cssText = "display:inline-block;width:10px;height:10px;box-sizing:border-box;border:1px solid #8a8a8a;flex:none";
+  if (it.swatch) el.append(swatch);
+  const sel = h("select", { attrs: { "aria-label": it.label ?? "Active class", translate: "no" } });
+  el.append(sel);
+  let signature = "";
+  const fill = (): void => {
+    const doc = store.session?.doc;
+    const classes = doc?.classes() ?? [];
+    // rebuild only when the list changed, so an open drop-down keeps its place
+    const sig = classes.map((c) => `${c.index}\u0001${c.name}`).join("\u0002");
+    if (sig !== signature) {
+      signature = sig;
+      sel.replaceChildren(...classes.map((c) => option(String(c.index), it.none && c.name === "None" ? it.none : c.name)));
+    }
+    sel.value = String(store.activeClassIndex);
+    sel.disabled = classes.length === 0;
+    const active = classes.find((c) => c.index === store.activeClassIndex);
+    swatch.style.background = (active?.attrs && doc?.color(active.attrs.penFore)) || "transparent";
+  };
+  fill();
+  offs.push(store.on(["session", "class"], fill));
+  sel.addEventListener("change", () => {
+    setActiveClass(Number(sel.value));
   });
   return el;
 }

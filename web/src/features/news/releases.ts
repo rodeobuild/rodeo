@@ -22,6 +22,19 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-13T12:40:00Z",
+    "work-like-frames",
+    "Work Like: closer to each application, and Lock, Ortho and Make 2D",
+    `Rhino's and AutoCAD's frames now match theirs more closely, and Rodeo has the commands their users reach for that it lacked.
+- Modify › Lock and Unlock, View › Ortho (F8), the Cylinder and Torus tools, and Modify › Convert › Make 2D Drawing, in every look and in Rodeo's own.
+- Rhino: the Drafting and Window menus, the OSnap panel, viewport title tabs and the tabs under the views, its status bar, and a grid in every viewport.
+- AutoCAD: opens with no palettes, with the [-][Top][2D Wireframe] controls, the navigation bar, the UCS icon, Ortho Mode in the status bar and "Type a command".
+- AREA, LIST, Area, Length and What print their answers in the command line; DIMRADIUS, DimAngle and the other dimension kinds start the Dimension tool in that kind.
+- SketchUp: the Default Tray, and red, green and blue axes with its sky.
+- More of each application's keys: Ctrl+L, Ctrl+H and Ctrl+G in Rhino, Ctrl+1 in AutoCAD and Revit, ZE and PN in Revit, Ctrl+D and Ctrl+E in Archicad.`,
+    "workspace",
+  ),
+  release(
     "2026-11-13T12:30:00Z",
     "rhino-sites",
     "Rhino files for whole sites",

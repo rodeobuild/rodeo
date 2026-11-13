@@ -30,6 +30,7 @@ import {
 import { prefs } from "./prefs.ts";
 import { store } from "./state.ts";
 import { hiddenVersion } from "./hiddenObjects.ts";
+import { lockedVersion } from "./lockedObjects.ts";
 import type { Scene } from "./scene.ts";
 import type { View } from "./view.ts";
 import type { FillPreview, MoveDelta, Painter, ToolOverlay } from "./tools.ts";
@@ -57,6 +58,8 @@ export function setInteractiveColors(c: { readonly selection: string; readonly p
   SNAP_COLOR = c.snap;
 }
 const PEN_DEFAULT = "#1d1d1f";
+// the pen of a locked object in plan (View > Lock Selection): grey, as Rhino draws locked objects
+const LOCKED_PEN = "#9b9b9b";
 const PAPER = "#fcfcfb";
 /** what the drawing is drawn on: Rodeo's paper, or the colour a look (View › Work Like) gives it */
 let paper = PAPER;
@@ -68,6 +71,9 @@ export function setPaper(color: string | null): void {
 const GRID_MINOR = "rgba(60, 70, 90, 0.08)";
 const GRID_MAJOR = "rgba(60, 70, 90, 0.18)";
 const GRID_AXIS = "rgba(60, 70, 90, 0.32)";
+/** SketchUp's red and green drawing axes on the plan, the colours its 3D view draws them in (view3d.ts) */
+const SKETCHUP_X_AXIS = "#e5484d";
+const SKETCHUP_Y_AXIS = "#30a46c";
 /** a sheet layer's page boundary */
 const PAGE_EDGE = "rgba(60, 70, 90, 0.45)";
 /** minor steps per major line */
@@ -435,6 +441,7 @@ export class Renderer {
     }
 
     this.drawGrid();
+    this.drawLookAxes();
 
     const move = this.overlay.moveDelta();
     this.fillDrag = this.overlay.fillPreview();
@@ -489,6 +496,7 @@ export class Renderer {
       store.layerMode,
       store.classMode,
       hiddenVersion(),
+      lockedVersion(),
       store.zoomLineThickness,
       prefs().showOthersEditing,
       move,
@@ -782,7 +790,7 @@ export class Renderer {
     if (!drawsPen(attrs)) return;
     const alpha = ctx.globalAlpha;
     if (attrs) ctx.globalAlpha = alpha * Math.min(1, attrs.penOpacity / 100);
-    ctx.strokeStyle = attrs ? this.scene.color(attrs.penFore) : PEN_DEFAULT;
+    ctx.strokeStyle = this.scene.isLocked(obj) ? LOCKED_PEN : attrs ? this.scene.color(attrs.penFore) : PEN_DEFAULT;
     const weightPx = attrs ? Math.max(1, attrs.lineWeight * 0.072) : 1;
     ctx.lineWidth = attrs && store.zoomLineThickness ? Math.max(1 / this.px, attrs.lineWeight * 0.0254 * layerScale) : weightPx / this.px;
     const [dx, dy] = [off?.dx ?? 0, off?.dy ?? 0];
@@ -812,7 +820,8 @@ export class Renderer {
       obj.attrs && style
         ? { ...obj.attrs, fillPattern: style.fillPattern ?? obj.attrs.fillPattern, lineStyle: style.lineStyle ?? obj.attrs.lineStyle }
         : obj.attrs;
-    const pen = style?.pen ?? (attrs ? this.scene.color(attrs.penFore) : PEN_DEFAULT);
+    // a locked object draws its pen grey in plan (its lines, text and marks; its fills keep their colours)
+    const pen = this.scene.isLocked(obj) ? LOCKED_PEN : (style?.pen ?? (attrs ? this.scene.color(attrs.penFore) : PEN_DEFAULT));
     if (shape.kind === "text") {
       this.drawText(shape, geom, pen);
     } else if (shape.kind === "image") {
@@ -1594,6 +1603,42 @@ export class Renderer {
     ctx.strokeStyle = PAGE_EDGE;
     ctx.lineWidth = 1 / this.view.scale;
     ctx.strokeRect(-page.width / 2, -page.height / 2, page.width, page.height);
+    ctx.restore();
+  }
+
+  /**
+   * SketchUp's drawing axes on the plan (View › Work Like): the red X and the green Y through the
+   * origin, solid along their positive halves and dotted along their negative ones, whether or not
+   * the grid shows, as SketchUp shows them in its Top view.
+   */
+  private drawLookAxes(): void {
+    if (lookCanvas()?.axes3d !== "sketchup") return;
+    const { ctx, view } = this;
+    const o = view.toScreen({ x: 0, y: 0 });
+    // past every corner of the view, whichever way a rotated plan turns the axes
+    const far = 2 * (view.width + view.height + Math.abs(o.x) + Math.abs(o.y));
+    const axis = (to: Pt, colour: string): void => {
+      const dx = to.x - o.x;
+      const dy = to.y - o.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = (dx / len) * far;
+      const uy = (dy / len) * far;
+      ctx.strokeStyle = colour;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(o.x + ux, o.y + uy);
+      ctx.stroke();
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(o.x - ux, o.y - uy);
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.lineWidth = 1;
+    axis(view.toScreen({ x: 1, y: 0 }), SKETCHUP_X_AXIS);
+    axis(view.toScreen({ x: 0, y: 1 }), SKETCHUP_Y_AXIS);
     ctx.restore();
   }
 

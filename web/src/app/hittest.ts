@@ -1,5 +1,6 @@
 // Hit testing in screen-space tolerance. Only pickable objects are hit (their
-// class is drawn and editable under the class options, see scene.isClassPickable);
+// class is drawn and editable under the class options, see scene.isClassPickable, and not
+// locked, see scene.isLocked);
 // callers map the hit to the object they select with scene.unitOf().
 
 import type { BBox, ObjectInfo, Pt } from "../core/index.ts";
@@ -76,7 +77,7 @@ export function pickAllObjects(scene: Scene, view: View, screen: Pt, layerIds: r
 
 /** Whether a click at world point `p`, `tol` away at most, hits `obj`. */
 function hitsObject(scene: Scene, view: View, obj: ObjectInfo, p: Pt, tol: number, accept: ((obj: ObjectInfo) => boolean) | undefined, anyClass: boolean): boolean {
-  if ((!obj.shape && !obj.planLines) || !(anyClass ? scene.isClassVisible(obj.classIndex) : scene.isClassPickable(obj.classIndex)) || scene.isHidden(obj)) return false;
+  if ((!obj.shape && !obj.planLines) || !(anyClass ? scene.isClassVisible(obj.classIndex) : scene.isClassPickable(obj.classIndex)) || scene.isHidden(obj) || scene.isLocked(obj)) return false;
   if (accept && !accept(obj)) return false;
   // a viewport's contents are cropped to its box, so nothing outside the box is hit
   if (obj.clip && outside(p, obj.clip, tol)) return false;
@@ -113,7 +114,7 @@ export function pickViewport(scene: Scene, view: View, screen: Pt, layerIds: rea
     for (let i = views.length - 1; i >= 0; i--) {
       if (outside(p, views[i].clip, 0)) continue;
       const obj = scene.document?.object(views[i].id);
-      if (obj && scene.isClassPickable(obj.classIndex)) return obj;
+      if (obj && scene.isClassPickable(obj.classIndex) && !scene.isLocked(obj)) return obj;
     }
   }
   return null;

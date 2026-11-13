@@ -10,6 +10,7 @@ import type { View } from "./view.ts";
 import type { TextEditor } from "./tools/text.ts";
 import { ACCENT, SNAP_COLOR } from "./renderer.ts";
 import { IS_MAC } from "./menu.ts";
+import { orthoOn, orthoPoint } from "./ortho.ts";
 import { stopGlide } from "./glide.ts";
 import { prefs } from "./prefs.ts";
 import { SnapLoupe } from "./loupe.ts";
@@ -547,7 +548,7 @@ export class ToolController implements ToolOverlay {
     this.loupe ??= new SnapLoupe(this.canvas, this.view, this.env.scene, overlay);
     this.loupe.open(last.screen);
     // the pointer's point is now the one under it in the loupe
-    this.lastInfo = { ...last, ...this.pointAt(last.screen) };
+    this.lastInfo = { ...last, ...this.pointAt(last.screen, last.shift) };
     this.env.requestDraw();
     return true;
   }
@@ -565,7 +566,7 @@ export class ToolController implements ToolOverlay {
     store.datum = release ? null : { x: last.pos.x, y: last.pos.y };
     store.emit("datum");
     // the pointer may line up with the datum now
-    this.lastInfo = { ...last, ...this.pointAt(last.screen) };
+    this.lastInfo = { ...last, ...this.pointAt(last.screen, last.shift) };
     if (!release) dataBar.datumSet();
     this.env.requestDraw();
     return true;
@@ -677,21 +678,28 @@ export class ToolController implements ToolOverlay {
    * The drawing's point at `screen` and its snap; inside the open Snap Loupe the point under the
    * pointer there, snapped as finely as the loupe magnifies.
    */
-  private pointAt(screen: Pt): Pick<PointerInfo, "raw" | "pos" | "snap" | "guides"> {
+  private pointAt(screen: Pt, shift = false): Pick<PointerInfo, "raw" | "pos" | "snap" | "guides"> {
     const loupe = this.loupe?.contains(screen) ? this.loupe : null;
     const view = loupe?.view ?? this.view;
     const at = loupe?.local(screen) ?? screen;
     const raw = view.toWorld(at.x, at.y);
-    const s = this.env.snap.snap(raw, view, undefined, this.active.snapFrom?.() ?? null);
+    const anchor = this.active.snapFrom?.() ?? null;
+    const s = this.env.snap.snap(raw, view, undefined, anchor);
+    // Ortho: from the tool's last point the point runs level or upright. An object snap still wins,
+    // and Shift held turns Ortho off for that moment.
+    if (anchor && !shift && orthoOn() && (s.kind === null || s.kind === "grid")) {
+      return { raw, pos: orthoPoint(anchor, s.pos), snap: null, guides: undefined };
+    }
     return { raw, pos: s.pos, snap: s.kind, guides: s.guides };
   }
 
   private infoFor(e: MouseEvent, screen: Pt, detail = 0): PointerInfo {
     const mod = e.metaKey || e.ctrlKey;
+    const shift = e.shiftKey || this.latch.shift;
     return {
       screen,
-      ...this.pointAt(screen),
-      shift: e.shiftKey || this.latch.shift,
+      ...this.pointAt(screen, shift),
+      shift,
       mod,
       alt: e.altKey || this.latch.alt,
       detail,

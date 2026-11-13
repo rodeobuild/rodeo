@@ -107,16 +107,16 @@ export function sectionLayers(): string[] {
 
 /**
  * The 3D model a section cuts: the design layers the 3D view shows (or `layerIds`), without hidden
- * objects or the hidden classes (or `hiddenClasses`).
+ * objects or the hidden classes (or `hiddenClasses`), and only the objects `only` names when given.
  */
-export function sectionMeshes(layerIds?: readonly string[], hiddenClasses?: ReadonlySet<number>): CutMesh[] {
+export function sectionMeshes(layerIds?: readonly string[], hiddenClasses?: ReadonlySet<number>, only?: ReadonlySet<string>): CutMesh[] {
   const session = store.session;
   if (!session) return [];
   const shown = new Set(layerIds ?? sectionLayers());
   const hidden = hiddenClasses ?? new Set(session.doc.classes().filter((c) => c.visibility === "hidden").map((c) => c.index));
   return withoutHidden(session.doc)
     .model3d()
-    .filter((m) => shown.has(m.layerId) && !hidden.has(m.classIndex) && m.triangles.length >= 9)
+    .filter((m) => shown.has(m.layerId) && !hidden.has(m.classIndex) && m.triangles.length >= 9 && (!only || only.has(m.objectId)))
     .map((m) => ({ id: m.objectId, triangles: m.triangles, edges: m.edges, color: m.color }));
 }
 

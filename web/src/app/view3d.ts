@@ -15,6 +15,7 @@ import "./view3d.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { lookBackground, lookMouse, onLookView } from "./looks/viewLook.ts";
+import { lookCanvas, onLookCanvas, type LookCanvas } from "./looks/canvasLook.ts";
 import type { Light3D, Mesh3D, ResourceInfo, Vec3 } from "../core/index.ts";
 import { beamGroup, boxReach, disposeBeams, surfaceReaches } from "./beams.ts";
 import { h } from "./dom.ts";
@@ -303,6 +304,13 @@ export class View3D {
   private facePick: FacePick | null = null;
   /** the working plane's grid and axes, when one is shown */
   private planeGrid: THREE.Group | null = null;
+  /** the look's construction-plane grid (Rhino's viewports), built for the plane and size the view needs */
+  private lookGrid: { readonly plane: LookGridPlane; readonly level: number; readonly lines: THREE.LineSegments } | null = null;
+  private readonly offLookCanvas: () => void;
+  /** the look's axes through the origin (SketchUp's: a solid positive half, a dotted negative one), built when the look shows them */
+  private lookAxes: THREE.LineSegments[] | null = null;
+  /** the look's sky above the horizon, a screen-filling quad whose colour follows the camera's view */
+  private lookSky: THREE.Mesh | null = null;
 
   private readonly host: HTMLElement;
   private readonly stage: HTMLElement;
@@ -432,6 +440,13 @@ export class View3D {
     this.host = host;
     this.offLook = onLookView(() => {
       this.applyButtons();
+      this.requestRender();
+    });
+    // a look's grid colours or its grid switch changed: the grid is built again when next drawn
+    this.offLookCanvas = onLookCanvas(() => {
+      this.dropLookGrid();
+      this.dropLookAxes();
+      this.applyVisibility();
       this.requestRender();
     });
     this.persp.up.set(0, 0, 1);
@@ -826,6 +841,8 @@ export class View3D {
     this.camera.updateMatrixWorld();
     renderer.setClearColor(clear ?? this.background());
     this.placeSun();
+    this.syncLookGrid();
+    this.syncLookAxes();
     // Realistic and Path Traced from the render feature, the view's own Shaded picture until it is ready
     const realistic = isRealistic(this.mode) && this.hook !== null;
     if (!(realistic && this.hook?.picture?.(renderer, this.camera))) {
@@ -1048,6 +1065,9 @@ export class View3D {
     this.hide();
     this.disposed = true;
     this.offLook();
+    this.offLookCanvas();
+    this.dropLookGrid();
+    this.dropLookAxes();
     clearTimeout(this.lampTimer);
     this.resizeObserver.disconnect();
     this.controls.dispose();
@@ -1248,6 +1268,8 @@ export class View3D {
     this.shearOblique();
     this.renderer.setClearColor(this.background());
     this.placeSun();
+    this.syncLookGrid();
+    this.syncLookAxes();
     for (const fn of this.beforeRender) fn();
     if (this.hook && isRealistic(this.mode)) {
       // a picture still refining asks for the next frame itself
@@ -1509,6 +1531,86 @@ export class View3D {
     if (q.z > 1) return null;
     const rect = this.canvas.getBoundingClientRect();
     return { x: rect.left + ((q.x + 1) / 2) * rect.width, y: rect.top + ((1 - q.y) / 2) * rect.height };
+  }
+
+  /**
+   * Shows the look's axes through the origin and its sky (SketchUp's): built the first time they are
+   * wanted and taken away when the look has none. The sky's colours follow the camera each time the
+   * view draws, so the horizon stays where the view reaches it.
+   */
+  private syncLookAxes(): void {
+    if (lookCanvas()?.axes3d !== "sketchup") {
+      this.dropLookAxes();
+      return;
+    }
+    if (!this.lookAxes) {
+      this.lookAxes = buildLookAxes();
+      for (const a of this.lookAxes) this.scene.add(a);
+    }
+    if (!this.lookSky) {
+      this.lookSky = buildLookSky();
+      this.scene.add(this.lookSky);
+    }
+    this.camera.updateMatrixWorld();
+    const u = (this.lookSky.material as THREE.ShaderMaterial).uniforms;
+    (u.invProjection.value as THREE.Matrix4).copy(this.camera.projectionMatrixInverse);
+    (u.camWorld.value as THREE.Matrix4).copy(this.camera.matrixWorld);
+  }
+
+  /** Takes the look's axes and sky out of the scene and frees them. */
+  private dropLookAxes(): void {
+    for (const a of this.lookAxes ?? []) {
+      a.removeFromParent();
+      a.geometry.dispose();
+      (a.material as THREE.Material).dispose();
+    }
+    this.lookAxes = null;
+    const sky = this.lookSky;
+    if (sky) {
+      sky.removeFromParent();
+      sky.geometry.dispose();
+      (sky.material as THREE.Material).dispose();
+      this.lookSky = null;
+    }
+  }
+
+  /**
+   * Shows, as Rhino's viewports do, the grid of the construction plane the view looks square on
+   * (Front: world XZ, Right: world YZ, a plan or a turned view: world XY), in the look's colours.
+   * It is built again only when its plane or its size changes, and taken away while the look has none.
+   */
+  private syncLookGrid(): void {
+    const look = lookCanvas();
+    if (!look?.grid3d) {
+      this.dropLookGrid();
+      return;
+    }
+    const plane = lookGridPlane(this.camera);
+    const level = this.lookGridLevel();
+    if (this.lookGrid?.plane === plane && this.lookGrid.level === level) return;
+    this.dropLookGrid();
+    const lines = buildLookGrid(plane, level, look.gridColors);
+    this.scene.add(lines);
+    this.lookGrid = { plane, level, lines };
+  }
+
+  /** The size level of the look's grid: each level doubles it, the least that covers the visible model with a margin (level 0 is 100 m across). */
+  private lookGridLevel(): number {
+    const box = this.visibleBox();
+    const reach = 1.2 * Math.max(...[box.min.x, box.max.x, box.min.y, box.max.y, box.min.z, box.max.z].map(Math.abs));
+    let level = 0;
+    while (level < 40 && LOOK_GRID_HALF_MM * 2 ** level < reach) level++;
+    return level;
+  }
+
+  /** Takes the look's grid out of the scene and frees it. */
+  private dropLookGrid(): void {
+    const g = this.lookGrid;
+    if (!g) return;
+    g.lines.removeFromParent();
+    g.lines.geometry.dispose();
+    (g.lines.material as THREE.Material).dispose();
+    this.lookGrid = null;
   }
 
   /**
@@ -2255,7 +2357,9 @@ export class View3D {
       obj.visible = this.isLayerVisible(c.layer);
       if (obj.visible) items++;
     }
-    this.empty.hidden = items > 0;
+    // a look's construction grid (Rhino) is drawn even with nothing to show, so the message waits for Rodeo's own look
+    // a look's grid or axes give the empty view something to show, as Rhino's and SketchUp's do
+    this.empty.hidden = items > 0 || lookCanvas()?.grid3d === true || lookCanvas()?.axes3d !== undefined;
     this.staleShadows();
     this.requestRender();
   }
@@ -2465,6 +2569,143 @@ export class View3D {
  * Texture coordinates an object gives itself (fractions of the image, v up) for the texture: the
  * image bitmaps aren't flipped, so their first row, the image's top, is at v = 0.
  */
+/** How far out the look's axes run from the origin, mm (no end in view), and the dash of the dotted half, mm. */
+const LOOK_AXIS_LENGTH_MM = 1_000_000;
+const LOOK_AXIS_DASH_MM = 400;
+
+/**
+ * The look's axes through the origin: X red, Y green, Z blue, each two lines, the positive half solid
+ * and the negative half dotted (SketchUp's drawing axes). One LineSegments per half.
+ */
+function buildLookAxes(): THREE.LineSegments[] {
+  const out: THREE.LineSegments[] = [];
+  const axes: readonly (readonly [THREE.Vector3, number])[] = [
+    [new THREE.Vector3(1, 0, 0), PLANE_X_COLOR],
+    [new THREE.Vector3(0, 1, 0), PLANE_Y_COLOR],
+    [new THREE.Vector3(0, 0, 1), LOOK_GRID_Z_NUMBER],
+  ];
+  for (const [dir, colour] of axes) {
+    for (const sign of [1, -1]) {
+      const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), dir.clone().multiplyScalar(sign * LOOK_AXIS_LENGTH_MM)]);
+      if (sign > 0) {
+        out.push(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: colour })));
+      } else {
+        const dotted = new THREE.LineSegments(geometry, new THREE.LineDashedMaterial({ color: colour, dashSize: LOOK_AXIS_DASH_MM, gapSize: LOOK_AXIS_DASH_MM }));
+        dotted.computeLineDistances();
+        out.push(dotted);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The sky: a quad over the whole view, its colour from each pixel's view ray. Above the horizon it
+ * runs from the horizon's #e9eff3 up to #a9c6dd at the top of the window; below the horizon it is white. Drawn first, under the model.
+ */
+function buildLookSky(): THREE.Mesh {
+  const material = new THREE.ShaderMaterial({
+    uniforms: { invProjection: { value: new THREE.Matrix4() }, camWorld: { value: new THREE.Matrix4() } },
+    vertexShader: `
+      varying vec2 vNdc;
+      void main() {
+        vNdc = position.xy;
+        gl_Position = vec4(position.xy, 1.0, 1.0);
+      }`,
+    fragmentShader: `
+      uniform mat4 invProjection;
+      uniform mat4 camWorld;
+      varying vec2 vNdc;
+      void main() {
+        vec4 a = invProjection * vec4(vNdc, -1.0, 1.0);
+        vec4 b = invProjection * vec4(vNdc, 1.0, 1.0);
+        vec3 dir = normalize(mat3(camWorld) * normalize(b.xyz / b.w - a.xyz / a.w));
+        // the ray through the top edge of the window (ndc y = 1) sets the top colour
+        vec4 ta = invProjection * vec4(0.0, 1.0, -1.0, 1.0);
+        vec4 tb = invProjection * vec4(0.0, 1.0, 1.0, 1.0);
+        vec3 topDir = normalize(mat3(camWorld) * normalize(tb.xyz / tb.w - ta.xyz / ta.w));
+        float t = clamp(dir.z / max(topDir.z, 0.001), 0.0, 1.0);
+        vec3 horizon = vec3(233.0, 239.0, 243.0) / 255.0;
+        vec3 top = vec3(169.0, 198.0, 221.0) / 255.0;
+        vec3 sky = mix(horizon, top, t);
+        gl_FragColor = vec4(dir.z > 0.0 ? sky : vec3(1.0), 1.0);
+      }`,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+  sky.renderOrder = -1000;
+  sky.frustumCulled = false;
+  return sky;
+}
+
+/** A construction plane of the look's 3D grid: world XY (the floor), XZ (standing from the front) or YZ (from the side). */
+type LookGridPlane = "xy" | "xz" | "yz";
+
+/** The look's 3D grid: 100 cells across, 1 m minor cells at level 0 (doubling per level), the half-width in mm at level 0. */
+const LOOK_GRID_HALF_MM = 50000;
+const LOOK_GRID_STEP_MM = 1000;
+/** the Z axis's colour on the vertical grid axis (Rhino's blue) */
+const LOOK_GRID_Z = "#3a5bd9";
+const LOOK_GRID_Z_NUMBER = 0x3a5bd9;
+/** the plane's horizontal (u) and vertical (v) directions, and which axis colour each one's line through the origin takes */
+const LOOK_GRID_AXES: Readonly<Record<LookGridPlane, { readonly u: readonly [number, number, number]; readonly v: readonly [number, number, number]; readonly uAxis: "xAxis" | "yAxis"; readonly vAxis: "yAxis" | "zAxis" }>> = {
+  xy: { u: [1, 0, 0], v: [0, 1, 0], uAxis: "xAxis", vAxis: "yAxis" },
+  xz: { u: [1, 0, 0], v: [0, 0, 1], uAxis: "xAxis", vAxis: "zAxis" },
+  yz: { u: [0, 1, 0], v: [0, 0, 1], uAxis: "yAxis", vAxis: "zAxis" },
+};
+
+/**
+ * The construction plane a camera looks square on, as Rhino's viewports take theirs: world XY for a
+ * plan or a turned view, XZ from the front or back, YZ from the side or the other side.
+ */
+function lookGridPlane(camera: THREE.Camera): LookGridPlane {
+  const d = camera.getWorldDirection(new THREE.Vector3());
+  if (Math.abs(d.z) > 0.9999) return "xy";
+  if (Math.abs(d.y) > 0.9999) return "xz";
+  if (Math.abs(d.x) > 0.9999) return "yz";
+  return "xy";
+}
+
+/**
+ * One line set for a construction plane at `level`: minor lines every 1 m (doubled per level), a
+ * major line every 5, and the two axes through the origin across the whole grid in their colours.
+ */
+function buildLookGrid(plane: LookGridPlane, level: number, colors: LookCanvas["gridColors"]): THREE.LineSegments {
+  const axes = LOOK_GRID_AXES[plane];
+  const step = LOOK_GRID_STEP_MM * 2 ** level;
+  const half = LOOK_GRID_HALF_MM * 2 ** level;
+  const minor = new THREE.Color(colors?.minor ?? "#a3a3a3");
+  const major = new THREE.Color(colors?.major ?? "#8a8a8a");
+  const colourOf = (name: "xAxis" | "yAxis" | "zAxis"): THREE.Color =>
+    new THREE.Color(name === "zAxis" ? LOOK_GRID_Z : (colors?.[name] ?? colors?.major ?? "#8a8a8a"));
+  const uColour = colourOf(axes.uAxis);
+  const vColour = colourOf(axes.vAxis);
+  const pos: number[] = [];
+  const col: number[] = [];
+  // a segment from (s0, t0) to (s1, t1) in the plane's u and v, both ends one colour
+  const seg = (s0: number, t0: number, s1: number, t1: number, c: THREE.Color): void => {
+    for (const [s, t] of [[s0, t0], [s1, t1]] as const) {
+      pos.push(s * axes.u[0] + t * axes.v[0], s * axes.u[1] + t * axes.v[1], s * axes.u[2] + t * axes.v[2]);
+      col.push(c.r, c.g, c.b);
+    }
+  };
+  for (let k = -LOOK_GRID_CELLS_HALF; k <= LOOK_GRID_CELLS_HALF; k++) {
+    const c = k * step;
+    // the line along u at v = c: the u axis at k = 0
+    seg(-half, c, half, c, k === 0 ? uColour : k % 5 === 0 ? major : minor);
+    // the line along v at u = c: the v axis at k = 0
+    seg(c, -half, c, half, k === 0 ? vColour : k % 5 === 0 ? major : minor);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  return new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false }));
+}
+
+/** Half the look's grid's cells: 50 cells each side of the origin, 100 across. */
+const LOOK_GRID_CELLS_HALF = 50;
+
 function ownUvs(uvs: Float32Array, out: Float32Array): void {
   for (let i = 0; i + 1 < uvs.length; i += 2) {
     out[i] = uvs[i];

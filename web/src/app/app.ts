@@ -100,6 +100,7 @@ import { toolSetsDialog } from "./toolSetsDialog.ts";
 import { PanTool, ToolController, type ToolEnv, type ToolOverlay } from "./tools.ts";
 import { SelectTool, forceSelect, forceSelectTarget, selectForMenu } from "./tools/select.ts";
 import { hiddenObjects, onHiddenChange, withoutHidden } from "./hiddenObjects.ts";
+import { isLockedObject } from "./lockedObjects.ts";
 import { mountUnhideButton } from "./objectVisibility.ts";
 import { decodeWaitingXt, stopDecodingXt } from "./parasolidDecode.ts";
 import { CircleTool, LineTool, RectTool, RoundRectTool } from "./tools/draw.ts";
@@ -171,6 +172,8 @@ import { RegularPolygonTool } from "./tools/regpoly.ts";
 import { SpiralTool } from "./tools/spiral.ts";
 import { ZoomTool } from "./tools/zoom.ts";
 import { ConeTool, ExtrudedPolygonTool, ExtrudedRectTool, HemisphereTool, SphereTool } from "./tools/solids.ts";
+import { CylinderTool } from "./tools/cylinder.ts";
+import { TorusTool } from "./tools/torus.ts";
 import { ArcLengthTool, DimensionTool } from "./tools/dimension.ts";
 import { CalloutTool } from "./tools/callout.ts";
 import { LeaderLineSimpleTool, LeaderLineTool } from "./tools/leader.ts";
@@ -841,6 +844,8 @@ export class App {
       new SphereTool(env),
       new HemisphereTool(env),
       new ConeTool(env),
+      new CylinderTool(env),
+      new TorusTool(env),
     ]);
     this.renderer = new Renderer(this.canvas, this.view, this.scene, this.controller);
     installViewHistory(this.view);
@@ -1052,7 +1057,7 @@ export class App {
     mountMenuStrip(strip, () => menuBar.menus());
     palettes.addTopGroup("menus", strip);
     // View › Work Like: Rodeo laid out as the application last chosen (looks/looks.ts)
-    installLooks({ palettes, setTool, menus: () => menuBar.menus() });
+    installLooks({ palettes, setTool, setToolMode: (mode) => this.controller.setMode(mode), menus: () => menuBar.menus() });
     for (const bar of [topbar, strip]) {
       bar.addEventListener("contextmenu", (e) => {
         if ((e.target as Element).closest("input, select, textarea")) return;
@@ -2386,7 +2391,10 @@ export class App {
 
   /** A click in the 3D view selects the object, making its layer active. */
   private pick3d(id: string | null, additive: boolean): void {
-    const obj = id ? store.session?.doc.object(id) : null;
+    const doc = store.session?.doc;
+    // a locked object can't be picked in 3D either (View > Lock Selection): a click on it picks nothing
+    const found = id && doc ? doc.object(id) : null;
+    const obj = found && !isLockedObject(doc, found) ? found : null;
     if (!obj) {
       if (!additive) setSelection([]);
       return;

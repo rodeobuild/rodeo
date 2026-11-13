@@ -42,6 +42,11 @@ const MODIFY_PANELS: readonly RibbonPanel[] = [
       [small("Scale", { menu: "Modify › Scale Objects…" }, "RE"), small("Delete", { menu: "Edit › Delete" }, "DE")],
     ],
   },
+  {
+    title: "View",
+    // Override Graphics in View › By Element: the lines and fills of what is selected, Rodeo's Attributes palette
+    items: [[small("Override Graphics in View", { palette: "attributes" }), small("Hide in View", { menu: "View › Hide Selected Objects" }, "EH")]],
+  },
   { title: "Measure", items: [large("Measure", { tool: "measure" }), large("Dimension", { tool: "dimension" })] },
   { title: "Create", items: [large("Create Group", { menu: "Modify › Group" }, "GP")] },
 ];
@@ -444,7 +449,8 @@ export const look: LookSpec = {
   // Revit's palettes: Properties over Project Browser on the left, the rest closed
   palettes: {
     objectInfo: { where: "left", order: 0, weight: 420 },
-    attributes: { where: "left", tabOf: "objectInfo" },
+    // Revit's Properties is one panel: the lines and fills for new objects open from Modify › Override Graphics in View
+    attributes: { where: "hidden" },
     navigation: { where: "left", order: 1, weight: 360 },
     basic: { where: "hidden" },
     toolsets: { where: "hidden" },
@@ -541,7 +547,37 @@ export const look: LookSpec = {
     pp: { palette: "objectInfo" },
     md: { tool: "select" },
     gp: { menu: "Modify › Group" },
-    sa: { menu: "Edit › Select All" },
+    sa: { menu: "Edit › Select Similar" },
+    zx: { menu: "View › Fit to Window" },
+    zo: { menu: "View › Zoom Out" },
+    zr: { tool: "zoom" },
+    zz: { tool: "zoom" },
+    zp: { menu: "View › Previous View" },
+    zc: { menu: "View › Previous View" },
+    zs: { menu: "View › Fit to Page Area" },
+    vp: { palette: "objectInfo" },
+    eg: { menu: "Modify › Edit Group" },
+    ug: { menu: "Modify › Ungroup" },
+    fg: { menu: "Modify › Exit Group" },
+    eh: { menu: "View › Hide Selected Objects" },
+    eu: { menu: "View › Unhide Objects" },
+    rc: { menu: "Edit › Repeat Last Command" },
+    cs: { menu: "Edit › Create Similar Object" },
+    pn: { menu: "Modify › Lock" },
+    up: { menu: "Modify › Unlock" },
+    cl: { tool: "column" },
+    tg: { tool: "datatag" },
+    wf: { menu: "View › Rendering › Wireframe" },
+    hl: { menu: "View › Rendering › Hidden Line" },
+    sd: { menu: "View › Rendering › Shaded" },
+    rr: { menu: "View › Rendering › Realistic" },
+    ks: { menu: "Help › Keyboard Shortcuts…" },
+  },
+  // Revit's Ctrl keys over the drawing
+  keys: {
+    "Ctrl+1": { palette: "objectInfo" },
+    "Ctrl+Z": { menu: "Edit › Undo" },
+    "Ctrl+Y": { menu: "Edit › Redo" },
   },
   // the wheel pressed pans and Shift with it orbits, as Revit does; the right button leaves its menu alone
   mouse: { middle: "pan", right: "menu" },

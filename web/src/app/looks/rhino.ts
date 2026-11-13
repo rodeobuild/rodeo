@@ -6,6 +6,7 @@
 import "./rhino.css";
 import { store, type ToolId } from "../state.ts";
 import { runCommand } from "./commands.ts";
+import { AREA, dim, LENGTH, LIST, LOCK, MAKE2D, ORTHO, REGEN, UNLOCK } from "./extra.ts";
 import type { Command, LookButton, LookSpec, StatusItem } from "./types.ts";
 
 /** A toolbar or sidebar button that picks one of Rodeo's tools. */
@@ -162,7 +163,7 @@ export const look: LookSpec = {
     },
     {
       id: "Text",
-      title: "Dimension",
+      title: "Drafting",
       rows: [
         "Text › Format Text…",
         "Text › Font",
@@ -251,7 +252,7 @@ export const look: LookSpec = {
     },
     {
       id: "Panels",
-      title: "Panels",
+      title: "Window",
       rows: [
         "Window › Palettes",
         "Window › Palette Options",
@@ -329,8 +330,13 @@ export const look: LookSpec = {
       TextObject: { do: { tool: "text" }, prompt: "Location of text" },
       Hatch: { menu: "Modify › Hatch…" },
       Dim: { tool: "dimension" },
-      DimLinear: { tool: "dimension" },
-      DimAligned: { tool: "dimension" },
+      DimRotated: dim("linear"),
+      DimAligned: dim("linear"),
+      DimAngle: dim("angular"),
+      DimRadius: dim("radial"),
+      DimDiameter: dim("diameter"),
+      DimOrdinate: dim("ordinate"),
+      DimCurveLength: { tool: "arclength" },
       Leader: { tool: "leaderline" },
       Distance: { tool: "measure" },
       Move: { do: { tool: "moveby" }, select: "Select objects to move. Press Enter when done" },
@@ -388,7 +394,9 @@ export const look: LookSpec = {
       Volume: { do: { menu: "Model › Volumetric Properties…" }, select: "Select closed solids to measure. Press Enter when done" },
       Block: { do: { menu: "Modify › Create Symbol…" }, select: "Select objects for the block. Press Enter when done" },
       Insert: { tool: "symbol" },
-      Light: { tool: "light" },
+      PointLight: { tool: "light" },
+      Spotlight: { tool: "light" },
+      DirectionalLight: { tool: "light" },
       Render: { menu: "View › Render Studio" },
       New: { menu: "File › New" },
       Open: { menu: "File › Open…" },
@@ -428,26 +436,49 @@ export const look: LookSpec = {
       },
       Grid: { menu: "View › Show Grid" },
       Snap: { menu: "View › Snap to Grid" },
-      SnapToGrid: { menu: "View › Snap to Grid" },
       CPlane: { menu: "Modify › Working Plane › Set Working Plane" },
       Osnap: SNAP,
-      Wireframe: { menu: "View › Rendering › Wireframe" },
-      Shaded: { menu: "View › Rendering › Shaded" },
-      Rendered: { menu: "View › Rendering › Realistic" },
+      // Rhino's SetDisplayMode asks for the look at its prompt; Enter takes Shaded
+      SetDisplayMode: {
+        prompt: "Display mode",
+        options: [
+          { name: "Wireframe", do: { menu: "View › Rendering › Wireframe" } },
+          { name: "Shaded", do: { menu: "View › Rendering › Shaded" } },
+          { name: "Rendered", do: { menu: "View › Rendering › Realistic" } },
+          { name: "Technical", do: { menu: "View › Rendering › Hidden Line" } },
+          { name: "Pen", do: { menu: "View › Rendering › Sketch" } },
+          { name: "Raytraced", key: "RT", do: { menu: "View › Rendering › Path Traced" } },
+        ],
+        enter: { menu: "View › Rendering › Shaded" },
+        enterLabel: "Shaded",
+      },
+      Ortho: ORTHO,
+      Lock: { do: LOCK, select: "Select objects to lock. Press Enter when done" },
+      Unlock: UNLOCK,
+      Cylinder: { do: { tool: "cylinder" }, prompt: "Base of cylinder" },
+      Torus: { do: { tool: "torus" }, prompt: "Center of torus" },
+      Make2D: { do: MAKE2D, select: "Select objects to draw. Press Enter when done" },
+      Area: { do: AREA, select: "Select surfaces, polysurfaces, closed curves, or meshes for area calculation. Press Enter when done" },
+      Length: { do: LENGTH, select: "Select curves to measure. Press Enter when done" },
+      What: { do: LIST, select: "Select objects for detailed description. Press Enter when done" },
+      Redraw: REGEN,
+      SelWindow: { tool: "select" },
+      SelCrossing: { tool: "select" },
+      UndoView: { menu: "View › Previous View" },
+      RedoView: { menu: "View › Next View" },
+      MaxViewport: { menu: "View › Multiple View Panes › Single Pane" },
+      "3View": { menu: "View › Multiple View Panes › Three Panes, Plan on the Left" },
+      ChangeLayer: { palette: "objectInfo" },
     },
-    // Rhino's own short names
+    // Rhino's shipped short names, each to a command above
     aliases: {
-      C: "Copy",
-      Co: "Copy",
-      Ci: "Circle",
-      L: "Line",
+      C: "SelCrossing",
       M: "Move",
-      Mi: "Mirror",
-      Pl: "Polyline",
-      Ro: "Rotate",
+      O: "Ortho",
       S: "Snap",
-      Sc: "Scale",
-      Tr: "Trim",
+      U: "Undo",
+      W: "SelWindow",
+      Z: "Zoom",
       ZE: "ZoomExtents",
       ZEA: "ZoomExtents",
       ZS: "ZoomSelected",
@@ -478,6 +509,9 @@ export const look: LookSpec = {
       "Click where the leader points": "Start of leader",
       "Linear: click the first point": "Specify first point",
       "Click the start point": "First point",
+      // The cylinder's and torus's first hints, before their " · " tails
+      "Click or drag from the base's centre": "Base of cylinder",
+      "Click the torus's centre": "Center of torus",
       "Click to zoom in or drag a box": "Select a corner of the zoom window",
       "Select objects first": "Select objects",
     },
@@ -778,33 +812,44 @@ export const look: LookSpec = {
       },
     ],
   },
-  // Rhino's status bar: the object snaps over it, then the cursor, CPlane and layer with the grid and
-  // osnap toggles. Rodeo has one object snap, so the mode toggles all share its menu row; Disable is
-  // the reverse of it, lit while object snapping is off.
+  // Rhino's OSnap panel under the sidebar of tools: the object snaps one per line, each a check box.
+  // Rodeo has one object snap, so the mode toggles all share its menu row; Disable is the reverse of
+  // it, lit while object snapping is off.
+  sidePanel: {
+    title: "OSnap",
+    items: [
+      osnap("End"),
+      osnap("Near"),
+      osnap("Point"),
+      osnap("Mid"),
+      osnap("Cen"),
+      osnap("Int"),
+      osnap("Perp"),
+      osnap("Tan"),
+      osnap("Quad"),
+      osnap("Knot"),
+      osnap("Vertex"),
+      osnap("Project"),
+      { kind: "toggle", label: "Disable", do: { run: () => runCommand(SNAP), checked: () => !store.snapObjects }, style: "check" },
+    ],
+  },
+  // Rhino's status bar: the cursor and CPlane, the units, the active class, then the grid, ortho and
+  // osnap toggles with the modes Rodeo lacks greyed (Planar, SmartTrack, Gumball, Record History, Filter).
   statusBar: {
     rows: [
       [
-        osnap("End"),
-        osnap("Near"),
-        osnap("Point"),
-        osnap("Mid"),
-        osnap("Cen"),
-        osnap("Int"),
-        osnap("Perp"),
-        osnap("Tan"),
-        osnap("Quad"),
-        osnap("Knot"),
-        osnap("Vertex"),
-        osnap("Project"),
-        { kind: "toggle", label: "Disable", do: { run: () => runCommand(SNAP), checked: () => !store.snapObjects }, style: "check" },
-      ],
-      [
         { kind: "coords", label: "CPlane" },
         { kind: "units" },
-        { kind: "layer", label: "Layer" },
+        { kind: "layer", of: "class", swatch: true, none: "Default" },
         { kind: "spacer" },
         { kind: "toggle", label: "Grid Snap", do: { menu: "View › Snap to Grid" }, style: "text" },
+        { kind: "toggle", label: "Ortho", do: ORTHO, style: "text" },
+        { kind: "inert", label: "Planar", why: "Rodeo has no Planar" },
         { kind: "toggle", label: "Osnap", do: SNAP, style: "text" },
+        { kind: "inert", label: "SmartTrack", why: "Rodeo has no SmartTrack" },
+        { kind: "inert", label: "Gumball", why: "Rodeo has no Gumball" },
+        { kind: "inert", label: "Record History", why: "Rodeo has no Record History" },
+        { kind: "inert", label: "Filter", why: "Rodeo has no Filter" },
       ],
     ],
   },
@@ -822,12 +867,35 @@ export const look: LookSpec = {
   // Rhino's grey viewport grid with its red X and green Y axes; it has no view cube.
   gridColors: { minor: "#a3a3a3", major: "#8a8a8a", xAxis: "#b04646", yAxis: "#3f9a46" },
   viewCube: false,
-  // Single keys: Rhino's grid, grid snap and Properties; Delete removes the selection.
+  grid3d: true,
+  docTabs: false,
+  // Rhino's keys: help, Properties, the grid, Ortho and grid snap; Delete removes the selection; the
+  // Ctrl and Alt keys follow Rhino's shortcuts for select all, group, hide, lock and views. Rhino's
+  // Ctrl+T (Trim) and Ctrl+W (Zoom Window) are left out: a browser keeps them (new tab, close tab).
   keys: {
-    F7: { menu: "View › Show Grid" },
-    F9: { menu: "View › Snap to Grid" },
+    F1: { menu: "Help › User Guide" },
     F3: { palette: "objectInfo" },
+    F7: { menu: "View › Show Grid" },
+    F8: ORTHO,
+    F9: { menu: "View › Snap to Grid" },
     Delete: { menu: "Edit › Delete" },
+    "Ctrl+A": { menu: "Edit › Select All" },
+    "Ctrl+G": { menu: "Modify › Group" },
+    "Ctrl+Shift+G": { menu: "Modify › Ungroup" },
+    "Ctrl+H": { menu: "View › Hide Selected Objects" },
+    "Ctrl+Alt+H": { menu: "View › Unhide Objects" },
+    "Ctrl+Shift+H": { menu: "View › Show Selected Objects Only" },
+    "Ctrl+L": LOCK,
+    "Ctrl+Alt+L": UNLOCK,
+    "Ctrl+J": { menu: "Modify › Join › Join" },
+    "Ctrl+B": { menu: "Modify › Create Symbol…" },
+    "Ctrl+Shift+E": { menu: "View › Fit to Objects" },
+    "Ctrl+M": { menu: "View › Multiple View Panes › Single Pane" },
+    "Ctrl+Alt+W": { menu: "View › Rendering › Wireframe" },
+    "Ctrl+Alt+S": { menu: "View › Rendering › Shaded" },
+    "Ctrl+Alt+R": { menu: "View › Rendering › Realistic" },
+    Home: { menu: "View › Previous View" },
+    End: { menu: "View › Next View" },
   },
   // Rhino rotates with a right drag and pans with the middle button (Shift swaps them in Rhino).
   mouse: { middle: "pan", right: "orbit" },
@@ -837,4 +905,6 @@ export const look: LookSpec = {
   panes: { layout: "four", x: 0.5, y: 0.5, kinds: ["plan", "3d", "3d", "3d"] },
   // Rhino's four viewports: Top, Front, Right and Perspective
   paneNames: { plan: "Top", views: { "Right Isometric": "Perspective", "Left Isometric": "Perspective" }, turned: "Perspective" },
+  // Rhino's viewport tabs under the views, above the status bar
+  paneTabs: true,
 };

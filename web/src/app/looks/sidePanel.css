@@ -1,0 +1,66 @@
+/* A look's side panel (sidePanel.ts): a titled panel under the column of tools, in Rhino's chrome.
+   The column stacks its toolbox above the panel; the panel keeps its rows at 18px and 12px text. */
+
+/* the column of a side panel becomes a stack, the toolbox taking the space above the panel */
+.lk-side-stack {
+  flex-direction: column;
+}
+
+.lk-side-stack > .lk-toolbox {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.lk-sidepanel {
+  box-sizing: border-box;
+  order: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 4px;
+  background: #f0f0f0;
+  border-top: 1px solid #c8c8c8;
+  color: #3a3a3a;
+  font-family: var(--lk-font);
+  font-size: 12px;
+  cursor: default;
+  user-select: none;
+}
+
+.lk-sidepanel-title {
+  padding: 4px 6px;
+  color: #333333;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lk-sidepanel-row {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+/* ---- status bar items the Rhino look draws (statusBar.ts) ---------------------------------- */
+
+/* a feature Rodeo lacks: greyed, never bold, nothing on a click */
+:root[data-look="rhino"] .lk-st-inert {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: #3a3a3a;
+  opacity: 0.5;
+  cursor: default;
+  white-space: nowrap;
+}
+
+/* a text toggle is bold while it is on (Rhino's Grid Snap, Ortho, Osnap) */
+:root[data-look="rhino"] .lk-statusbar .lk-st-toggle.lk-st-text.on {
+  font-weight: 700;
+}

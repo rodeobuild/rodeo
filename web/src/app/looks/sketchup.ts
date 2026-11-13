@@ -251,6 +251,8 @@ export const look: LookSpec = {
   panels: { navigation: { kind: "layerTable", style: "sketchup", columns: ["visible", "name", "linetype", "color"], none: "Untagged" } },
   grid: false,
   viewCube: false,
+  tray: true,
+  docTabs: false,
   // SketchUp's single keys; each maps to a Rodeo tool or menu command that exists.
   keys: {
     l: { tool: "line" },
@@ -271,9 +273,18 @@ export const look: LookSpec = {
     "⇧z": { menu: "View › Fit to Window" },
     g: { menu: "Modify › Create Symbol…" },
     Delete: { menu: "Edit › Delete" },
+    k: { menu: "View › Rendering › Dashed Hidden Line" },
+    "Ctrl+Z": { menu: "Edit › Undo" },
+    "Ctrl+Y": { menu: "Edit › Redo" },
+    "Ctrl+A": { menu: "Edit › Select All" },
+    "Ctrl+C": { menu: "Edit › Copy" },
+    "Ctrl+X": { menu: "Edit › Cut" },
+    "Ctrl+V": { menu: "Edit › Paste" },
   },
   // SketchUp orbits with the wheel pressed (Shift pans); the right button opens the menu.
   mouse: { middle: "orbit", right: "menu" },
   paper: "#ffffff",
   background3d: "#dfe9f2",
+  // a sky above the horizon and the drawing axes through the origin in the 3D view
+  axes3d: "sketchup",
 };

@@ -45,6 +45,8 @@ export interface SectionPiece {
   readonly cutLines: Pt[][];
   /** its edges seen beyond the plane */
   readonly lines: Pt[][];
+  /** its edges beyond the plane that something nearer hides, when sectionView is asked for them (Make 2D Drawing's hidden lines) */
+  readonly hidden?: Pt[][];
 }
 
 export interface SectionDrawing {
@@ -247,8 +249,11 @@ export interface SectionFrame {
   readonly across: BBox;
 }
 
-/** The section a plane makes of the meshes, in the view's own across and up. */
-export function sectionView(meshes: readonly CutMesh[], frame: SectionFrame): SectionDrawing {
+/**
+ * The section a plane makes of the meshes, in the view's own across and up. `options.hidden` also
+ * gives each piece the edges beyond the plane that something nearer hides (SectionPiece.hidden).
+ */
+export function sectionView(meshes: readonly CutMesh[], frame: SectionFrame, options: { hidden?: boolean } = {}): SectionDrawing {
   const { x0, y0, x1, y1 } = frame.across;
   const far = Math.max(0, frame.depth);
   const [ox, oy, oz] = frame.origin;
@@ -646,11 +651,26 @@ export function sectionView(meshes: readonly CutMesh[], frame: SectionFrame): Se
   for (const w of work) {
     const segs: [string, string][] = [];
     const at = new Map<string, Pt>();
+    const hsegs: [string, string][] = [];
+    const hat = new Map<string, Pt>();
     const ptKey = (x: number, y: number): string => {
       const k = `${q(x)},${q(y)}`;
       if (!at.has(k)) at.set(k, { x, y });
       return k;
     };
+    const hiddenKey = (x: number, y: number): string => {
+      const k = `${q(x)},${q(y)}`;
+      if (!hat.has(k)) hat.set(k, { x, y });
+      return k;
+    };
+    /** a line's pieces as the drawing keeps them: its chains, straightened, a closed one's first point again at its end */
+    const linesOf = (chains: [string, string][], points: Map<string, Pt>): Pt[][] =>
+      chain(chains, points)
+        .map((c) => {
+          const pts = straighten(c.pts, c.closed, tol);
+          return c.closed && pts.length > 2 ? [...pts, pts[0]] : pts;
+        })
+        .filter((l) => l.length > 1);
     if (far > 0)
       for (const edge of w.edges) {
         // an end just off a bound counts as on it, so an edge along it isn't lost to rounding
@@ -674,22 +694,33 @@ export function sectionView(meshes: readonly CutMesh[], frame: SectionFrame): Se
         const p = lerp(t0);
         const r = lerp(t1);
         if (Math.hypot(r[0] - p[0], r[1] - p[1]) <= tol) continue;
-        for (const [s0, s1] of seenParts(p, r)) {
+        const seen = seenParts(p, r);
+        for (const [s0, s1] of seen) {
           const sa = { x: p[0] + (r[0] - p[0]) * s0, y: p[1] + (r[1] - p[1]) * s0 };
           const sb = { x: p[0] + (r[0] - p[0]) * s1, y: p[1] + (r[1] - p[1]) * s1 };
           if (Math.hypot(sb.x - sa.x, sb.y - sa.y) > tol) segs.push([ptKey(sa.x, sa.y), ptKey(sb.x, sb.y)]);
         }
+        if (options.hidden) {
+          // what's left of the edge, the parts nearer faces hide
+          let from = 0;
+          const hide = (s0: number, s1: number): void => {
+            const sa = { x: p[0] + (r[0] - p[0]) * s0, y: p[1] + (r[1] - p[1]) * s0 };
+            const sb = { x: p[0] + (r[0] - p[0]) * s1, y: p[1] + (r[1] - p[1]) * s1 };
+            if (Math.hypot(sb.x - sa.x, sb.y - sa.y) > tol) hsegs.push([hiddenKey(sa.x, sa.y), hiddenKey(sb.x, sb.y)]);
+          };
+          for (const [s0, s1] of seen) {
+            if (s0 > from) hide(from, s0);
+            from = Math.max(from, s1);
+          }
+          if (from < 1) hide(from, 1);
+        }
       }
-    const lines = chain(segs, at)
-      .map((c) => {
-        const pts = straighten(c.pts, c.closed, tol);
-        return c.closed && pts.length > 2 ? [...pts, pts[0]] : pts;
-      })
-      .filter((l) => l.length > 1);
-    const piece: SectionPiece = { ...w.piece, lines };
-    if (!piece.cuts.length && !piece.cutLines.length && !lines.length) continue;
+    const lines = linesOf(segs, at);
+    const hiddenLines = options.hidden ? linesOf(hsegs, hat) : undefined;
+    const piece: SectionPiece = { ...w.piece, lines, ...(hiddenLines ? { hidden: hiddenLines } : {}) };
+    if (!piece.cuts.length && !piece.cutLines.length && !lines.length && !hiddenLines?.length) continue;
     for (const c of piece.cuts) grow(c.outer);
-    for (const l of [...piece.cutLines, ...lines]) grow(l);
+    for (const l of [...piece.cutLines, ...lines, ...(hiddenLines ?? [])]) grow(l);
     pieces.push(piece);
   }
   return { pieces, box: pieces.length ? { x0: bx0, y0: by0, x1: bx1, y1: by1 } : null, frame };

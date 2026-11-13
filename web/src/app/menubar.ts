@@ -5,6 +5,9 @@
 // rows as built, wherever Menus… put them. Also holds the in-page dialog shell (showDialog)
 // that Move, Scale and the export dialog share.
 
+import { canLock, canUnlock, lockSelected, unlockAll } from "./lockedObjects.ts";
+import { canMake2D, make2D } from "./make2d.ts";
+import { orthoOn, toggleOrtho } from "./ortho.ts";
 import type { Pt } from "../core/index.ts";
 import type { ModelFormat } from "../export/model3d.ts";
 import type { MeshImportFormat } from "./meshImport.ts";
@@ -791,6 +794,8 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
         { label: "Show Grid", keys: "⌘'", checked: () => store.showGrid, run: toggleGrid },
         { label: "Snap to Grid", keys: "⇧⌘'", checked: () => store.snapGrid, run: toggleSnapGrid },
         { label: "Snap to Objects", checked: () => store.snapObjects, run: toggleSnapObjects },
+        // Rhino's and AutoCAD's Ortho: from the last point only along 0, 90, 180 or 270°; Shift lets go for a moment
+        { label: "Ortho", checked: orthoOn, run: toggleOrtho },
         { label: "Rulers", checked: rulersShown, run: toggleRulers },
         "-",
         { label: "Appearance", items: [...themeRows(), "-", { label: "Dark Canvas", checked: darkCanvas, run: () => setDarkCanvas(!darkCanvas()) }] },
@@ -824,6 +829,10 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
         { label: "Edit Symbol", why: whyIn("Select one symbol first"), enabled: () => selectedSymbol() !== null, run: editSelectedSymbol },
         { label: "Edit Auto Hybrid", why: whyIn("Select one Auto Hybrid first"), enabled: () => selectedAutoHybrid() !== null, run: () => editAutoHybrid() },
         { label: "Exit Symbol", why: whyIn("No symbol is open for editing"), enabled: () => store.symbolEdit !== null && !store.symbolEdit.viewport, run: exitSymbol },
+        "-",
+        // locked objects stay drawn (in grey) and snapped to, but can't be selected, moved or deleted, while the drawing is open
+        { label: "Lock", why: need.selection, enabled: canLock, run: lockSelected },
+        { label: "Unlock", why: whyIn("Nothing is locked"), enabled: canUnlock, run: unlockAll },
         "-",
         {
           label: "Surfaces",
@@ -865,6 +874,8 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
             { label: "Convert Object to Dimension", why: whyIn("Select lines or arcs first"), enabled: canConvertToDimension, run: convertToDimensionSelection },
             { label: "Convert to 3D Polygons", why: need.threeDObjects, enabled: canConvertTo3DPolygons, run: convertTo3DPolygonsSelection },
             { label: "Convert to Mesh", why: need.threeDObjects, enabled: canConvertToMesh, run: convertToMeshSelection },
+            // Rhino's Make2D: the selected 3D objects as seen in the 3D view, as flat lines beside them
+            { label: "Make 2D Drawing", why: need.threeDObjects, enabled: canMake2D, run: () => void make2D() },
             { label: "Replace with Symbol…", why: whyNot([hasSelection, STEP.selection], [canReplaceWithSymbol, "Make a symbol first: Modify › Create Symbol…"]), enabled: canReplaceWithSymbol, run: () => void replaceWithSymbolDialog() },
           ],
         },

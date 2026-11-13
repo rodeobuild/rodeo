@@ -572,12 +572,50 @@ export function relabelPanes(): void {
   relabel?.();
 }
 
+/** The hooks mountPanes was given, kept so the pane helpers below can reach the app's activation and views. */
+let paneHooks: PaneHooks | null = null;
+
+/** The pane that is the active one now (the live 3D view's while it is active, else the live plan's), or -1. */
+export function activePaneIndex(): number {
+  return activePane();
+}
+
+/** The name pane `i` shows under the current look's names: "Top", "Front", "Perspective", or Rodeo's "Plan" and "3D". */
+export function paneNameOf(i: number): string {
+  const kind = paneKind(i);
+  const view = kind === "3d" ? (paneHooks?.view(i) ?? null) : null;
+  const own = paneNamer?.(kind, view);
+  if (own !== undefined) return own;
+  if (kind === "plan") return "Plan";
+  return view === null ? "3D" : `3D · ${view}`;
+}
+
+/**
+ * Makes pane `i` the active one, as a press in it does: a picture pane takes the live view of its
+ * kind; the live plan or live 3D view, which shows no picture, makes its kind the active one.
+ */
+export function makePaneActive(i: number): void {
+  if (i < 0 || i >= paneCount() || i === activePane()) return;
+  if (pictureOf(i)) {
+    paneHooks?.activate(i);
+    return;
+  }
+  if (paneKind(i) === "3d" && i === live) {
+    store.view3d = true;
+    store.emit("view3d");
+  } else if (paneKind(i) === "plan" && i === livePlan) {
+    store.view3d = false;
+    store.emit("view3d");
+  }
+}
+
 /**
  * Lays the panes out in `wrap`: the drawing's canvas and its text editors in the first, the 3D
  * view's host in the live pane, a picture in each other 3D pane, the dividers between them, the
  * ring round the active one and each pane's chip.
  */
 export function mountPanes(wrap: HTMLElement, hooks: PaneHooks): void {
+  paneHooks = hooks;
   const canvas = wrap.querySelector<HTMLElement>("#canvas")!;
   const text = wrap.querySelector<HTMLElement>(".text-host")!;
   const host = wrap.querySelector<HTMLElement>(".view3d-host")!;
