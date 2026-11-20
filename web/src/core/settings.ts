@@ -139,6 +139,29 @@ export function unitsName(h: Uint8Array): string | null {
   return name;
 }
 
+/**
+ * The length unit a settings block written before Vectorworks 2018 holds, from its sizes: such a
+ * block keeps the unit as three f64 (the length unit in an inch, the area unit in a square inch,
+ * the volume unit in a cubic inch), a u16 style (2 for feet and inches) and then the name as a
+ * length byte and 8-bit text, at an offset that moves with the version (the sizes at 0x178 in a
+ * 2013 file, 0x190 in three 2016 files). The name is in the application's language ("Centimeter"
+ * in a Dutch one) and may be followed by the end of a longer name it replaced, so the unit is told
+ * by its sizes: the first place the three f64 and the style are a unit set's own. Null when none is.
+ */
+export function unitsBySize(h: Uint8Array): string | null {
+  const near = (a: number, b: number) => Math.abs(a - b) <= Math.abs(b) * 1e-9;
+  for (let p = SETTINGS; p + 26 <= h.length; p++) {
+    const perInch = f64(h, p);
+    if (!(perInch > 0 && Number.isFinite(perInch))) continue;
+    const style = h[p + 24] | (h[p + 25] << 8);
+    const set = UNIT_SETS.find(
+      (u) => near(perInch, u.perInch) && near(f64(h, p + 8), u.area.perSquareInch) && near(f64(h, p + 16), u.volume.perCubicInch) && (style === FEET_AND_INCHES) === (u.feet !== undefined),
+    );
+    if (set) return set.name;
+  }
+  return null;
+}
+
 /** Writes zero-ended UTF-16LE text into a slot, clearing the rest of it. */
 function setSlot(h: Uint8Array, at: number, slot: number, text: string): void {
   h.fill(0, at, at + 2 * slot);

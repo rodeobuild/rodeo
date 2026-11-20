@@ -16723,6 +16723,8 @@
   "{0} is focused {1} SL of the centre line, outside the {2} stage.": "{0} được chiếu lệch đường tâm {1} về SL, nằm ngoài sân khấu rộng {2}.",
   "{0} is focused {1} SR of the centre line, outside the {2} stage.": "{0} được chiếu lệch đường tâm {1} về SR, nằm ngoài sân khấu rộng {2}.",
   "{0} is from Vectorworks {1}: its 2D came in, its 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} đến từ Vectorworks {1}: phần 2D đã được nhập, các đối tượng 3D và hình ảnh chưa được đọc. Khi lưu sẽ tạo một tệp mới ở định dạng hiện tại, nên tệp gốc được giữ nguyên.",
+  "{0} is from Vectorworks {1}: its 2D, extrudes and sweeps came in, its other 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} đến từ Vectorworks {1}: phần 2D, các khối đùn và khối quét đã được nhập, các đối tượng 3D khác và hình ảnh chưa được đọc. Khi lưu sẽ tạo một tệp mới ở định dạng hiện tại, nên tệp gốc được giữ nguyên.",
+  "{0} is in an older Vectorworks format: its 2D came in, most of its 3D objects and its images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} ở định dạng Vectorworks cũ hơn: phần 2D đã được nhập, phần lớn các đối tượng 3D và hình ảnh chưa được đọc. Khi lưu sẽ tạo một tệp mới ở định dạng hiện tại, nên tệp gốc được giữ nguyên.",
   "{0} is in the row below the input: move it to loop the input.": "{0} nằm ở hàng dưới đầu vào: hãy di chuyển nó để nối vòng đầu vào.",
   "{0} is in the script palette {1}: double-click it to run it.": "{0} nằm trong bảng tập lệnh {1}: nhấp đúp để chạy.",
   "{0} is larger than {1}": "{0} lớn hơn {1}",

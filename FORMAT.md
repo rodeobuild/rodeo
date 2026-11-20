@@ -57,7 +57,7 @@ stream round-trips byte-for-byte.
 ### 1.1 Vectorworks 2013 files (core/legacy.ts)
 
 Measured on one file saved by VW 18.0.5 (2013, build 208827), 8,602 records;
-2014 to 2017 are not measured. The header up to 0x94 is laid out as above
+§1.2 has what is known of 2014 to 2017. The header up to 0x94 is laid out as above
 (here a 0x880-byte settings block, with the length unit as ASCII text, not
 UTF-16). The **body is the record stream itself, uncompressed**: walking u32
 sizes from the body's start lands exactly on the end of the file. Records
@@ -94,6 +94,101 @@ record data (48: plug-ins keep their drawn geometry), worksheets (18),
 textures (97), preview images (119), wall styles (127), the document header
 (33), and records of other types neither converts that hold nothing. Other
 containers of unknown types keep their 2013 bodies.
+
+### 1.2 Vectorworks 2014 to 2017 files (core/legacy.ts, core/legacyMid.ts)
+
+Measured on three public files saved by Vectorworks 2016 (VW 21.0.1, 21.0.2
+and 21.0.3; builds 283922, 288897 and 301288; 95, 83 and 244 records, 422 in
+all). **No file saved by 2014, 2015 or 2017 has been seen**; what is known of
+2017 comes from error reports and is marked so. "3 of 3" below means every
+one of the three files.
+
+**Container** (3 of 3). The header up to 0x94 is §1's; the saved-with version
+is at 0x0c as there, and the byte at 0x45 is its major number (21; also 13,
+26 and 29 in files of those versions). The settings block is 0x8a8 bytes
+(2013: 0x880, 2018+: 0x9e0). The **body is the record stream itself,
+uncompressed**, as in 2013: walking the sizes from the body's start lands
+exactly on the end of the file.
+
+**Units** (3 of 3, and the 2013 file). The settings block keeps the length
+unit as three f64 (the length unit in an inch, the area unit in a square
+inch, the volume unit in a cubic inch: §1's 0x1ac to 0x1c4), a u16 style (2
+for feet and inches) and then the name as a length byte and 8-bit text. They
+start at 0x190 in the 2016 files and 0x178 in the 2013 file. The name is in
+the application's language (`Centimeter` in two files saved by a Dutch
+Vectorworks) and can be followed by the end of a longer name it replaced
+(`Feet & Inches` then `trings`), so openvwx tells the unit by its three sizes
+and style (settings.ts `unitsBySize`), wherever in the block they are.
+
+**Records** (422 of 422). Sizes and pointers are u64 and the header is **0x38
+bytes: the 2018+ header (§2) without its GUID**, every field at its 2018+
+offset (size +0x00, next mark +0x08, aux pointer +0x10, type +0x19, name
+index +0x1a, flags +0x1f, class +0x20, by-class +0x24, owner +0x26, ten bytes
++0x2e). The body starts at +0x38. Every next mark is 0x05792ca4 or 0. A
+terminator is 0x40 bytes, its body a u64 (37 of 37). The tree builds from the
+owners as in §2 and ends with no list left open in each file.
+
+**Bodies** are 2013's (§1.1) with their pointers grown to 64 bits:
+
+| Type | 2013 body | 2016 body | 2018+ body | What differs from 2013 | Seen |
+|---|---|---|---|---|---|
+| layer (31) | 724 | 732 | varies | the two pointers at body +0x38 (the first and last record it holds) are 8 bytes each, so the name's length byte is at body +0x7c (2013: +0x74) and every later field 8 on | 3 |
+| group (11) | 112 | 120 | 124 | the same two pointers; the 3D box follows them | 6 |
+| plug-in object (86) | 260 | 268 | 280 (2021) | the same | 3 |
+| symbol definition (16) | 250 | 258 | 292 | the same | 4 |
+| lists 54 and 57 | 64 | 72 | 76 | the same (they end the body) | 3 each |
+| extrude (24) | 232 | 240 | 244 | the same; 2018+ has its u32 material slot before them | 3 |
+| sweep (34) | 264 | 272 | 276 | the same | 1 |
+| solid (84) | 294 | 302 | 306 or 318 | the same, by its size (not read) | 1 |
+| class (94) | 72 | 76 | 108 | the same to +0x29 in all seven; where the 4 more bytes sit is **not known** (none of the seven is hidden or grey, so both candidates for the visibility, +0x46 and +0x4a, are 0) | 7 |
+| line (2), polygon (5), loci (9, 17), symbol (15), polyline (21), light (81) | | same size | | nothing: same size and the same field offsets | 3, 3, 1, 1, 6, 3, 3 |
+| name table (55) | | | | nothing: count at body +0x08, entries from +0x50, each block within 2013's 64 bytes; the three parse one way to their counts (7, 9 and 30 names, none with a byte past 0x7f, so the 8-bit encoding is unconfirmed) | 3 |
+| font list (74), record formats (47), palette (80) | | | | nothing: 262-byte font entries, 70-byte fields (19 formats), 1536 bytes | 3, 19, 3 |
+
+**Not in any of the three files:** rectangles, ovals, arcs, rounded
+rectangles, texts, dimensions, viewports, images, worksheets, sheet layers,
+hidden or grey classes. Their 2014 to 2017 layouts are unmeasured.
+
+**2017, from error reports.** Six reports of files that failed to open (14 to
+18 November 2026) carry where the reader stopped: each body starts with a
+u64-sized record of 0x50 bytes or more with a u64 mark, reads as u64-sized
+records for 9 to 127 records, and then holds a record of 0x4c bytes (five)
+or 0x48 (one), which a 0x50-byte header does not allow and a 0x38-byte one
+does. One was saved by Vectorworks 2017. The other five name no year from
+2014 to 2017 in their header: three are, by their names, exports for 2017
+from a newer Vectorworks, which then seems to keep its own version there (no
+such file has been seen), and the 0x48 one is, by its name, an export for
+2019, which is unexplained. So 2017's records are sized as 2016's; whether
+their bodies are 2016's is not known.
+
+**What openvwx does.** A body is told by its records, not by the saved-with
+version (which those reports show can't be relied on): u32 sizes with 2013's mark is §1.1's layout; u64 sizes is this one
+when any record is shorter than 0x50 bytes (every drawing has terminators),
+and 2018+ records as they are when none is (never seen in a file). A 2014 or
+2015 file opens when its body reads as one of these from end to end. Each
+body is made a 2013 one (legacyMid.ts: the pointers narrowed) and then
+converted as §1.1 says, with these differences:
+
+* A layer must be 732 bytes and a class 76; a file with either of another
+  size is refused, naming its year and the size, as its fields would be read
+  from the wrong places.
+* A class's visibility is whichever of +0x46 and +0x4a holds −1 or 2: under
+  either reading of the four bytes the other place stays 0.
+* Extrudes (240 bytes) and sweeps (272) get the 2018+ material slot at body
+  +0x38 and come in as 3D: the three extrudes and the sweep of one file each
+  build a solid the size of the 3D box its record stores. Of any other size
+  they are left out, as are the other 3D types.
+* The unmeasured types are read as 2013's only where the record itself fits:
+  a rectangle, oval, arc or rounded rectangle of 2013's exact size; a text
+  whose count and closing UTF-16 characters read as text; a viewport whose
+  layer and class list sits at 2013's place, once its pointers are narrowed,
+  and ends the record. Any other is left out, with what it holds. A
+  dimension keeps only its attributes and plan box, as in §1.1.
+
+A drawing read this way is marked converted (`DocumentInfo.converted`): it
+opens without its file handle, so saving writes a new 2018+ file and the
+original stays as Vectorworks wrote it. A file saved in 2014 to 2017 that
+still fails says its year, and why in brackets.
 
 ## 2. Record stream
 

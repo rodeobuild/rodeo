@@ -22,6 +22,17 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-20T12:03:00Z",
+    "vectorworks-2014-2017",
+    "Vectorworks 2014 to 2017 drawings open",
+    `Files saved by Vectorworks 2014 to 2017 open, where Rodeo refused them and asked for a copy saved from 2018 or newer, or opened them empty.
+- Their 2D comes in: lines, polygons, polylines, symbols, lighting and other plug-in objects as drawn, layers and classes, in the file's units.
+- Extrudes and sweeps come in as 3D. Other 3D objects, images, worksheets and textures aren't read yet and are left out.
+- Saving writes a new file in the current Vectorworks format, so the original stays as it was. That holds for a file a newer Vectorworks exported for an older version, too.
+- This is checked on files saved by Vectorworks 2016. A 2014, 2015 or 2017 file that is laid out another way is still refused, and the message says its year and why.`,
+    "plan3d",
+  ),
+  release(
     "2026-11-20T12:02:00Z",
     "steadier-sign-in-downloads-tracing",
     "Sign-in emails, cloud downloads and path tracing hold up better",

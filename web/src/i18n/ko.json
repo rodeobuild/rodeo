@@ -16752,6 +16752,8 @@
   "{0} is focused {1} SL of the centre line, outside the {2} stage.": "{0}: 포커스가 중심선에서 무대 왼쪽(SL)으로 {1} 떨어져 있어 {2} 무대를 벗어납니다.",
   "{0} is focused {1} SR of the centre line, outside the {2} stage.": "{0}: 포커스가 중심선에서 무대 오른쪽(SR)으로 {1} 떨어져 있어 {2} 무대를 벗어납니다.",
   "{0} is from Vectorworks {1}: its 2D came in, its 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} 파일은 Vectorworks {1}에서 만든 것입니다. 2D는 들어왔지만 3D 오브젝트와 이미지는 아직 읽지 않습니다. 저장하면 현재 형식의 새 파일이 만들어지므로 원본은 그대로 남습니다.",
+  "{0} is from Vectorworks {1}: its 2D, extrudes and sweeps came in, its other 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} 파일은 Vectorworks {1}에서 만든 것입니다. 2D와 돌출, 스윕은 들어왔지만 나머지 3D 오브젝트와 이미지는 아직 읽지 않습니다. 저장하면 현재 형식의 새 파일이 만들어지므로 원본은 그대로 남습니다.",
+  "{0} is in an older Vectorworks format: its 2D came in, most of its 3D objects and its images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} 파일은 이전 Vectorworks 형식입니다. 2D는 들어왔지만 대부분의 3D 오브젝트와 이미지는 아직 읽지 않습니다. 저장하면 현재 형식의 새 파일이 만들어지므로 원본은 그대로 남습니다.",
   "{0} is in the row below the input: move it to loop the input.": "{0}: 입력 아래 행에 있습니다. 입력을 루프하려면 이동하세요.",
   "{0} is in the script palette {1}: double-click it to run it.": "스크립트 팔레트 {1}에 {0} 스크립트가 있습니다. 더블클릭하면 실행됩니다.",
   "{0} is larger than {1}": "{0}의 크기가 {1}보다 큽니다",

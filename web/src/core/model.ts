@@ -952,7 +952,7 @@ export class Model implements VwxDocument {
     const c = file instanceof Uint8Array ? readContainer(file) : file;
     this.header = c.header;
     this.fileName = fileName;
-    this.meta = { createdWith: c.createdWith, savedWith: c.savedWith, build: c.build, units: c.units };
+    this.meta = { createdWith: c.createdWith, savedWith: c.savedWith, build: c.build, units: c.units, converted: c.converted };
     if ("raw" in c) {
       const recs = splitRecords(c.raw);
       for (const r of recs) this.recByData.set(r.data, r);

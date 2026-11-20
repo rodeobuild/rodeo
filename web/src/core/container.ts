@@ -16,9 +16,10 @@
 //                  each block decompresses to <= 1 MiB; concatenated they form
 //                  the record stream (see records.ts)
 //
-// A body that is not Snappy chunks (a Vectorworks 2013 file's narrow records, or uncompressed 2018+
-// records) is read by legacy.ts, which also gives the header a 2018+ one; a Snappy body that fails
-// to read in a year Rodeo doesn't read yet (before 2013, 2014 to 2017) says which year it was saved in.
+// A body that is not Snappy chunks (the uncompressed records Vectorworks wrote before 2018: 2013's
+// narrow ones, 2014 to 2017's with 64-bit sizes) is read by legacy.ts, which also gives the header
+// a 2018+ one and marks the drawing converted; a file saved before 2013 or in 2014 to 2017 that
+// still doesn't read says which year it was saved in.
 //
 // readContainer takes the whole file. readContainerStream reads it a slice at a time instead,
 // decodes several slices at once (in workers, when given an inflate that uses them) and cuts the
@@ -29,7 +30,7 @@
 
 import { concat, readAscii, setU32, setU32be, setU64, u32, u32be, u64 } from "./bytes.ts";
 import { CHECK_SPAN, ChunkTable, chunkSum, FileStream, HOLD_HEAD, HeldEntry, type HeldTable, type HoldPlan, Holder, TOKEN, expansion, heldPart } from "./held.ts";
-import { legacyHeader, type LegacyLayout, legacyRecords, legacyStart, legacyStop, unreadableMessage } from "./legacy.ts";
+import { legacyHeader, type LegacyKind, type LegacyLayout, legacyRecords, legacyStart, legacyStop, unreadableMessage } from "./legacy.ts";
 import { unitsName } from "./settings.ts";
 import { blockLength, compress, decompress, decompressInto } from "./snappy.ts";
 
@@ -44,6 +45,14 @@ export interface Container {
   chunkCount: number;
   /** length unit name from the settings block, e.g. "Millimeters" ("" if not found) */
   units: string;
+  /**
+   * the records the body held when it was an older Vectorworks layout (legacy.ts) and came in
+   * converted, null for a 2018+ file: the header is then a new 2018+ one, so saving writes a
+   * different file from the one read. The saved-with version can't tell this: error reports show
+   * such bodies under versions that name no year before 2018 (exports for an older version, by
+   * their file names).
+   */
+  converted: LegacyKind | null;
 }
 
 const CHUNK_SIZE = 1 << 20;
@@ -126,10 +135,10 @@ function readHead(data: Uint8Array, size: number): Head {
 export function readContainer(data: Uint8Array): Container {
   const { body, createdWith, savedWith, build } = readHead(data, data.length);
   const layout = legacyStart(data.subarray(body, body + 16));
-  const records = olderRecords(layout, data.subarray(body), savedWith);
-  if (records) {
+  const older = olderRecords(layout, data.subarray(body), savedWith);
+  if (older) {
     const { header, units } = legacyHeader(data.subarray(0, body));
-    return { header, createdWith, savedWith, build, raw: concat(records), chunkCount: 0, units };
+    return { header, createdWith, savedWith, build, raw: concat(older.records), chunkCount: 0, units, converted: older.kind };
   }
   try {
     const parts: Uint8Array[] = [];
@@ -155,6 +164,7 @@ export function readContainer(data: Uint8Array): Container {
       raw: concat(parts),
       chunkCount: chunks,
       units: findUnits(header),
+      converted: null,
     };
   } catch (err) {
     throw unreadable(err, savedWith, olderStop(layout, data.subarray(body)));
@@ -175,6 +185,16 @@ function unreadable(err: unknown, savedWith: string, stop: string | null = null)
 }
 
 /**
+ * The error for a body that is older records from end to end, one of which legacy.ts can't convert
+ * (`err` says which and why): the year message when the file's year has one, and the reason after
+ * it, so a report says what the reader met.
+ */
+function unconverted(err: unknown, savedWith: string): unknown {
+  if (!(err instanceof Error)) return err;
+  return new Error(`${unreadableMessage(savedWith) ?? "Rodeo could not read this file's records"} (${err.message})`);
+}
+
+/**
  * Where a body that is older records (legacy.ts) stops reading as them: null when it doesn't start
  * as them, or not even its first record reads whole (a Snappy body can pass legacyStart's look at
  * its first bytes), so that the Snappy error stands.
@@ -188,12 +208,12 @@ function olderStop(layout: LegacyLayout | null, body: Uint8Array): string | null
  * The records of a body in an older layout (legacy.ts), or null when it isn't one (or stops partway,
  * when it is read as Snappy chunks after all). One that fails to convert fails with the year it was saved in.
  */
-function olderRecords(layout: LegacyLayout | null, body: Uint8Array, savedWith: string): Uint8Array[] | null {
+function olderRecords(layout: LegacyLayout | null, body: Uint8Array, savedWith: string): { records: Uint8Array[]; kind: LegacyKind } | null {
   if (!layout) return null;
   try {
     return legacyRecords(layout, body);
   } catch (err) {
-    throw unreadable(err, savedWith);
+    throw unconverted(err, savedWith);
   }
 }
 
@@ -322,10 +342,10 @@ export async function readContainerStream(src: ByteSource, options: StreamOption
   if (head.body > start.length) start = await src.read(0, Math.min(size, head.body));
   const layout = legacyStart(await src.read(head.body, Math.min(size, head.body + 16)));
   const older = layout ? await src.read(head.body, size) : null;
-  const records = older ? olderRecords(layout, older, head.savedWith) : null;
-  if (records) {
+  const read = older ? olderRecords(layout, older, head.savedWith) : null;
+  if (read) {
     const { header, units } = legacyHeader(start.subarray(0, head.body));
-    return { header, createdWith: head.createdWith, savedWith: head.savedWith, build: head.build, records, chunkCount: 0, units, held: null };
+    return { header, createdWith: head.createdWith, savedWith: head.savedWith, build: head.build, records: read.records, chunkCount: 0, units, converted: read.kind, held: null };
   }
   try {
     return await readChunks(src, options, start, head);
@@ -387,6 +407,7 @@ async function readChunks(src: ByteSource, options: StreamOptions, start: Uint8A
     records: carver.finish(),
     chunkCount: chunks,
     units: findUnits(header),
+    converted: null,
     held: holder && stream && holder.table.entries.length ? { table: holder.table, stream } : null,
   };
 }

@@ -16753,6 +16753,8 @@
   "{0} is focused {1} SL of the centre line, outside the {2} stage.": "{0} 聚焦在中心線的舞台左側 {1} 處，超出寬 {2} 的舞台。",
   "{0} is focused {1} SR of the centre line, outside the {2} stage.": "{0} 聚焦在中心線的舞台右側 {1} 處，超出寬 {2} 的舞台。",
   "{0} is from Vectorworks {1}: its 2D came in, its 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} 來自 Vectorworks {1}：其 2D 內容已讀入，3D 物件和影像暫不讀取。儲存會以目前的格式產生新檔案，原檔案維持不變。",
+  "{0} is from Vectorworks {1}: its 2D, extrudes and sweeps came in, its other 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} 來自 Vectorworks {1}：其 2D 內容、擠出和掃掠已讀入，其餘 3D 物件和影像暫不讀取。儲存會以目前的格式產生新檔案，原檔案維持不變。",
+  "{0} is in an older Vectorworks format: its 2D came in, most of its 3D objects and its images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0} 為較舊的 Vectorworks 格式：其 2D 內容已讀入，大部分 3D 物件和影像暫不讀取。儲存會以目前的格式產生新檔案，原檔案維持不變。",
   "{0} is in the row below the input: move it to loop the input.": "{0} 在輸入的下一列：請移動它以環接該輸入。",
   "{0} is in the script palette {1}: double-click it to run it.": "{0} 位於指令碼面板 {1}：按兩下即可執行。",
   "{0} is larger than {1}": "{0}超過 {1}",

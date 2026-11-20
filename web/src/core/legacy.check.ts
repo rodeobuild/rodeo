@@ -1,17 +1,21 @@
-// Checks the legacy (Vectorworks 2013) reader on synthetic files: a blank drawing's records narrowed
-// into the 2013 layout (the inverse of legacy.ts's widen, written here) and wrapped in a 2013 header
-// must read back to the same records, with GUIDs made by the reader. Only the records whose bodies
-// the per-type converters give back as they are take part; legacyDoc.check.ts and
-// legacyShapes.check.ts check the conversions. Also: uncompressed 2018+
-// records pass through, Snappy bodies keep their path, and an old file whose body is unreadable
-// names the year it was saved in. Run from web/:
+// Checks the legacy (Vectorworks 2013, and 2014 to 2017) reader on synthetic files: a blank
+// drawing's records narrowed into the 2013 layout (the inverse of legacy.ts's widen, written here),
+// or shortened into the 2014 to 2017 one (the inverse of its lengthen), and wrapped in a header of
+// that time must read back to the same records, with GUIDs made by the reader. Only the records
+// whose bodies the per-type converters give back as they are take part; legacyDoc.check.ts,
+// legacyShapes.check.ts and legacyMid.check.ts check the conversions. Also: uncompressed 2018+
+// records pass through, Snappy bodies keep their path, a converted drawing says it is one, units
+// kept as sizes are read, and an old file that is unreadable names the year it was saved in. Run
+// from web/:
 //   npx tsx src/core/legacy.check.ts
 // No file of the user's is read.
 
 import { blankDrawing } from "./blank.ts";
 import { bytesSource, readContainer, readContainerStream, writeContainer } from "./container.ts";
-import { concat, setU32, setU32be, u64 } from "./bytes.ts";
+import { concat, setF64, setU16, setU32, setU32be, setU64, u64 } from "./bytes.ts";
 import { docBody } from "./legacyDoc.ts";
+import { legacyStart } from "./legacy.ts";
+import { midBody, midDirect } from "./legacyMid.ts";
 import { shapeBody } from "./legacyShapes.ts";
 import { NEXT_MARK, Rec, splitRecords } from "./records.ts";
 import { unitsName } from "./settings.ts";
@@ -211,6 +215,146 @@ try {
   brokenStream = err instanceof Error ? err.message : String(err);
 }
 check(brokenStream === brokenError, "the streamed reader gives the same message");
+
+// ---- Vectorworks 2014 to 2017: u64 sizes and pointers under a 0x38-byte header (no GUID) ----------
+
+/** A 2018+ record as the 2014 to 2017 layout: the inverse of legacy.ts's lengthen (its GUID and +0x48 bytes are dropped). */
+function shorten(rec: Uint8Array): Uint8Array {
+  const out = new Uint8Array(rec.length - 0x18);
+  out.set(rec.subarray(0, 0x38), 0);
+  out.set(rec.subarray(0x50), 0x38);
+  setU64(out, 0, BigInt(out.length));
+  return out;
+}
+
+/** Whether legacy.ts gives the body of the 2018+ record `rec` back as it is, read as a 2014 to 2017 body. */
+function keptAsIsMid(rec: Uint8Array): boolean {
+  if (rec[0x19] === 0) return true;
+  const body = rec.subarray(0x50);
+  try {
+    return keptAsIs(rec) && midDirect(rec[0x19], body) === undefined && midBody(rec[0x19], body) === body;
+  } catch {
+    return false;
+  }
+}
+
+/** A 2016 file: the header's bytes with a 2016-length settings block and `savedWith`, then the records. */
+function midFile(header: Uint8Array, records: Uint8Array[], savedWith = "VW21.0.3"): Uint8Array {
+  const settings = 0x8a8;
+  const h = header.slice(0, 0x94 + settings);
+  setU32be(h, 0, settings);
+  setU32(h, 0x94, settings);
+  h.fill(0x20, 0x0e, 0x2e);
+  h.set(new TextEncoder().encode(`VW21.0.3 ${savedWith}\0`), 0x0e);
+  const file = concat([h, ...records]);
+  setU32be(file, 0x54, file.length);
+  return file;
+}
+
+const midRecords = blankAll.filter(keptAsIsMid);
+const midRecs = midRecords.map(shorten);
+
+// 14. shortened records in a 2016 file read back to the blank's records, GUIDs aside
+check(midRecords.length >= blankAll.length / 2, `${midRecords.length} of the blank's ${blankAll.length} records keep their bodies as 2014 to 2017 ones`);
+check(midRecs.some((r) => r.length < 0x50) && midRecs[0].length >= 0x38, "the 2016 body holds records shorter than a 2018+ header (its terminators are 0x40 bytes)");
+const mid = readContainer(midFile(blank, midRecs));
+const midBack = splitRecords(mid.raw).map((r) => r.data);
+check(mid.chunkCount === 0, "a 2016 body reads as records, not Snappy chunks");
+check(midBack.length === midRecords.length, `2016 file: ${midBack.length} records read back, ${midRecords.length} written`);
+check(midBack.every((r, i) => same(guidFree(r), guidFree(midRecords[i]))), "every 2016 record reads back as it was, GUID aside");
+const midGuids = new Set(midBack.map((r) => new Rec(r).guid));
+check(midGuids.size === midBack.length && midBack.every((r) => r.subarray(0x38, 0x48).some((b) => b !== 0)), "every 2016 record gets its own nonzero GUID");
+check(same(readContainer(midFile(blank, midRecs)).raw, mid.raw), "the same 2016 file reads to the same GUIDs every time");
+check(new TextDecoder().decode(mid.header.subarray(0x0e, 0x2e)).startsWith("VW31.2.0") && mid.savedWith === "VW21.0.3", "a 2016 drawing gets a 2018+ header and keeps the version it was saved with");
+
+// 15. the same 2016 file streamed in small slices reads the same
+const midStreamed = await readContainerStream(bytesSource(midFile(blank, midRecs)), { slice: 4 << 10 });
+check(
+  midStreamed.records.length === midBack.length && midStreamed.records.every((r, i) => same(r, midBack[i])) && same(midStreamed.header, mid.header) && midStreamed.units === mid.units,
+  "2016 file streamed in 4 KB slices: the same records, header and units",
+);
+
+// 16. a converted drawing says it is one; a 2018+ drawing does not
+check(read.converted === "2013" && streamed.converted === "2013", "a 2013 drawing is marked converted from 2013 records, read whole or streamed");
+check(mid.converted === "2016" && midStreamed.converted === "2016", "a 2016 drawing is marked converted from 2014 to 2017 records, read whole or streamed");
+check(wide.converted === "2018", "uncompressed 2018+ records are marked as such");
+check(blankRead.converted === null && (await readContainerStream(bytesSource(blank))).converted === null, "a 2018+ drawing is not marked converted");
+
+// 17. the layout is told by the records, not by the first one's size or the saved-with version: a
+// 2016 body whose first record is 0x50 bytes or more (as the 2017 files in error reports start), and
+// one a newer Vectorworks exported for an older one (its own version in the header), read the same
+const firstAux = midRecs.findIndex((r) => r[0x19] === 76);
+const longFirst = midRecs.map((r) => r.slice());
+if (firstAux === 0) {
+  const grown = new Uint8Array(midRecs[0].length + 0x20);
+  grown.set(midRecs[0], 0);
+  setU64(grown, 0, BigInt(grown.length));
+  longFirst[0] = grown;
+}
+const longRead = firstAux === 0 ? readContainer(midFile(blank, longFirst)) : null;
+check(
+  longRead !== null && longFirst[0].length >= 0x50 && longRead.converted === "2016" && splitRecords(longRead.raw).length === midBack.length && splitRecords(longRead.raw)[0].data.length === midBack[0].length + 0x20,
+  "a 2016 body whose first record is 0x50 bytes or more reads as one (not as 2018+ records)",
+);
+const exported = readContainer(midFile(blank, midRecs, "VW28.0.4"));
+check(exported.converted === "2016" && same(exported.raw, mid.raw) && exported.savedWith === "VW28.0.4", "a 2016 body under a 2023 saved-with version reads the same, marked converted");
+
+// 18. a 2016 body is not taken for a 2013 one: before, its u64 sizes walked as u32 sizes with a zero
+// mark and its records came out as an empty drawing
+check(midRecs[0].length === 0x40 || midRecs.some((r) => r.length === 0x40), "the 2016 body holds 0x40-byte records, as a 2016 file's first is");
+const aux40 = midRecs.find((r) => r.length < 0x50)!;
+check(legacyStart(aux40.subarray(0, 16)) === "long" && legacyStart(narrowRecs[0].subarray(0, 16)) === "narrow", "a 0x40-byte 2016 record starts a long body, a 2013 record a narrow one");
+check(midBack.length > 0 && midBack.every((r, i) => r[0x19] === midRecords[i][0x19]), "2016 records keep their types (none is read as a 2013 record)");
+
+// 19. a 2016 or 2017 file that stops partway names its year and where
+const midBroken = midRecs.map((r) => r.slice());
+setU32(midBroken[3], 0x08, 0x12345678);
+const midBrokenError = failure(midFile(blank, midBroken, "VW22.0.1"));
+check(
+  midBrokenError.startsWith("This file was saved by Vectorworks 2017, which Rodeo can't read yet: save it from Vectorworks 2018 or newer.") && midBrokenError.includes("older layout stops at record 3 at +0x"),
+  `a 2017 body broken at its fourth record names the year and the record: ${midBrokenError}`,
+);
+const midExportBroken = failure(midFile(blank, midBroken, "VW28.0.4"));
+check(midExportBroken.startsWith("Rodeo could not read this file's records (its older layout stops at record 3 at +0x"), `the same body under a 2023 version says where it stops: ${midExportBroken}`);
+
+// 20. a 2014 to 2017 file whose layers are a size never measured is refused, naming its year and the reason
+const oddLayer = new Uint8Array(0x38 + 700);
+oddLayer.set(midRecs[0].subarray(0, 0x38), 0);
+setU64(oddLayer, 0, BigInt(oddLayer.length));
+oddLayer[0x19] = 31;
+const oddError = failure(midFile(blank, [...midRecs, oddLayer], "VW20.0.0"));
+check(
+  oddError === "This file was saved by Vectorworks 2015, which Rodeo can't read yet: save it from Vectorworks 2018 or newer. (its layers are 700-byte records, not the 732 Rodeo reads)",
+  `a 2015 file with layers of another size names its year and the reason: ${oddError}`,
+);
+let oddStream = "";
+try {
+  await readContainerStream(bytesSource(midFile(blank, [...midRecs, oddLayer], "VW20.0.0")), { slice: 1 << 10 });
+} catch (err) {
+  oddStream = err instanceof Error ? err.message : String(err);
+}
+check(oddStream === oddError, "the streamed reader gives the same message");
+
+// 21. units kept as sizes (before 2018): three f64, a u16 style and a length-prefixed 8-bit name, at an
+// offset that moves with the version. The name may be followed by the end of a longer one, or be in
+// another language, so the sizes decide.
+function sizedHeader(at: number, perInch: number, perSquareInch: number, perCubicInch: number, style: number, name: string): Uint8Array {
+  const h = readContainer(blank).header.slice();
+  h.fill(0, 0x1ac, 0x304);
+  setF64(h, at, perInch);
+  setF64(h, at + 8, perSquareInch);
+  setF64(h, at + 16, perCubicInch);
+  setU16(h, at + 24, style);
+  h[at + 26] = name.length;
+  h.set(new TextEncoder().encode(name), at + 27);
+  return h;
+}
+const ftinSized = readContainer(midFile(sizedHeader(0x190, 1, 1 / 144, 1 / 1728, 2, "Feet & Inchestrings"), midRecs));
+check(ftinSized.units === "Feet & Inches", `"Feet & Inches" with the end of a longer name after it: ${ftinSized.units}`);
+const cmSized = readContainer(midFile(sizedHeader(0x190, 2.54, 0.0254 ** 2, 0.0254 ** 3, 0, "Centimeter"), midRecs));
+check(cmSized.units === "Centimeters", `centimetres under a Dutch name: ${cmSized.units}`);
+const inSized = readContainer(legacyFile(sizedHeader(0x178, 1, 1 / 144, 1 / 1728, 0, "Zoll"), narrowRecs));
+check(inSized.units === "Inches", `inches (style 0) at the 2013 offset: ${inSized.units}`);
 
 console.log(failures ? `\n${failures} failed` : "\nall checks passed");
 process.exit(failures ? 1 : 0);
