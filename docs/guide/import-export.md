@@ -207,6 +207,12 @@ Each pen is coloured as Rhino shows it, and everything is grouped by Rhino layer
 
 **Limits:** a point cloud is left out.
 
+### 3MF
+
+**Import 3MF…** reads 3MF files from slicers (Bambu Studio, PrusaSlicer, OrcaSlicer) and other 3D printing tools, at the units and up axis the file says: each object placed where the build puts it, split by its colours, and grouped by build item when there are several.
+
+**Limits:** supports and other non-printing objects are left out and counted; textures and beam lattices are left out.
+
 ### SketchUp
 
 **File › Import › Import SketchUp…** (or dropping a `.skp`) brings a SketchUp model in as 3D meshes, with no need to export it from SketchUp first. It reads models saved by SketchUp 6 to SketchUp 2025.
@@ -432,7 +438,7 @@ Like Create Report, the worksheet copies its settings and font from one the draw
 
 **File › Convert Files…** opens the converter, rodeo.build/convert, in a new tab; the start hub links to it too. Drop one or more files on it, or choose them, pick the format to write, and download what comes back; with several, **Download all (.zip)** zips them.
 
-It reads Vectorworks, Revit projects, Archicad, DWG, DXF, PDF, EMF, IFC, SketchUp, Rhino, glTF, OBJ, FBX, Collada, STL, PLY, 3DS, USD and Blender files, and writes Vectorworks, PDF, SVG, DXF, EPS, EMF, PNG, IFC, SketchUp, Rhino, glTF, OBJ, FBX, Collada, STL, PLY, 3DS, USDZ, STEP and IGES.
+It reads Vectorworks, Revit projects, Archicad, DWG, DXF, PDF, EMF, IFC, SketchUp, Rhino, glTF, OBJ, FBX, Collada, STL, PLY, 3MF, 3DS, USD and Blender files, and writes Vectorworks, PDF, SVG, DXF, EPS, EMF, PNG, IFC, SketchUp, Rhino, glTF, OBJ, FBX, Collada, STL, PLY, 3DS, USDZ, STEP and IGES.
 
 The conversion runs in your browser, so the file is never uploaded. A preview shows what came in, in 3D or in plan, with its units, layers, objects, size and what was left out.
 

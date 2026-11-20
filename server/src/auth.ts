@@ -13,6 +13,7 @@ import { config, type OAuthApp, type Provider } from "./config.ts";
 import { get, run, tx } from "./db.ts";
 import { readJson } from "./http.ts";
 import { sendMail } from "./mail.ts";
+import { fileReport } from "./reports.ts";
 import { cleanLine, DAY, fail, HOUR, inMs, MINUTE, newId, newToken, nowIso, safePath, sha256Hex, signedInPath } from "./util.ts";
 
 export const SESSION_COOKIE = "ovx_session";
@@ -245,6 +246,11 @@ export function allowed(key: string, max: number, windowMs: number): boolean {
   return ok;
 }
 
+/** Gives back the newest hit on `key`, for a request that failed on our side and should not count. */
+export function forgetHit(key: string): void {
+  hits.get(key)?.pop();
+}
+
 export function pruneRateLimits(): void {
   const now = Date.now();
   for (const [key, list] of hits) {
@@ -387,11 +393,38 @@ export function registerAuth(app: Hono): void {
       inMs(15 * MINUTE),
     );
     const link = `${config.publicUrl}/api/auth/email/callback?token=${token}`;
-    await sendMail(
-      email,
-      "Your Rodeo sign-in link",
-      `Sign in to Rodeo:\n\n${link}\n\nThe link works once and expires in 15 minutes. If you did not ask for it, you can ignore this email.`,
-    );
+    try {
+      await sendMail(
+        email,
+        "Your Rodeo sign-in link",
+        `Sign in to Rodeo:\n\n${link}\n\nThe link works once and expires in 15 minutes. If you did not ask for it, you can ignore this email.`,
+      );
+    } catch (err) {
+      run("DELETE FROM magic_links WHERE token_hash = ?", sha256Hex(token));
+      const e = err as { code?: unknown; command?: unknown };
+      // The mail server refused this address (a mistyped domain, a mailbox that doesn't exist): the
+      // person is told, so they don't wait for a link that was never sent. Any address gets a link
+      // here, so this says nothing of who has an account.
+      if (e.code === "EENVELOPE" && e.command === "RCPT TO") fail(400, "That email address was refused. Check it for a typo.", "email_refused");
+      // Our side failed (connection, sender, login): the attempts do not count, and admins get one report.
+      forgetHit(`email:${email}`);
+      forgetHit(`ip:${clientIp(c)}`);
+      try {
+        fileReport(
+          {
+            kind: "server",
+            area: "POST /api/auth/email",
+            message: "The sign-in email could not be sent",
+            details: { code: typeof e.code === "string" ? e.code : "error", command: typeof e.command === "string" ? e.command : "" },
+          },
+          null,
+          null,
+        );
+      } catch (reportErr) {
+        console.error("[auth] could not file a sign-in mail failure:", reportErr);
+      }
+      fail(503, "The sign-in email couldn't be sent just now. Try again in a minute.", "email_unavailable");
+    }
     return c.json({ ok: true });
   });
 

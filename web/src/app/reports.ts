@@ -11,7 +11,7 @@
 import { serverConfig } from "../platform/api.ts";
 import type { ErrorReportKind, NewErrorReport, ReportValue } from "../platform/protocol.ts";
 import { documentSource } from "./ext.ts";
-import { describeRejection } from "./rejection.ts";
+import { describeRejection, isLostDeviceRejection } from "./rejection.ts";
 import { store } from "./state.ts";
 import { onToast } from "./toast.ts";
 
@@ -94,6 +94,8 @@ function install(): void {
     const err = reason instanceof Error ? reason : null;
     const message = describeRejection(reason);
     if (ignored(message, reason)) return;
+    // a WebGPU device lost while a read was in hand: the engine logs the loss and draws with WebGL instead
+    if (isLostDeviceRejection(message)) return;
     send("crash", "promise", message, err?.stack, {});
   });
   // Vite's own event when a part of the editor that loads on demand can't be fetched

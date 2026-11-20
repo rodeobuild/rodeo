@@ -24,6 +24,7 @@ export const FORMATS: readonly FormatInfo[] = [
   { id: "dae", name: "Collada", long: "Collada", readExtensions: ["dae", "kmz"], writeExtensions: ["dae"], kind: "3d", mime: "model/vnd.collada+xml" },
   { id: "stl", name: "STL", long: "STL (3D printing)", readExtensions: ["stl"], writeExtensions: ["stl"], kind: "3d", mime: "model/stl" },
   { id: "ply", name: "PLY", long: "PLY polygon file", readExtensions: ["ply"], writeExtensions: ["ply"], kind: "3d", mime: "application/octet-stream" },
+  { id: "3mf", name: "3MF", long: "3D Manufacturing Format", readExtensions: ["3mf"], writeExtensions: [], kind: "3d", mime: "model/3mf" },
   { id: "3ds", name: "3DS", long: "3D Studio", readExtensions: ["3ds"], writeExtensions: ["3ds"], kind: "3d", mime: "application/x-3ds" },
   { id: "usdz", name: "USD", long: "Universal Scene Description", readExtensions: ["usdz", "usd", "usda", "usdc"], writeExtensions: ["usdz"], kind: "3d", mime: "model/vnd.usdz+zip" },
   { id: "blend", name: "Blender", long: "Blender file", readExtensions: ["blend"], writeExtensions: [], kind: "3d", mime: "application/octet-stream" },

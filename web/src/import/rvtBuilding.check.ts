@@ -306,6 +306,91 @@ for (const [what, bodies, [w, d, h]] of [
   check(note?.startsWith("1 element is drawn as its bounding box") === true, `a stair drawn by its flight isn't counted as a box, a chest known by its box is (${note})`);
 }
 
+// a window drawn as its box, in a wall: cut across the wall to its two faces when the wall runs
+// along x or y; kept as its box in a wall at another angle, off its wall, or with no host. Its
+// extent along the wall and its height, and its hole, are the same as its box gives either way.
+{
+  const same = { name: "Revit", properties: [text("BodySource", "partition_wall_centreline"), { name: "Thickness", value: { kind: "LengthFeet", value: 200 / FT } }] };
+  const wall = (location: number[], rotation: number, extrusion: object) => ({
+    kind: "BuildingElement",
+    ifc_type: "IFCWALL",
+    name: "Basic Wall:Generic - 200mm:3001",
+    storey_index: 0,
+    location_feet: location,
+    rotation_radians: rotation,
+    extrusion,
+    property_set: same,
+  });
+  const window = (name: string, host: number | undefined, location: number[], extrusion: object) => ({
+    kind: "BuildingElement",
+    ifc_type: "IFCWINDOW",
+    name,
+    storey_index: 0,
+    location_feet: location,
+    ...(host === undefined ? {} : { host_element_index: host }),
+    extrusion,
+    property_set: { name: "Revit", properties: [text("BodySource", "partition_element_record_bbox")] },
+  });
+  const windowed = (hosts: (number | undefined)[]) =>
+    ({
+      ...model,
+      entities: [
+        wall([10, 0, 0], 0, { width_feet: 20, depth_feet: 200 / FT, height_feet: 10 }), // 0: along x
+        wall([20, 6, 0], 0, { width_feet: 200 / FT, depth_feet: 12, height_feet: 10 }), // 1: along y
+        wall([30, 6, 0], Math.PI / 4, { width_feet: 20, depth_feet: 200 / FT, height_feet: 10 }), // 2: at 45 degrees
+        window('Fixed:36" x 84":3003', hosts[0], [5, 0, 0], { width_feet: 3, depth_feet: 1, height_feet: 7 }),
+        window('Fixed:12" x 36":3004', hosts[1], [20, 3, 0], { width_feet: 1, depth_feet: 3, height_feet: 7 }),
+        window('Fixed:36" x 84":3005', hosts[2], [30, 6, 0], { width_feet: 3, depth_feet: 1, height_feet: 7 }),
+        window('Fixed:36" x 84":3006', hosts[3], [15, 3, 0], { width_feet: 3, depth_feet: 0.4, height_feet: 7 }),
+        window('Fixed:36" x 84":3007', hosts[4], [25, 0, 0], { width_feet: 3, depth_feet: 1, height_feet: 7 }),
+      ],
+    }) as unknown as RvtModel;
+  const build = (m: RvtModel) => revitBuilding({ model: m, diagnostics: {}, glb: rvt.modelToGlb(m) }, "Windows.rvt");
+  const hostedM = build(windowed([0, 1, 2, 0, undefined]));
+  const freeM = build(windowed([undefined, undefined, undefined, undefined, undefined]));
+  const extent = (o: BuildingModel["openings"][number]) => {
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (const b of o.bodies)
+      for (const f of b.faces)
+        for (let k = 0; k < f.length; k++) {
+          lo[k % 3] = Math.min(lo[k % 3], f[k]);
+          hi[k % 3] = Math.max(hi[k % 3], f[k]);
+        }
+    return { lo, hi };
+  };
+  const sameExtent = (a: { lo: number[]; hi: number[] }, b: { lo: number[]; hi: number[] }) => a.lo.every((v, k) => near(v, b.lo[k], 0.01)) && a.hi.every((v, k) => near(v, b.hi[k], 0.01));
+  const [h, u] = [hostedM.openings, freeM.openings];
+  const xWall = extent(h[0]);
+  const yWall = extent(h[1]);
+  const free = u.map(extent);
+  check(
+    h.length === 5 && h[0].wall === 0 && h[1].wall === 1 && h[2].wall === 2 && h[3].wall === 0 && h[4].wall === undefined,
+    `the windows are set in their walls (${h.map((o) => o.wall ?? "none").join(", ")})`,
+  );
+  check(
+    near(xWall.hi[1] - xWall.lo[1], 200, 0.5) && near((xWall.hi[1] + xWall.lo[1]) / 2, 0, 0.5),
+    `a box in a wall along x is cut to the wall's faces across it (${(xWall.hi[1] - xWall.lo[1]).toFixed(1)} mm, centred on ${((xWall.hi[1] + xWall.lo[1]) / 2).toFixed(1)})`,
+  );
+  check(
+    near(yWall.hi[0] - yWall.lo[0], 200, 0.5) && near((yWall.hi[0] + yWall.lo[0]) / 2, 6096, 0.5),
+    `a box in a wall along y is cut to the wall's faces across it (${(yWall.hi[0] - yWall.lo[0]).toFixed(1)} mm, centred on ${((yWall.hi[0] + yWall.lo[0]) / 2).toFixed(1)})`,
+  );
+  check(
+    sameExtent({ lo: [xWall.lo[0], xWall.lo[2]], hi: [xWall.hi[0], xWall.hi[2]] }, { lo: [free[0].lo[0], free[0].lo[2]], hi: [free[0].hi[0], free[0].hi[2]] }) &&
+      sameExtent({ lo: [yWall.lo[1], yWall.lo[2]], hi: [yWall.hi[1], yWall.hi[2]] }, { lo: [free[1].lo[1], free[1].lo[2]], hi: [free[1].hi[1], free[1].hi[2]] }),
+    "and along the wall and up its height, the box is as it was",
+  );
+  check(
+    [0, 1].every((k) => near(h[k].width, u[k].width, 0.01) && near(h[k].height, u[k].height, 0.01) && near(h[k].sill, u[k].sill, 0.01)),
+    "the hole in its wall is the same size as before",
+  );
+  check(
+    [2, 3, 4].every((k) => sameExtent(extent(h[k]), free[k])),
+    "a box in a wall at another angle, one off its wall, and one with no host keep their boxes",
+  );
+}
+
 // ---- Revit's own projects ----------------------------------------------------------------------------
 
 const samples = process.env.RVT_SAMPLES;

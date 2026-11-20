@@ -309,8 +309,86 @@ export interface Content {
   readonly collabSeq: number;
 }
 
-function content(res: Response, bytes: Uint8Array): Content {
-  return { bytes, versionId: res.headers.get("X-Version-Id") ?? "", collabSeq: Number(res.headers.get("X-Collab-Seq") ?? 0) };
+/** Tries for a drawing's bytes when the connection drops: the first, then two more (the second and third resume). */
+const CONTENT_TRIES = 3;
+
+/** The code of the error a drawing's download gives when every try was cut off part way. */
+export const DOWNLOAD_STOPPED = "dropped";
+
+/** A body that ended before the length its answer declared: the connection dropped, as a failed read does. */
+class BodyEndedEarly extends Error {}
+
+/**
+ * A drawing's bytes. A download the connection drops (the request fails, or the body stream errors or
+ * ends before the declared length) is retried for the rest with `Range: bytes=N-`, from the bytes already
+ * held; a 4xx or 5xx answer is not retried. When the version changes between the tries the drawing is
+ * fetched again from its first byte. Gives DOWNLOAD_STOPPED when every try is cut off.
+ */
+async function drawingContent(path: string): Promise<Content> {
+  // the drawing's bytes so far: written straight into one array of the drawing's length when the answer
+  // states it (a large drawing is not held twice), else kept as the parts that came
+  let sized: Uint8Array | null = null;
+  const parts: Uint8Array[] = [];
+  let received = 0;
+  let head: { versionId: string; collabSeq: number } | null = null;
+  /** the answer stated the drawing's length, so a cut-off download can ask for the rest */
+  let resumable = false;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      let res = await request("GET", path, undefined, received > 0 ? { Range: `bytes=${received}-` } : {});
+      if (received > 0 && (res.status !== 206 || res.headers.get("X-Version-Id") !== head?.versionId)) {
+        // the server sent the whole drawing again, or another version: the bytes held are no part of it
+        received = 0;
+        res = await request("GET", path);
+      }
+      const versionId = res.headers.get("X-Version-Id") ?? "";
+      const collabSeq = Number(res.headers.get("X-Collab-Seq") ?? 0);
+      head = { versionId, collabSeq };
+      const range = res.status === 206 ? /\/(\d+)$/.exec(res.headers.get("Content-Range") ?? "") : null;
+      // a body something on the way compressed states its compressed length, not the drawing's: its length is then not known
+      const encoded = !["", "identity"].includes((res.headers.get("Content-Encoding") ?? "").trim().toLowerCase());
+      const whole = encoded ? -1 : range ? Number(range[1]) : Number(res.headers.get("Content-Length") ?? -1);
+      resumable = whole >= 0;
+      if (received === 0) {
+        sized = whole >= 0 ? new Uint8Array(whole) : null;
+        parts.length = 0;
+      }
+      if (!res.body) throw new Error("the drawing came with no body");
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (sized && received + value.length > sized.length) {
+          // more came than the answer said: the bytes are kept as parts from here, and the stated length is not gone by
+          parts.length = 0;
+          parts.push(sized.slice(0, received));
+          sized = null;
+          resumable = false;
+        }
+        if (sized) sized.set(value, received);
+        else parts.push(value);
+        received += value.length;
+      }
+      if (sized && received < whole) throw new BodyEndedEarly("the drawing's body ended early");
+      if (sized) return { bytes: sized, versionId, collabSeq };
+      const bytes = new Uint8Array(received);
+      let at = 0;
+      for (const part of parts) {
+        bytes.set(part, at);
+        at += part.length;
+      }
+      return { bytes, versionId, collabSeq };
+    } catch (err) {
+      // a 4xx or 5xx answer, or a bug in this code, is not a dropped connection; a failed read of the
+      // body is a TypeError in every browser ("Load failed" in Safari)
+      const dropped = (err instanceof ApiError && err.status === 0) || err instanceof TypeError || err instanceof BodyEndedEarly;
+      if (!dropped) throw err;
+      if (attempt >= CONTENT_TRIES) throw new ApiError("The download stopped part way (the connection dropped).", 0, DOWNLOAD_STOPPED);
+      // without a length to go by, the rest can't be asked for: the next try starts from the first byte
+      if (!resumable) received = 0;
+      await new Promise((resolve) => window.setTimeout(resolve, 700 * attempt));
+    }
+  }
 }
 
 export const files = {
@@ -323,8 +401,7 @@ export const files = {
   rename: async (id: string, name: string): Promise<CloudFile> => (await json<{ file: CloudFile }>("PATCH", `/files/${id}`, { name })).file,
   remove: async (id: string): Promise<void> => void (await request("DELETE", `/files/${id}`)),
   async content(id: string, versionId?: string): Promise<Content> {
-    const res = await request("GET", `/files/${id}/content${versionId ? `?version=${encodeURIComponent(versionId)}` : ""}`);
-    return content(res, await bytesOf(res));
+    return drawingContent(`/files/${id}/content${versionId ? `?version=${encodeURIComponent(versionId)}` : ""}`);
   },
   /** Saves a new version; `baseVersion` makes it fail with code "conflict" if someone saved since. */
   save: async (
@@ -365,10 +442,7 @@ export const sharing = {
     (await json<{ share: Share }>("POST", `/files/${id}/shares`, { allowDownload })).share,
   revokeShare: async (token: string): Promise<void> => void (await request("DELETE", `/shares/${token}`)),
   shared: (token: string): Promise<SharedFile> => json("GET", `/s/${token}`),
-  async sharedContent(token: string): Promise<Content> {
-    const res = await request("GET", `/s/${token}/content`);
-    return content(res, await bytesOf(res));
-  },
+  sharedContent: (token: string): Promise<Content> => drawingContent(`/s/${token}/content`),
 };
 
 // ---- crit mode -------------------------------------------------------------------

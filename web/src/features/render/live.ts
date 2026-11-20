@@ -137,7 +137,26 @@ export class LiveRenderer implements RenderHook {
       return false;
     }
 
+    try {
+      return this.tracePath(mode, renderer, scene, camera, settings, moving);
+    } catch (err) {
+      // a WebGPU engine that throws (a buffer past the device's limit, or a lost device) is dropped for the session
+      if (this.engine?.kind !== "webgpu") throw err;
+      this.gpuGaveUp(err);
+      this.rasterise(renderer, scene, camera, settings);
+      publishStatus("Path traced · starting…");
+      return true;
+    }
+  }
+
+  /** The Path Traced picture for a view that is not rendering: the moving frames, then the resting picture refined a sample a call. */
+  private tracePath(mode: RealisticMode, renderer: THREE.WebGLRenderer, scene: RenderScene, camera: PhysicalCamera | THREE.OrthographicCamera, settings: RenderSettings, moving: boolean): boolean {
     const engine = this.engineFor(renderer, settings);
+    if (engine?.kind === "webgpu" && engine.failed) {
+      this.gpuGaveUp("the WebGPU engine stopped drawing");
+      this.rasterise(renderer, scene, camera, settings);
+      return true;
+    }
     if (engine && this.pathScene !== scene && !this.pathBuilding) this.givePath(engine, scene, camera);
     if (!engine || !engine.ready || this.pathScene !== scene) {
       // a clean raster picture while the path tracer loads or builds
@@ -169,6 +188,13 @@ export class LiveRenderer implements RenderHook {
     const taken = Math.min(Math.floor(engine.samples), target);
     publishProgress({ mode, phase: taken < target ? "refining" : "done", samples: taken, target, engine: engine.kind });
     return engine.samples < target;
+  }
+
+  /** WebGPU failed for the rest of the session: its path tracer goes, and WebGL traces from then on. */
+  private gpuGaveUp(why: unknown): void {
+    console.warn("openvwx: WebGPU failed; WebGL traces the rest of this session", why);
+    this.gpuFailed = true;
+    this.dropEngine();
   }
 
   /**

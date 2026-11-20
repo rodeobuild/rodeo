@@ -1,11 +1,11 @@
 // File > Import OBJ…, glTF…, 3DS…, STL…, IFC…, USD…, Rhino 3DM…, FBX…, Collada (SketchUp)…,
-// Blender…, PLY…, SketchUp…, STEP…, IGES… and CAD Parts… (SolidWorks, Inventor, FreeCAD, Fusion 360, NX
+// Blender…, PLY…, 3MF…, SketchUp…, STEP…, IGES… and CAD Parts… (SolidWorks, Inventor, FreeCAD, Fusion 360, NX
 // and Creo): a 3D model's parts as meshes on the active layer, in the
 // active class, grouped, selected and zoomed to, as one undo step.
 // OBJ, 3DS, STL and PLY files say nothing reliable of their units or which way is up, so the user
 // says (metres, with y up for OBJ and z up for 3DS and PLY, as most are and as File > Export writes
 // them; millimetres and z up for STL, as 3D printing has it); a glTF file is metres and y up by
-// definition, and IFC, Rhino, FBX, Collada, Blender, STEP and IGES files say their units and up axis.
+// definition, and IFC, Rhino, FBX, Collada, Blender, 3MF, STEP and IGES files say their units and up axis.
 // A SketchUp file is inches and z up whatever units its model shows. A USD file says its units per
 // metre and up axis, and Vectorworks' Import USD Options can re-scale it, redefine its up axis and offset it.
 // Coordinates are kept, so a model exported from here comes back where it was. An STL or USD model
@@ -47,7 +47,7 @@ import { formatLength, parseLength } from "./units.ts";
 import type { View } from "./view.ts";
 
 /** The 3D formats File > Import reads. */
-export type MeshImportFormat = "obj" | "gltf" | "3ds" | "stl" | "ifc" | "usd" | "3dm" | "fbx" | "dae" | "blend" | "ply" | "skp" | "step" | "iges" | "native";
+export type MeshImportFormat = "obj" | "gltf" | "3ds" | "stl" | "ifc" | "usd" | "3dm" | "fbx" | "dae" | "blend" | "ply" | "3mf" | "skp" | "step" | "iges" | "native";
 type Format = MeshImportFormat;
 /** Most meshes an import names after the file's objects: past it they stay unnamed, as each name takes one of the drawing's 65,535. */
 const MAX_NAMED = 2000;
@@ -55,7 +55,7 @@ const MAX_NAMED = 2000;
 type Asks = "obj" | "3ds" | "stl" | "ply";
 const ASKS: ReadonlySet<Format> = new Set<Format>(["obj", "3ds", "stl", "ply"]);
 /** the formats that may take a while to read (a WebAssembly reader to load, or big files), which show a progress note */
-const SLOW: ReadonlySet<Format> = new Set<Format>(["ifc", "3dm", "fbx", "dae", "blend", "skp", "step", "iges", "native"]);
+const SLOW: ReadonlySet<Format> = new Set<Format>(["ifc", "3dm", "fbx", "dae", "blend", "3mf", "skp", "step", "iges", "native"]);
 
 const FORMAT_NAME: Record<Format, string> = {
   obj: "OBJ",
@@ -69,6 +69,7 @@ const FORMAT_NAME: Record<Format, string> = {
   dae: "Collada",
   blend: "Blender",
   ply: "PLY",
+  "3mf": "3MF",
   skp: "SketchUp",
   step: "STEP",
   iges: "IGES",
@@ -87,6 +88,7 @@ const A_FORMAT: Record<Format, string> = {
   dae: "a Collada",
   blend: "a Blender",
   ply: "a PLY",
+  "3mf": "a 3MF",
   skp: "a SketchUp",
   step: "a STEP",
   iges: "an IGES",
@@ -104,6 +106,7 @@ const ACCEPT: Record<Format, string> = {
   dae: ".dae,.kmz,model/vnd.collada+xml,application/vnd.google-earth.kmz",
   blend: ".blend",
   ply: ".ply",
+  "3mf": ".3mf,model/3mf",
   skp: ".skp",
   step: ".stp,.step,model/step",
   iges: ".igs,.iges,model/iges",
@@ -123,6 +126,7 @@ const EXTENSIONS: readonly [Format, RegExp][] = [
   // Blender's numbered backups (.blend1, .blend2) are .blend files too
   ["blend", /\.blend\d*$/i],
   ["ply", /\.ply$/i],
+  ["3mf", /\.3mf$/i],
   ["skp", /\.skp$/i],
   ["step", /\.(stp|step)$/i],
   ["iges", /\.(igs|iges)$/i],
@@ -184,7 +188,7 @@ function ready(format: Format): boolean {
   return true;
 }
 
-/** File > Import OBJ…, glTF…, 3DS…, STL…, IFC…, USD…, Rhino 3DM…, FBX…, Collada…, Blender…, PLY…, SketchUp…, STEP… or IGES…: asks for the file and imports it. */
+/** File > Import OBJ…, glTF…, 3DS…, STL…, IFC…, USD…, Rhino 3DM…, FBX…, Collada…, Blender…, PLY…, 3MF…, SketchUp…, STEP… or IGES…: asks for the file and imports it. */
 export function importMeshFile(format: Format, scene: Scene, view: View): void {
   if (!ready(format)) return;
   const input = h("input", { attrs: { type: "file", accept: ACCEPT[format] }, hidden: true });
@@ -236,6 +240,8 @@ async function readModel(format: Format, name: string, bytes: Uint8Array): Promi
       return (await import("../import/blend.ts")).parseBlend(bytes);
     case "ply":
       return (await import("../import/ply.ts")).parsePly(bytes, base);
+    case "3mf":
+      return (await import("../import/threemf.ts")).parse3mf(bytes);
     case "skp":
       return (await import("../import/skp.ts")).parseSkp(bytes);
     case "step":

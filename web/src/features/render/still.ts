@@ -3,7 +3,8 @@
 // Photoreal samples the path tracer in short slices, yielding on a timer between them so the page
 // stays live. The path tracer is WebGPU's where the browser has it and the settings allow (it
 // spreads its work over frames itself and denoises the picture with Open Image Denoise), else
-// WebGL's, tiled. No editor windows here: the caller shows progress through StillBox.
+// WebGL's, tiled. A WebGPU picture that cannot be drawn or kept is tried once more with WebGL.
+// No editor windows here: the caller shows progress through StillBox.
 
 import * as THREE from "three";
 import type { Shot } from "./camera.ts";
@@ -100,9 +101,16 @@ export interface Tiling {
 export const LOCAL_TILING: Tiling = { ms: 50, pixels: 100_000 };
 const MAX_TILES = 16;
 
+/** The engine a path-traced picture is tried with. */
+type TraceKind = "webgpu" | "webgl";
+
+/** A picture as read into memory: an HDR file's bytes, or the picture for PNG or JPEG. */
+type Out = { readonly hdr: Blob } | { readonly picture: ImageData };
+
 /**
  * Makes one picture of `scene` from `shot`. Null when Cancel stopped it; throws when the picture is
- * larger than this browser can draw, or when the GPU lost it part way.
+ * larger than this browser can draw, or when no engine could draw it (the GPU lost it part way, or it
+ * came out black).
  */
 export async function renderStill(
   scene: RenderScene,
@@ -123,7 +131,6 @@ export async function renderStill(
     lost = true;
   };
   renderer.domElement.addEventListener("webglcontextlost", onLost);
-  let engine: RasterEngine | TraceEngine | null = null;
   try {
     const limit = renderer.capabilities.maxTextureSize;
     if (plan.width > limit || plan.height > limit) {
@@ -136,41 +143,79 @@ export async function renderStill(
     const camera = renderCamera(shot, plan.width / plan.height, settings.camera, null, null);
     const started = performance.now();
     const canvas = renderer.domElement;
-    let samples: number | null = null;
-    if (plan.engine === "realistic") {
+
+    // the picture as the canvas (or the linear target) holds it now, read into memory; a black one throws
+    const read = (): Out => {
+      if (linear) {
+        box.label(`${place.prefix}Writing the HDR file…`);
+        box.bar(null);
+        return { hdr: readHdr(renderer, linear, lost) };
+      }
+      return { picture: readPicture(renderer, lost) };
+    };
+
+    const realistic = async (): Promise<{ samples: number | null; out: Out } | null> => {
       box.label(`${place.prefix}Rendering…`);
       box.bar(null);
       // a timer, not a frame (frames stop in a hidden tab): the label paints before the blocking call
       await yieldTask();
       if (job.cancelled) return null;
       const raster = new RasterEngine(renderer);
-      engine = raster;
-      raster.renderStill(scene, camera, settings, FAST_SAMPLES, linear);
-    } else {
+      try {
+        raster.renderStill(scene, camera, settings, FAST_SAMPLES, linear);
+        return { samples: null, out: read() };
+      } finally {
+        raster.dispose();
+      }
+    };
+
+    // one picture traced with `kind`, read into memory before its buffers go; throws when it cannot be kept
+    const trace = async (kind: TraceKind): Promise<{ samples: number | null; out: Out } | null> => {
       box.label(`${place.prefix}Building…`);
-      const tracer = await startTracer(renderer, scene, camera, settings, plan.samples, (fraction) => box.bar(fraction));
-      engine = tracer;
-      tracer.tiles = tilesFor(plan.width * plan.height, tiling);
-      if (job.cancelled) return null;
-      const pace = { ...place, started, target: plan.samples, minutes: plan.minutes };
-      samples = await samplePicture(tracer, canvas, settings, job, box, pace, tiling.ms, () => lost);
-      if (job.cancelled) return null;
-      if (linear) await tracer.show(settings, linear);
-    }
-    if (linear) {
-      box.label(`${place.prefix}Writing the HDR file…`);
-      box.bar(null);
-      return { blob: readHdr(renderer, linear, lost), samples, seconds: (performance.now() - started) / 1000 };
-    }
-    const picture = readPicture(renderer, lost);
+      const tracer = await startTracer(kind, renderer, scene, camera, plan.samples, (fraction) => box.bar(fraction));
+      try {
+        tracer.tiles = tilesFor(plan.width * plan.height, tiling);
+        if (job.cancelled) return null;
+        const pace = { ...place, started, target: plan.samples, minutes: plan.minutes };
+        const samples = await samplePicture(tracer, canvas, settings, job, box, pace, tiling.ms, () => lost || tracer.failed === true);
+        if (job.cancelled) return null;
+        if (linear) await tracer.show(settings, linear);
+        return { samples, out: read() };
+      } finally {
+        tracer.dispose();
+      }
+    };
+
+    // WebGPU's picture is tried once more with WebGL when it fails; a WebGL one stays WebGL (the user chose it, or WebGPU is absent)
+    const traced = async (): Promise<{ samples: number | null; out: Out } | null> => {
+      const first: TraceKind = settings.quality.engine !== "webgl" && (await webgpuAvailable()) ? "webgpu" : "webgl";
+      try {
+        return await trace(first);
+      } catch (err) {
+        if (job.cancelled) return null;
+        if (first === "webgl") throw stillFailed("WebGL", err);
+        console.warn("openvwx: WebGPU could not draw the picture; WebGL tries it instead", err);
+        box.label(`${place.prefix}WebGPU could not draw the picture, so WebGL is trying it…`);
+        box.bar(null);
+        try {
+          return await trace("webgl");
+        } catch (again) {
+          throw stillFailed("WebGPU or WebGL", again);
+        }
+      }
+    };
+
+    const made = plan.engine === "realistic" ? await realistic() : await traced();
+    if (!made) return null;
+    const seconds = (): number => (performance.now() - started) / 1000;
+    const out = made.out;
+    if ("hdr" in out) return { blob: out.hdr, samples: made.samples, seconds: seconds() };
+    const picture = out.picture;
     box.label(`${place.prefix}Encoding the picture…`);
     box.bar(null);
     const blob = await encode(picture, plan.format === "jpeg" ? "jpeg" : "png");
     const asked = plan.layers?.ids.length ? plan.layers : null;
-    if (!asked) return { blob, samples, seconds: (performance.now() - started) / 1000 };
-    // the path tracer's buffers go before the layers are drawn, with the Realistic engine's own
-    engine?.dispose();
-    engine = null;
+    if (!asked) return { blob, samples: made.samples, seconds: seconds() };
     const { makeLayers } = await import("./layerFile.ts");
     const layers = await makeLayers({
       renderer,
@@ -190,14 +235,19 @@ export async function renderStill(
       yieldTask,
     });
     if (!layers) return null;
-    return { blob, samples, seconds: (performance.now() - started) / 1000, layers };
+    return { blob, samples: made.samples, seconds: seconds(), layers };
   } finally {
     linear?.dispose();
     renderer.domElement.removeEventListener("webglcontextlost", onLost);
-    engine?.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
   }
+}
+
+/** The error a picture ends with when no engine it was tried with could draw it: what was tried, why, and what to try instead. */
+function stillFailed(engines: string, err: unknown): Error {
+  const why = (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
+  return new Error(`The path tracer could not draw this picture with ${engines}: ${why}. Try the Realistic engine or a smaller size.`);
 }
 
 /**
@@ -303,32 +353,35 @@ function aboutLeft(seconds: number): string {
 }
 
 /**
- * The path tracer for a still, with the scene built: WebGPU's where the browser has it and the
- * settings don't ask for WebGL, else WebGL's (also when WebGPU fails to take the scene).
+ * The path tracer of `kind` for a still, with the scene built. Throws when it cannot take the scene,
+ * and frees what it made in that case.
  */
 async function startTracer(
+  kind: TraceKind,
   renderer: THREE.WebGLRenderer,
   scene: RenderScene,
   camera: THREE.Camera,
-  settings: RenderSettings,
   samples: number,
   onProgress: (fraction: number) => void,
 ): Promise<TraceEngine> {
-  if (settings.quality.engine !== "webgl" && (await webgpuAvailable())) {
-    let gpu: TraceEngine | null = null;
+  if (kind === "webgpu") {
+    const { GpuEngine } = await import("./gpuEngine.ts");
+    const engine = new GpuEngine(renderer, { stillSamples: samples });
     try {
-      const { GpuEngine } = await import("./gpuEngine.ts");
-      const engine: TraceEngine = new GpuEngine(renderer, { stillSamples: samples });
-      gpu = engine;
       await engine.setScene(scene, camera, onProgress);
-      return engine;
     } catch (err) {
-      console.warn("openvwx: WebGPU could not trace the picture; WebGL traces it instead", err);
-      gpu?.dispose();
+      engine.dispose();
+      throw err;
     }
+    return engine;
   }
   const tracer = new PathEngine(renderer);
-  await tracer.setScene(scene, camera, onProgress);
+  try {
+    await tracer.setScene(scene, camera, onProgress);
+  } catch (err) {
+    tracer.dispose();
+    throw err;
+  }
   return tracer;
 }
 

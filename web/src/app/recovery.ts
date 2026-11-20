@@ -47,9 +47,18 @@ export async function withRecovery(key: IDBValidKey, use: (b: Backup, exclusive:
     if (b) await use(b, exclusive);
   };
   if (!navigator.locks) return read(false); // cleanup compares the offered snapshot atomically
-  await navigator.locks.request(lockName(key), { ifAvailable: true }, async lock => {
-    if (lock) await read(true);
-  });
+  let started = false;
+  try {
+    await navigator.locks.request(lockName(key), { ifAvailable: true }, async lock => {
+      started = true;
+      if (lock) await read(true);
+    });
+  } catch (err) {
+    // the browser denied Web Locks before the lock was asked for: read without it, as a browser without them does
+    if (started) throw err;
+    console.warn("openvwx: Web Locks were denied, so recovery copies are read without the lock", err);
+    await read(false);
+  }
 }
 
 interface Entry {
@@ -80,12 +89,16 @@ export class Recovery {
     if (this.entries.has(session)) return;
     let release = (): void => {};
     const key = crypto.randomUUID();
-    const ready = navigator.locks ? new Promise<void>((resolve, reject) => {
+    // Where the browser denies Web Locks, copies go on without the lock: nothing waits on it.
+    const ready = navigator.locks ? new Promise<void>((resolve) => {
       const held = new Promise<void>(done => release = done);
       void navigator.locks.request(lockName(key), async () => {
         resolve();
         await held;
-      }).catch(reject);
+      }).catch((err: unknown) => {
+        console.warn("openvwx: Web Locks were denied, so this drawing's recovery copies are not locked", err);
+        resolve();
+      });
     }) : Promise.resolve();
     const e: Entry = {
       key, session, info, ready, release,

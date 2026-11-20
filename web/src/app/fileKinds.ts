@@ -56,6 +56,24 @@ export function notOpenable(name: string): string {
   return `Rodeo can't open ${name}. It opens ${OPENS_KINDS}.`;
 }
 
+/** The smallest a Vectorworks drawing can be: its header runs to 0x94 bytes. */
+export const DRAWING_HEADER_BYTES = 0x94;
+
+/**
+ * The message for a file that is empty, or a .vwx or .sta too short to hold a drawing's header, or null
+ * when the file can go to a reader. An empty file is usually a cloud placeholder that has not finished
+ * downloading, or a copy that failed, so the message says to wait for the download.
+ */
+export function tooSmallRefusal(name: string, size: number): string | null {
+  if (size === 0) {
+    return `${name} is empty (0 bytes). If it is in a cloud folder such as OneDrive, Dropbox or iCloud, wait until it has finished downloading to this computer, then open it again.`;
+  }
+  if (/\.(vwx|sta)$/i.test(name) && size < DRAWING_HEADER_BYTES) {
+    return `${name} is too small to be a drawing (${size} bytes). It may not have finished downloading or copying.`;
+  }
+  return null;
+}
+
 /** The message when a picture kind the browser can't decode comes in, or null when the browser's failure is a plain one. */
 export function undecodablePicture(kind: PictureKind | null): string | null {
   if (kind === "tiff" || kind === "heif") {

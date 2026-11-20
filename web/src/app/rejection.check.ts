@@ -1,6 +1,6 @@
 // Checks describeRejection under Node. Run from web/: npx tsx src/app/rejection.check.ts
 import assert from "node:assert/strict";
-import { describeRejection } from "./rejection.ts";
+import { describeRejection, isLostDeviceRejection } from "./rejection.ts";
 
 let failures = 0;
 function check(ok: boolean, what: string): void {
@@ -31,6 +31,11 @@ const many: Record<string, number> = {};
 for (let i = 0; i < 20; i++) many[`k${i}`] = i;
 check(describeRejection(many).includes("+12 more"), "many keys: the first eight and a count");
 check(describeRejection(Object.create(null)).startsWith("Rejected with a plain object"), "an object with no prototype");
+
+check(isLostDeviceRejection("Failed to execute 'mapAsync' on 'GPUBuffer': [Device] is lost."), "a read on a lost WebGPU device");
+check(isLostDeviceRejection("Device is lost"), "a lost device, plain wording");
+check(!isLostDeviceRejection("Failed to execute 'mapAsync' on 'GPUBuffer': buffer is destroyed"), "another GPU buffer error is still reported");
+check(!isLostDeviceRejection("the device list is lost"), "unrelated text about a device is still reported");
 
 assert.ok(failures === 0, `${failures} failed`);
 console.log(failures ? `${failures} FAILED` : "all ok");

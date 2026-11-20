@@ -37,7 +37,7 @@ import { showLoading, slowLoading } from "./loading.ts";
 import { exportImageFile } from "./pngExport.ts";
 import { publishDialog } from "./publish.ts";
 import { importImageFiles, importImages, isImageName } from "./imageImport.ts";
-import { headOf, looksLikeVectorworks, notOpenable, pictureKindOf, undecodablePicture } from "./fileKinds.ts";
+import { headOf, looksLikeVectorworks, notOpenable, pictureKindOf, tooSmallRefusal, undecodablePicture } from "./fileKinds.ts";
 import { pasteAsBitmap } from "./images.ts";
 import { PALETTE_ICON } from "./icons.ts";
 import { exportAdvice, importMesh, importMeshFile, meshFormat } from "./meshImport.ts";
@@ -312,6 +312,18 @@ type Opened = "open" | "cancelled" | { readonly error: string };
 function tellFileIn(file: Blob | Uint8Array, name: string, opened: Opened): void {
   if (opened === "open") fileIn(file, name);
   else if (opened !== "cancelled") fileIn(file, name, opened.error);
+}
+
+/**
+ * Refuses a file too small to be read (empty, or a drawing shorter than its header) before any reader
+ * runs: an info line in place of the reader's error, and no error report. True when it refused.
+ */
+function refuseTooSmall(file: Blob, name: string): boolean {
+  const why = tooSmallRefusal(name, file.size);
+  if (!why) return false;
+  toast(why, "info");
+  tellFileIn(file, name, { error: why });
+  return true;
 }
 
 /** the regions that measure in feet and inches */
@@ -1437,6 +1449,7 @@ export class App {
   private async openPicker(): Promise<void> {
     try {
       const picked = await pickFile(false, true);
+      if (picked && refuseTooSmall(picked.file, picked.name)) return;
       if (picked && /\.dwg$/i.test(picked.name)) await this.openDwg(picked.file, picked.name);
       else if (picked && meshFormat(picked.name)) {
         // a STEP or IGES model comes in as a dropped one does: into a new drawing when none is open
@@ -1576,8 +1589,9 @@ export class App {
     }
   }
 
-  /** A file dropped on the window: a .dxf, .dwg, .pdf, .emf or 3D model (.obj, .glb, .gltf, .3ds, .stl, .ifc, .usd, .3dm, .stp, .step, .igs, .iges, .sldprt, .ipt, .fcstd, .f3d, .prt, .fbx, .dae, .kmz, .blend, .ply, .skp) is imported into the open drawing (a DWG or model into a new one when none is open), a .csv, .tsv, .dif, .slk or .xlsx as a worksheet, a Revit project opens as a drawing of its model (a family's or template's details are shown), anything else is opened (with its handle, when the browser gave one). */
+  /** A file dropped on the window: a .dxf, .dwg, .pdf, .emf or 3D model (.obj, .glb, .gltf, .3ds, .stl, .ifc, .usd, .3dm, .stp, .step, .igs, .iges, .sldprt, .ipt, .fcstd, .f3d, .prt, .fbx, .dae, .kmz, .blend, .ply, .3mf, .skp) is imported into the open drawing (a DWG or model into a new one when none is open), a .csv, .tsv, .dif, .slk or .xlsx as a worksheet, a Revit project opens as a drawing of its model (a family's or template's details are shown), anything else is opened (with its handle, when the browser gave one). */
   private async openFile(file: File, handle: Promise<FileSystemFileHandle | null>, all: readonly File[] = []): Promise<void> {
+    if (refuseTooSmall(file, file.name)) return;
     // a picture is known by its bytes, whatever its name says
     if (pictureKindOf(await headOf(file))) {
       await this.openPicture(file, file.name);
@@ -1757,6 +1771,11 @@ export class App {
       if (!file || cancelled) return "cancelled";
       name = file.name;
       size = file.data instanceof Uint8Array ? file.data.length : file.data.size;
+      const tooSmall = tooSmallRefusal(name, size);
+      if (tooSmall) {
+        toast(tooSmall, "info");
+        return { error: tooSmall };
+      }
       const open = inPlace || replacing || !file.handle ? null : await this.tabOfHandle(file.handle);
       if (cancelled) return "cancelled";
       if (open) {

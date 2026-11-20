@@ -217,6 +217,16 @@ export const PAGE_FORMATS: readonly PageFormat[] = [
     writes: "A binary PLY in metres with vertex colours.",
   },
   {
+    id: "3mf",
+    short: "3MF",
+    long: "3MF",
+    extensions: ["3mf"],
+    read: true,
+    write: false,
+    reads: "Rodeo reads 3MF models from slicers, each object split by its colours, at the place the build puts it.",
+    writes: "",
+  },
+  {
     id: "3ds",
     short: "3DS",
     long: "3D Studio",

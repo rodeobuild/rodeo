@@ -56,6 +56,8 @@
 // and keys 6/7 its offset, scale, rotation and matrix. "By class" takes the
 // texture whose name index is the i32 at +0x9e of the class record (0 none).
 // An object without its own texture takes the one of the object it belongs to.
+// A roof face's body (114 in a slab 71) without one takes the texture of the component
+// slab inside the same slab that has its index (the "dcep" TDMD, key 0, an i32).
 // A mesh that maps its texture by UV (Laubwerk plants) gives that texture a part
 // of its own with mapping 5 (its whole-object part has none), and keeps the map
 // in a TDMD of kind "TeMe" (its 4CC reads "eMeT"): key 1 a normal per vertex
@@ -110,6 +112,8 @@ import type { Rec } from "./records.ts";
 import type { Attributes, Light3D, LightChange, Mesh3D, ModelTree, ModelTreeGroup, ModelTreeNode, ModelTreePiece, ResourceInfo, SymbolPlacement, Vec3 } from "./types.ts";
 
 const BODY = 114;
+/** a slab: a roof face, a fascia or a ceiling; a roof face's components are slabs too */
+const SLAB = 71;
 const SYMBOL_INSTANCE = 15;
 const POLY3D = 25;
 const LOCUS3D = 9;
@@ -1446,6 +1450,10 @@ const PROFILE_GROUP = "gorp";
 const SELECTION_GROUP = "gles";
 /** the tag of a plug-in's path group (the outline or line it is drawn along), as stored */
 const PATH_GROUP = "gtap";
+/** the tag of a door's or window's wall hole group (the box cut from the wall), as stored; the component group of a symbol's wall hole is tagged the same */
+const WALL_HOLE_GROUP = "gchw";
+/** the tag of a door's or window's frame-sized wall hole box, as stored */
+const WALL_HOLE_BOX_GROUP = "ggcw";
 /** the TDMD kind marking a hardscape's or landscape area's path draped on the terrain, as stored */
 const DRAPED_PATH = "htap";
 
@@ -1473,6 +1481,15 @@ export function isPathGroup(r: Rec): boolean {
 }
 
 /**
+ * A wall hole group: the solids Vectorworks cuts a wall with where a door or window sits in it.
+ * They are deeper than the wall and never drawn, so they are left out of 3D wherever the group
+ * sits (in a plug-in, or in a symbol's definition); the plan has nothing of theirs to draw.
+ */
+export function isWallHoleGroup(r: Rec): boolean {
+  return r.type === GROUP && r.children.some((c) => c.type === AUX && (auxTag(c.data) === WALL_HOLE_GROUP || auxTag(c.data) === WALL_HOLE_BOX_GROUP));
+}
+
+/**
  * A plug-in object's group that is not part of what it shows: its profile group or its path draped
  * on the terrain (a few corners left at 0 where draping failed).
  */
@@ -1488,7 +1505,7 @@ const shows3d = new WeakMap<Rec, boolean>();
 function selectionHidden3d(plugin: Rec): boolean {
   let has = shows3d.get(plugin);
   if (has === undefined) {
-    const any = (r: Rec): boolean => r.children.some((c) => c.type !== AUX && !isSourceGroup(c) && !isSelectionGroup(c) && (SHOWS_3D.has(c.type) || any(c)));
+    const any = (r: Rec): boolean => r.children.some((c) => c.type !== AUX && !isSourceGroup(c) && !isSelectionGroup(c) && !isWallHoleGroup(c) && (SHOWS_3D.has(c.type) || any(c)));
     has = any(plugin);
     shows3d.set(plugin, has);
   }
@@ -1787,6 +1804,22 @@ function textureOf(doc: Model, r: Rec, inherited: number): number {
     if (t > 0) return t;
   }
   return inherited;
+}
+
+/**
+ * The texture of the component slab inside `slab` whose index (its "dcep" aux record) is the body's,
+ * when it has an image: a roof face's body is one layer of it, and the component holds that layer's
+ * texture. -1 when none.
+ */
+export function componentTexture(doc: Model, slab: Rec, body: Rec, textures: ReadonlyMap<number, ResourceInfo>): number {
+  const index = tdmdInt(body, "dcep", 0);
+  if (index === null) return -1;
+  for (const k of slab.children) {
+    if (k.type !== SLAB || tdmdInt(k, "dcep", 0) !== index) continue;
+    const t = textureOf(doc, k, -1);
+    if (t > 0 && textures.has(t)) return t;
+  }
+  return -1;
 }
 
 // ---- walking the drawing -------------------------------------------------------------
@@ -2105,6 +2138,7 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
     // the doors and windows in a wall are its children too; only its own faces sit back
     if (wall) ctx.recessed = c.type === GROUP || c.type === SOLID_ADDITION;
     if (c.type === BODY) continue; // read by its owner
+    if (isWallHoleGroup(c)) continue;
     if (parent.type === PLUGIN && (isSourceGroup(c) || (isSelectionGroup(c) && selectionHidden3d(parent)))) continue;
     if (components && c.type === GROUP) {
       walk(ctx, c, m, top);
@@ -2147,7 +2181,12 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
         const g = bodyGeometry(b, c.type === SWEEP ? null : ctx.doc);
         if (!g) continue;
         const uvs = c.type === EXTRUDE ? boxedUvs(ctx, c, g.triangles) : null;
+        // a roof face's body shows the texture of its component slab with the same index, unless the face has its own
+        const outer = ctx.texture;
+        const layer = c.type === SLAB ? componentTexture(ctx.doc, c, b, ctx.textures) : -1;
+        if (layer > 0) ctx.texture = layer;
         emit(ctx, uvs ? { ...g, uvs } : g, mm, c, top);
+        ctx.texture = outer;
       }
       // a body is the owner's whole result; only groups also hold further objects
       if (c.type === GROUP) walk(ctx, c, m, top);

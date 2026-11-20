@@ -32,3 +32,11 @@ export function describeRejection(reason: unknown): string {
   const kind = !ctor || ctor === "Object" ? "a plain object" : ctor;
   return `Rejected with ${kind} (keys: ${shown || "none"})${excerpt}`;
 }
+
+/**
+ * A read that a WebGPU device had in hand when it was lost (three's mapAsync, Chrome's wording). The
+ * loss is logged and handled where the render engine takes it, so the rejection is not an error of its own.
+ */
+export function isLostDeviceRejection(message: string): boolean {
+  return message.includes("[Device] is lost") || message.includes("Device is lost");
+}

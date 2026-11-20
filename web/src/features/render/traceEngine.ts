@@ -34,6 +34,8 @@ export interface TraceEngine {
   readonly samples: number;
   /** sample() has a picture to show (WebGPU's arrive a frame or more after they are traced) */
   readonly hasPicture: boolean;
+  /** the engine can no longer draw (WebGPU only: its device was lost, or its reads keep failing): the caller takes another engine */
+  readonly failed?: boolean;
   /** splits each still sample into tiles × tiles parts (the WebGL tracer; 1 elsewhere) */
   tiles: number;
   /** Sets the scene and builds what it traces against, off the page's thread where it can. */

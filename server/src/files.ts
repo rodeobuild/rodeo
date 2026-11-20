@@ -313,15 +313,29 @@ export function saveRefusal(fileId: string, size: number): string | null {
   return null;
 }
 
-/** Sends a stored version's bytes with the version headers. */
+/** The byte a request asks to start from with `Range: bytes=N-`, or null when it asks for no such range. */
+function resumeFrom(range: string | undefined): number | null {
+  const m = /^bytes=(\d+)-$/.exec(range?.trim() ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/** Sends a stored version's bytes with the version headers: from the byte a `Range: bytes=N-` asks for, else whole. */
 export async function serveVersion(c: Context, row: VersionRow): Promise<Response> {
   const size = await blobSize(row.blob);
   if (size === null) fail(500, "A stored version is missing its file");
   c.header("Content-Type", "application/octet-stream");
-  c.header("Content-Length", String(size));
+  c.header("Accept-Ranges", "bytes");
   c.header("Cache-Control", "private, no-store");
   c.header("X-Version-Id", row.id);
   c.header("X-Collab-Seq", String(row.collab_seq));
+  // a download cut off part way asks for the rest (Range: bytes=N-); any other range gets the whole
+  const from = resumeFrom(c.req.header("range"));
+  if (from !== null && from > 0 && from < size) {
+    c.header("Content-Range", `bytes ${from}-${size - 1}/${size}`);
+    c.header("Content-Length", String(size - from));
+    return c.body(fileStream(blobPath(row.blob), from), 206);
+  }
+  c.header("Content-Length", String(size));
   return c.body(fileStream(blobPath(row.blob)));
 }
 

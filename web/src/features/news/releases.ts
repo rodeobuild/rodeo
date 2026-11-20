@@ -22,6 +22,39 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-20T12:02:00Z",
+    "steadier-sign-in-downloads-tracing",
+    "Sign-in emails, cloud downloads and path tracing hold up better",
+    `Fixes from this week's error reports.
+- Sign-in links: when the mail service doesn't answer, Rodeo tries again within seconds, where it used to wait two minutes and then fail. If the email still can't be sent, it says so and asks you to try again in a minute.
+- Cloud drawings: a download that is cut off part way (Safari's "Load failed") carries on from where it stopped, up to three tries, and says the connection dropped if it still can't finish.
+- Path Traced view: when the graphics card can't run the WebGPU tracer (a very large model, an older card, a driver that stops), the view carries on with the WebGL tracer.
+- Render Image: a path-traced picture WebGPU can't draw is tried once more with WebGL before Rodeo gives up.
+- Empty files: a file of 0 bytes, usually a cloud-folder placeholder that hasn't downloaded yet, gets a message saying that.`,
+    "cloud",
+  ),
+  release(
+    "2026-11-20T12:01:00Z",
+    "3mf-import",
+    "3MF files open",
+    `Rodeo reads 3MF, the format 3D printing slicers save.
+- Open one with File › Import › Import 3MF…, File › Open, or by dropping it on the window.
+- Models from Bambu Studio, OrcaSlicer, PrusaSlicer and other 3D printing tools come in at their real size, each object where the build plate puts it, with its colours.
+- Supports and other non-printing objects are left out. Textures aren't read yet.
+- The converter and the command line read 3MF too.`,
+    "solids",
+  ),
+  release(
+    "2026-11-20T12:00:00Z",
+    "doors-windows-in-walls-roof-textures",
+    "Doors and windows sit in their walls, and roofs show their tiles",
+    `Three reports about drawings that looked wrong in 3D.
+- Vectorworks doors and windows: the hidden shapes Vectorworks cuts each wall opening with were drawn as large solid blocks over every door and window. They are left out now, so each door and window shows in its opening.
+- Vectorworks roofs: a roof built from layers shows each layer's texture, so shingles, tiles or standing seam show on top where the roof came in white.
+- Revit doors and windows: one whose shape Rodeo can't read yet is drawn within its wall's thickness, where its stand-in box used to stick out of the wall on both sides (walls that run along the drawing's X or Y).`,
+    "door",
+  ),
+  release(
     "2026-11-13T23:50:00Z",
     "work-like-side-by-side",
     "Work Like: side by side with each application",

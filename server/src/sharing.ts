@@ -121,11 +121,19 @@ export function registerSharing(app: Hono): void {
     const url = `${config.publicUrl}/?invite=${token}`;
     const expiresAt = inMs(INVITE_DAYS * DAY);
     if (email) {
-      await sendMail(
-        email,
-        `${user.name} invited you to ${file.name} on Rodeo`,
-        `${user.name} invited you to the drawing "${file.name}" on Rodeo.\n\nOpen it here. The link works once and expires in ${INVITE_DAYS} days:\n\n${url}\n`,
-      );
+      try {
+        await sendMail(
+          email,
+          `${user.name} invited you to ${file.name} on Rodeo`,
+          `${user.name} invited you to the drawing "${file.name}" on Rodeo.\n\nOpen it here. The link works once and expires in ${INVITE_DAYS} days:\n\n${url}\n`,
+        );
+      } catch (err) {
+        // no invite is made for an email that never left: the person can ask again, or make a link to send themselves
+        const e = err as { code?: unknown; command?: unknown };
+        if (e.code === "EENVELOPE" && e.command === "RCPT TO") fail(400, "That email address was refused. Check it for a typo.", "email_refused");
+        console.error("[sharing] could not email an invite:", err);
+        fail(503, "The invite email couldn't be sent just now. Try again in a minute, or leave the email empty to get a link to send yourself.", "email_unavailable");
+      }
     }
     run(
       "INSERT INTO invites (token, file_id, role, created_by, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",

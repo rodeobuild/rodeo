@@ -190,6 +190,8 @@ async function readModel(id: string, name: string, base: string, bytes: Uint8Arr
       return (await import("../import/blend.ts")).parseBlend(bytes);
     case "ply":
       return (await import("../import/ply.ts")).parsePly(bytes, base);
+    case "3mf":
+      return (await import("../import/threemf.ts")).parse3mf(bytes);
     case "skp":
       return (await import("../import/skp.ts")).parseSkp(bytes);
     case "step":

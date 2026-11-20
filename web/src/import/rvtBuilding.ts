@@ -318,6 +318,10 @@ export function revitBuilding(read: RvtRead, fileName: string): BuildingModel {
     o.sill = z0;
     o.height = z1 - z0;
   });
+  // a door or window drawn as its box: the box is cut to its wall's faces, so it stands in the wall
+  openings.forEach((o) => {
+    if (o.wall !== undefined && o.bodies.some((b) => b.box)) o.bodies = withinWall(o.bodies, walls[o.wall]);
+  });
 
   // a wall's edited elevation profile: the holes it cuts, outlines in the wall's plane along its
   // axis from where the wall is placed (its middle) and up from its foot
@@ -357,6 +361,50 @@ export function revitBuilding(read: RvtRead, fileName: string): BuildingModel {
     skipped,
     notes,
   };
+}
+
+/**
+ * A box drawn round a door or window in a wall, cut across the wall to the wall's two faces (its
+ * extent along the wall and its height kept). Only a wall within a degree of the x or y axis is
+ * cut; a box that would lie wholly outside the wall, or be under 10 mm thick, is kept as it is.
+ */
+function withinWall(bodies: readonly Body[], wall: Wall): Body[] {
+  const dx = wall.end.x - wall.start.x;
+  const dy = wall.end.y - wall.start.y;
+  const len = Math.hypot(dx, dy);
+  const slack = len * Math.sin(Math.PI / 180);
+  if (!(len > 0)) return [...bodies];
+  // the axis the wall is thin across: y for a wall along x, x for one along y
+  const across = Math.abs(dy) <= slack ? 1 : Math.abs(dx) <= slack ? 0 : null;
+  if (across === null) return [...bodies];
+  const along = 1 - across;
+  // the wall's centre line at a position along the box
+  const centreAt = (p: number) => (across === 1 ? wall.start.y + ((p - wall.start.x) * dy) / dx : wall.start.x + ((p - wall.start.y) * dx) / dy);
+  let s0 = Infinity;
+  let s1 = -Infinity;
+  let a0 = Infinity;
+  let a1 = -Infinity;
+  for (const b of bodies)
+    for (const f of b.faces)
+      for (let i = 0; i < f.length; i += 3) {
+        s0 = Math.min(s0, f[i + along]);
+        s1 = Math.max(s1, f[i + along]);
+        a0 = Math.min(a0, f[i + across]);
+        a1 = Math.max(a1, f[i + across]);
+      }
+  if (!(s1 >= s0)) return [...bodies];
+  const c = centreAt((s0 + s1) / 2);
+  const lo = c - wall.thickness / 2;
+  const hi = c + wall.thickness / 2;
+  if (Math.min(a1, hi) - Math.max(a0, lo) < 10) return [...bodies];
+  return bodies.map((b) => ({
+    ...b,
+    faces: b.faces.map((f) => {
+      const out = f.slice();
+      for (let i = across; i < f.length; i += 3) out[i] = Math.min(Math.max(f[i], lo), hi);
+      return out;
+    }),
+  }));
 }
 
 /** A Revit element's name, "Family:Type:id", in its parts ("" where it has none). */

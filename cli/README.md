@@ -65,6 +65,7 @@ rodeo formats
 - glTF (`.glb`, `.gltf`): reads and writes
 - OBJ (`.obj`), FBX (`.fbx`), Collada (`.dae`, `.kmz`): reads and writes
 - STL (`.stl`), PLY (`.ply`), 3DS (`.3ds`): reads and writes
+- 3MF (`.3mf`): reads
 - USD (`.usdz`, `.usd`, `.usda`, `.usdc`): reads; writes `.usdz`
 - Blender (`.blend`): reads
 - STEP (`.stp`, `.step`), IGES (`.igs`, `.iges`): reads and writes

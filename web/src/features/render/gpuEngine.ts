@@ -32,6 +32,8 @@ const STILL_DENOISE_WAIT = 120_000;
 const WEIGHTS = { live: "rt_hdr_alb_nrm_small.tza", still: "rt_hdr_alb_nrm.tza" } as const;
 /** The lowest number of light bounces the wavefront's preview steps every path by (LOW_RES_ITERATIONS in the library). */
 const PREVIEW_STEPS = 5;
+/** Reads that fail in a row before the engine is taken as broken. */
+const READ_FAILURES_MAX = 3;
 
 /** The sample counts a plan runs to: the denoiser's milestones below the preview's count, then the count itself. */
 function milestonesFor(preview: number, denoise: boolean): number[] {
@@ -97,6 +99,12 @@ function holdPicture(held: THREE.DataTexture | null, data: Uint16Array | Float32
   tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
+}
+
+/** The part of oidn-webgpu's network the denoiser runs passes on. */
+interface UNetRuns {
+  tileExecute(inputs: Record<string, unknown>): () => void;
+  __passFailures?: boolean;
 }
 
 function describe(err: unknown): string {
@@ -180,7 +188,10 @@ export class GpuEngine implements TraceEngine {
   /** the camera the path tracer takes its rays from */
   private tracerCamera: THREE.Camera | null = null;
   private built = false;
-  private lost = false;
+  /** the device was lost, or reads kept failing: nothing more is drawn here, and the caller takes another engine */
+  private broken = false;
+  /** reads that have failed in a row (a picture too big for the device fails each frame) */
+  private readFailures = 0;
   private disposed = false;
   /** counts the setScene calls, so a build that has been overtaken does nothing */
   private builds = 0;
@@ -241,7 +252,12 @@ export class GpuEngine implements TraceEngine {
 
   /** The scene is set and built, and the device has not been lost. */
   get ready(): boolean {
-    return this.built && !this.lost;
+    return this.built && !this.broken;
+  }
+
+  /** The device was lost, or reads kept failing: the engine draws nothing more, and its caller takes another. */
+  get failed(): boolean {
+    return this.broken;
   }
 
   /** A resting picture has been read back. */
@@ -425,7 +441,7 @@ export class GpuEngine implements TraceEngine {
           this.motionTex[this.motionSlot] = color;
           this.motion = { color, width: w, height: h, matrixWorld, projectionMatrix, serial: ++this.motionSerial };
         })
-        .catch((err: unknown) => console.warn("openvwx: motion frame", describe(err)))
+        .catch((err: unknown) => this.readFailed("motion frame", err))
         .finally(() => {
           this.motionReading = false;
         });
@@ -529,16 +545,36 @@ export class GpuEngine implements TraceEngine {
 
   private async makeTracer(): Promise<void> {
     if (!(await webgpuAvailable())) throw new Error("this browser has no WebGPU adapter");
-    const renderer = new WebGPURenderer({ canvas: document.createElement("canvas"), antialias: false, trackTimestamp: true });
-    // the library reads its frame timings back through this call: each read is kept until it settles
-    const timed = renderer as unknown as { resolveTimestampsAsync(type: unknown): Promise<unknown> };
-    const resolve = timed.resolveTimestampsAsync.bind(renderer);
-    timed.resolveTimestampsAsync = (type) => this.keep(resolve(type));
+    // the device takes the adapter's own buffer limits: three's default 256 MB is too small for a large scene's buffers where the GPU allows more.
+    // The adapter is asked for as three asks for its own, so the limits are ones that adapter gives; where the device is refused with them, it is made with three's defaults.
+    const gpu = (navigator as Navigator & { gpu?: { requestAdapter(options?: object): Promise<GPUAdapter | null> } }).gpu;
+    const adapter = await gpu?.requestAdapter({ featureLevel: "compatibility" }).catch(() => null);
+    const limits = adapter ? { maxBufferSize: adapter.limits.maxBufferSize, maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize } : undefined;
+    const start = async (requiredLimits: typeof limits): Promise<WebGPURenderer> => {
+      const made = new WebGPURenderer({ canvas: document.createElement("canvas"), antialias: false, trackTimestamp: true, requiredLimits });
+      // the library reads its frame timings back through this call: each read is kept until it settles
+      const timed = made as unknown as { resolveTimestampsAsync(type: unknown): Promise<unknown> };
+      const resolve = timed.resolveTimestampsAsync.bind(made);
+      timed.resolveTimestampsAsync = (type) => this.keep(resolve(type));
+      try {
+        await made.init();
+      } catch (err) {
+        made.dispose();
+        throw err;
+      }
+      return made;
+    };
+    let renderer: WebGPURenderer;
     try {
-      await renderer.init();
+      renderer = await start(limits);
     } catch (err) {
-      renderer.dispose();
-      throw new Error(`WebGPU could not start: ${describe(err)}`);
+      if (!limits) throw new Error(`WebGPU could not start: ${describe(err)}`);
+      console.warn("openvwx: WebGPU did not start with the adapter's buffer limits; trying the defaults", describe(err));
+      try {
+        renderer = await start(undefined);
+      } catch (again) {
+        throw new Error(`WebGPU could not start: ${describe(again)}`);
+      }
     }
     if (this.disposed) {
       renderer.dispose();
@@ -547,7 +583,7 @@ export class GpuEngine implements TraceEngine {
     const device = (renderer.backend as unknown as { device: GPUDevice }).device;
     device.lost.then((info) => {
       if (this.disposed) return;
-      this.lost = true;
+      this.broken = true;
       this.built = false;
       console.warn(`openvwx: the WebGPU device was lost (${info.reason}): ${info.message}`);
     });
@@ -614,15 +650,36 @@ export class GpuEngine implements TraceEngine {
     const denoiser = new OIDNDenoiser({ initUNetFromURL, auxWeightsUrl: `${import.meta.env.BASE_URL}oidn/${file}` });
     denoiser.addEventListener("error", (e) => {
       if (this.denoiser !== denoiser || this.disposed) return;
-      console.warn("openvwx: the denoiser's weights did not load; pictures are denoised by the finish instead", e.error);
+      console.warn("openvwx: the denoiser failed; pictures are denoised by the finish instead", e.error);
       this.denoiserFailed = true;
       this.denoiser = null;
       this.tracer?.setDenoiser(null);
       this.planKey = "";
       if (this.lastSettings) this.syncSettings(this.lastSettings);
     });
+    this.passFailuresTo(denoiser);
     this.denoiser = denoiser;
     tracer.setDenoiser(denoiser);
+  }
+
+  /**
+   * The denoiser's network reports a pass that fails inside it only to the console: the library gives
+   * it no error callback, so the pass would never finish and the picture would stop at its milestone.
+   * Here each network's tile runs are given one, and a failure goes to the denoiser's error event (the
+   * same path as weights that will not load: the picture goes on without the denoiser).
+   */
+  private passFailuresTo(denoiser: OIDNDenoiser): void {
+    const host = denoiser as unknown as { _initUNet(useAux: boolean): Promise<UNetRuns> };
+    const initUNet = host._initUNet.bind(denoiser);
+    host._initUNet = async (useAux: boolean): Promise<UNetRuns> => {
+      const unet = await initUNet(useAux);
+      if (!unet.__passFailures) {
+        const run = unet.tileExecute.bind(unet);
+        unet.tileExecute = (inputs) => run({ ...inputs, error: (error: unknown) => denoiser.dispatchEvent({ type: "error", error: error instanceof Error ? error : new Error(describe(error)) }) });
+        unet.__passFailures = true;
+      }
+      return unet;
+    };
   }
 
   /** Starts the resting picture over: the first milestone, no denoised picture shown in this run. */
@@ -699,6 +756,7 @@ export class GpuEngine implements TraceEngine {
     this.restBlit
       .read(renderer, source, w, h)
       .then((data) => {
+        this.readFailures = 0;
         if (this.disposed || run !== this.run) return;
         this.picture = holdPicture(this.picture, data, w, h);
         this.pictureW = w;
@@ -712,7 +770,7 @@ export class GpuEngine implements TraceEngine {
           this.nextStage();
         }
       })
-      .catch((err: unknown) => console.warn("openvwx: path tracer picture", describe(err)))
+      .catch((err: unknown) => this.readFailed("path tracer picture", err))
       .finally(() => {
         this.restReading = false;
         this.pump();
@@ -732,6 +790,12 @@ export class GpuEngine implements TraceEngine {
     } finally {
       restore();
     }
+  }
+
+  /** A read failed: the picture goes on without it, and after a few in a row the engine is taken as broken (its buffers do not fit the device). */
+  private readFailed(what: string, err: unknown): void {
+    console.warn(`openvwx: ${what}`, describe(err));
+    if (++this.readFailures >= READ_FAILURES_MAX) this.broken = true;
   }
 
   /** Starts the timer that finishes a picture the view has stopped asking for, while one is due. */

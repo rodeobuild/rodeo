@@ -12,7 +12,7 @@ import { note, reportFailure, reportSlow } from "../../app/reports.ts";
 import { store } from "../../app/state.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
 import { documentBytes } from "../../app/writeOut.ts";
-import { ApiError, files, serverConfig, type Progress } from "../../platform/api.ts";
+import { ApiError, DOWNLOAD_STOPPED, files, serverConfig, type Progress } from "../../platform/api.ts";
 import { type CloudSource, isCloudSource } from "../../platform/cloudSource.ts";
 import { BIG_DRAWING, type CloudFile, type Role } from "../../platform/protocol.ts";
 import { requireSignIn } from "../account/signin.ts";
@@ -66,7 +66,7 @@ function showUpload(loading: Loading, label: string): Progress {
 /** A failure the user expects or chose (a plan limit, a newer version, too large) isn't a fault to report. */
 function isFault(err: unknown): boolean {
   if (err instanceof NotSaved) return false;
-  return !(err instanceof ApiError && ["limit", "conflict", "auth", "too_large", "plan", "forbidden"].includes(err.code ?? ""));
+  return !(err instanceof ApiError && ["limit", "conflict", "auth", "too_large", "plan", "forbidden", DOWNLOAD_STOPPED].includes(err.code ?? ""));
 }
 
 /** The user chose not to overwrite a newer version. */
@@ -149,6 +149,11 @@ export async function explainFailure(action: string, err: unknown): Promise<void
     await offerPlan(err.message);
     return;
   }
+  // a connection that dropped says what happened and what to do, in its own words
+  if (err instanceof ApiError && err.code === DOWNLOAD_STOPPED) {
+    toast(err.message);
+    return;
+  }
   toast(`${action} failed: ${errorMessage(err)}`);
 }
 
@@ -193,8 +198,15 @@ export async function openCloudFile(fileId: string, options?: { readonly replace
   const ctx = appContext();
   if (!ctx) return false;
   const fetched = await cloudCall("Fetching the drawing…", "Open", async () => {
-    const [{ file }, content] = await Promise.all([files.get(fileId), files.content(fileId)]);
-    return { file, content };
+    const { file } = await files.get(fileId);
+    try {
+      return { file, content: await files.content(fileId) };
+    } catch (err) {
+      if (err instanceof ApiError && err.code === DOWNLOAD_STOPPED) {
+        throw new ApiError(`The download of ${file.name} stopped part way (the connection dropped). Check the connection and open it again.`, 0, DOWNLOAD_STOPPED);
+      }
+      throw err;
+    }
   });
   if (!fetched) return false;
   const { file, content } = fetched;

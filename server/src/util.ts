@@ -94,8 +94,8 @@ export function signedInPath(path: string): string {
 }
 
 /** A file's bytes as a web stream (read from disk as the response goes out). */
-export function fileStream(path: string): ReadableStream<Uint8Array> {
-  return Readable.toWeb(createReadStream(path)) as unknown as ReadableStream<Uint8Array>;
+export function fileStream(path: string, start = 0): ReadableStream<Uint8Array> {
+  return Readable.toWeb(createReadStream(path, { start })) as unknown as ReadableStream<Uint8Array>;
 }
 
 export function formatBytes(n: number): string {

@@ -1,7 +1,7 @@
 // Checks the sniffing of files the user gave (fileKinds.ts), the reader stop messages
 // (readerFailure.ts) and the older Archicad version named in a header (archicadImport.ts), under Node.
 // Run from web/: npx tsx src/app/fileKinds.check.ts
-import { pictureKindOf, looksLikeVectorworks, notOpenable, undecodablePicture, HEAD_BYTES } from "./fileKinds.ts";
+import { pictureKindOf, looksLikeVectorworks, notOpenable, undecodablePicture, tooSmallRefusal, HEAD_BYTES } from "./fileKinds.ts";
 import { isReaderStop, readerMessage } from "./readerFailure.ts";
 import { olderArchicadVersion } from "./archicadImport.ts";
 
@@ -39,6 +39,13 @@ check(!looksLikeVectorworks(pad(text("\xff\xd8\xff\xe0 no header here"))), "a JP
 
 check(notOpenable("notes.xyz") === "Rodeo can't open notes.xyz. It opens Vectorworks drawings (.vwx, .sta), AutoCAD (.dwg, .dxf), Revit, Archicad, SketchUp, IFC, STEP and other 3D models, PDF, and pictures (JPEG, PNG, GIF, WebP, BMP).", "refusal names what Rodeo opens");
 check(!/signature/.test(notOpenable("x.bin")), "the refusal never says signature");
+check(tooSmallRefusal("x.vwx", 0) === "x.vwx is empty (0 bytes). If it is in a cloud folder such as OneDrive, Dropbox or iCloud, wait until it has finished downloading to this computer, then open it again.", "an empty .vwx says it is empty and to wait for the download");
+check(tooSmallRefusal("notes.txt", 0)?.startsWith("notes.txt is empty (0 bytes).") === true, "an empty file of any extension is empty");
+check(tooSmallRefusal("x.vwx", 20) === "x.vwx is too small to be a drawing (20 bytes). It may not have finished downloading or copying.", "a 20-byte .vwx is too small to be a drawing");
+check(tooSmallRefusal("x.sta", 0x93) !== null, "a .sta one byte under the header is too small");
+check(tooSmallRefusal("x.vwx", 0x94) === null, "a .vwx of exactly the header size goes to the reader");
+check(tooSmallRefusal("x.dxf", 20) === null, "a short file that is not a drawing name is left to its reader");
+check(tooSmallRefusal("x.vwx", 4096) === null, "a normal drawing size is not refused");
 check(undecodablePicture("heif")?.includes("HEIC") === true, "HEIC that the browser can't read is named");
 check(undecodablePicture("tiff")?.includes("TIFF") === true, "TIFF that the browser can't read is named");
 check(undecodablePicture("jpeg") === null, "a JPEG the browser fails on keeps the browser's message");
