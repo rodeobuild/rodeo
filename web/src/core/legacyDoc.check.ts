@@ -104,6 +104,37 @@ function macCode(c: string): number {
   check(threw, "a count that the entries do not fill is refused");
 }
 
+// 2b. a name table of whole 68-byte entries (as every file seen has): a u32 index and a 64-byte slot.
+// What a slot held before stays after the name, and can read as an entry of its own: the search
+// alone then finds more than one way through, and the entries' size settles it.
+{
+  const entries = [
+    { index: 2, name: "Dimension" },
+    { index: 44, name: "NNA_DesignLayerViewport" },
+    { index: 7, name: "Spot 26°" },
+  ];
+  const body = new Uint8Array(0x50 + 68 * entries.length);
+  setU64(body, 0, 1n);
+  setU32(body, 0x08, entries.length);
+  entries.forEach((e, k) => {
+    const p = 0x50 + 68 * k;
+    const name = mac(e.name);
+    setU32(body, p, e.index);
+    body[p + 4] = name.length;
+    body.set(name, p + 5);
+  });
+  // in the first slot, after "Dimension": the end of a longer name it replaced, and bytes that read as an entry (index 9, "Stale")
+  body.set(ascii("ript-1"), 0x50 + 5 + 9);
+  const stale = 0x50 + 30;
+  setU32(body, stale, 9);
+  body[stale + 4] = 5;
+  body.set(ascii("Stale"), stale + 5);
+  const read = nameEntries(body);
+  check(read.length === 3 && read.every((e, k) => e.index === entries[k].index && e.name === entries[k].name), `whole 68-byte entries read as their indices and names (${read.map((e) => e.name).join(", ")})`);
+  const table = readNameTable(new Rec(record(docBody(55, body) as Uint8Array)));
+  check(table.size === 3 && table.get(2) === "Dimension" && table.get(7) === "Spot 26°", "and convert to a 2018+ table of the same names");
+}
+
 // 3. classes (94): attributes, visibility, and no texture or text style
 {
   const b = old(112);

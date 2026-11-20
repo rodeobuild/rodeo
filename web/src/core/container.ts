@@ -17,9 +17,9 @@
 //                  the record stream (see records.ts)
 //
 // A body that is not Snappy chunks (the uncompressed records Vectorworks wrote before 2018: 2013's
-// narrow ones, 2014 to 2017's with 64-bit sizes) is read by legacy.ts, which also gives the header
-// a 2018+ one and marks the drawing converted; a file saved before 2013 or in 2014 to 2017 that
-// still doesn't read says which year it was saved in.
+// narrow ones, 2016's and 2017's with 64-bit sizes) is read by legacy.ts, which also gives the
+// header a 2018+ one and marks the drawing converted; a file saved before 2013 or in 2014 to 2017
+// that still doesn't read says which year it was saved in.
 //
 // readContainer takes the whole file. readContainerStream reads it a slice at a time instead,
 // decodes several slices at once (in workers, when given an inflate that uses them) and cuts the
@@ -30,7 +30,7 @@
 
 import { concat, readAscii, setU32, setU32be, setU64, u32, u32be, u64 } from "./bytes.ts";
 import { CHECK_SPAN, ChunkTable, chunkSum, FileStream, HOLD_HEAD, HeldEntry, type HeldTable, type HoldPlan, Holder, TOKEN, expansion, heldPart } from "./held.ts";
-import { legacyHeader, type LegacyKind, type LegacyLayout, legacyRecords, legacyStart, legacyStop, unreadableMessage } from "./legacy.ts";
+import { legacyHeader, type LegacyKind, type LegacyLayout, legacyRecords, legacyStart, legacyStop, savedYear, unreadableMessage } from "./legacy.ts";
 import { unitsName } from "./settings.ts";
 import { blockLength, compress, decompress, decompressInto } from "./snappy.ts";
 
@@ -48,9 +48,8 @@ export interface Container {
   /**
    * the records the body held when it was an older Vectorworks layout (legacy.ts) and came in
    * converted, null for a 2018+ file: the header is then a new 2018+ one, so saving writes a
-   * different file from the one read. The saved-with version can't tell this: error reports show
-   * such bodies under versions that name no year before 2018 (exports for an older version, by
-   * their file names).
+   * different file from the one read. The saved-with version can't tell this: a file a newer
+   * Vectorworks exported for an older one has "VectorWorks 191" where a saved file names its versions.
    */
   converted: LegacyKind | null;
 }
@@ -191,7 +190,11 @@ function unreadable(err: unknown, savedWith: string, stop: string | null = null)
  */
 function unconverted(err: unknown, savedWith: string): unknown {
   if (!(err instanceof Error)) return err;
-  return new Error(`${unreadableMessage(savedWith) ?? "Rodeo could not read this file's records"} (${err.message})`);
+  const message = unreadableMessage(savedWith);
+  // before 2013 Rodeo reads no layout at all: the year says it, and what the attempt met adds nothing
+  const year = savedYear(savedWith);
+  if (message !== null && year !== null && year < 2013) return new Error(message);
+  return new Error(`${message ?? "Rodeo could not read this file's records"} (${err.message})`);
 }
 
 /**

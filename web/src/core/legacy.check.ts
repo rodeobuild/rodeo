@@ -1,12 +1,13 @@
-// Checks the legacy (Vectorworks 2013, and 2014 to 2017) reader on synthetic files: a blank
-// drawing's records narrowed into the 2013 layout (the inverse of legacy.ts's widen, written here),
-// or shortened into the 2014 to 2017 one (the inverse of its lengthen), and wrapped in a header of
-// that time must read back to the same records, with GUIDs made by the reader. Only the records
-// whose bodies the per-type converters give back as they are take part; legacyDoc.check.ts,
-// legacyShapes.check.ts and legacyMid.check.ts check the conversions. Also: uncompressed 2018+
-// records pass through, Snappy bodies keep their path, a converted drawing says it is one, units
-// kept as sizes are read, and an old file that is unreadable names the year it was saved in. Run
-// from web/:
+// Checks the legacy (Vectorworks 2013, 2016 and 2017) reader on synthetic files: a blank drawing's
+// records narrowed into the 2013 layout (the inverse of legacy.ts's widen, written here), or
+// shortened into the 2016 or the 2017 one (the inverse of its lengthen), and wrapped in a header
+// of that time must read back to the same records, with GUIDs made by the reader where the layout
+// has none. Only the records whose bodies the per-type converters give back as they are take part;
+// legacyDoc.check.ts, legacyShapes.check.ts, legacyMid.check.ts and legacyLate.check.ts check the
+// conversions. Also: uncompressed 2018+ records pass through, Snappy bodies keep their path, a
+// converted drawing says which layout it was, units kept as sizes are read, line types take their
+// dashes from the dash table, and an old file that is unreadable names the year it was saved in.
+// Run from web/:
 //   npx tsx src/core/legacy.check.ts
 // No file of the user's is read.
 
@@ -15,6 +16,7 @@ import { bytesSource, readContainer, readContainerStream, writeContainer } from 
 import { concat, setF64, setU16, setU32, setU32be, setU64, u64 } from "./bytes.ts";
 import { docBody } from "./legacyDoc.ts";
 import { legacyStart } from "./legacy.ts";
+import { lateBody } from "./legacyLate.ts";
 import { midBody, midDirect } from "./legacyMid.ts";
 import { shapeBody } from "./legacyShapes.ts";
 import { NEXT_MARK, Rec, splitRecords } from "./records.ts";
@@ -216,9 +218,9 @@ try {
 }
 check(brokenStream === brokenError, "the streamed reader gives the same message");
 
-// ---- Vectorworks 2014 to 2017: u64 sizes and pointers under a 0x38-byte header (no GUID) ----------
+// ---- Vectorworks 2016: u64 sizes and pointers under a 0x38-byte header (no GUID) ------------------
 
-/** A 2018+ record as the 2014 to 2017 layout: the inverse of legacy.ts's lengthen (its GUID and +0x48 bytes are dropped). */
+/** A 2018+ record as the 2016 layout: the inverse of legacy.ts's lengthen (its GUID and +0x48 bytes are dropped). */
 function shorten(rec: Uint8Array): Uint8Array {
   const out = new Uint8Array(rec.length - 0x18);
   out.set(rec.subarray(0, 0x38), 0);
@@ -227,7 +229,7 @@ function shorten(rec: Uint8Array): Uint8Array {
   return out;
 }
 
-/** Whether legacy.ts gives the body of the 2018+ record `rec` back as it is, read as a 2014 to 2017 body. */
+/** Whether legacy.ts gives the body of the 2018+ record `rec` back as it is, read as a 2016 body. */
 function keptAsIsMid(rec: Uint8Array): boolean {
   if (rec[0x19] === 0) return true;
   const body = rec.subarray(0x50);
@@ -255,7 +257,7 @@ const midRecords = blankAll.filter(keptAsIsMid);
 const midRecs = midRecords.map(shorten);
 
 // 14. shortened records in a 2016 file read back to the blank's records, GUIDs aside
-check(midRecords.length >= blankAll.length / 2, `${midRecords.length} of the blank's ${blankAll.length} records keep their bodies as 2014 to 2017 ones`);
+check(midRecords.length >= blankAll.length / 2, `${midRecords.length} of the blank's ${blankAll.length} records keep their bodies as 2016 ones`);
 check(midRecs.some((r) => r.length < 0x50) && midRecs[0].length >= 0x38, "the 2016 body holds records shorter than a 2018+ header (its terminators are 0x40 bytes)");
 const mid = readContainer(midFile(blank, midRecs));
 const midBack = splitRecords(mid.raw).map((r) => r.data);
@@ -276,7 +278,7 @@ check(
 
 // 16. a converted drawing says it is one; a 2018+ drawing does not
 check(read.converted === "2013" && streamed.converted === "2013", "a 2013 drawing is marked converted from 2013 records, read whole or streamed");
-check(mid.converted === "2016" && midStreamed.converted === "2016", "a 2016 drawing is marked converted from 2014 to 2017 records, read whole or streamed");
+check(mid.converted === "2016" && midStreamed.converted === "2016", "a 2016 drawing is marked converted from 2016 records, read whole or streamed");
 check(wide.converted === "2018", "uncompressed 2018+ records are marked as such");
 check(blankRead.converted === null && (await readContainerStream(bytesSource(blank))).converted === null, "a 2018+ drawing is not marked converted");
 
@@ -317,7 +319,7 @@ check(
 const midExportBroken = failure(midFile(blank, midBroken, "VW28.0.4"));
 check(midExportBroken.startsWith("Rodeo could not read this file's records (its older layout stops at record 3 at +0x"), `the same body under a 2023 version says where it stops: ${midExportBroken}`);
 
-// 20. a 2014 to 2017 file whose layers are a size never measured is refused, naming its year and the reason
+// 20. a 2016-layout file whose layers are a size never measured is refused, naming its year and the reason
 const oddLayer = new Uint8Array(0x38 + 700);
 oddLayer.set(midRecs[0].subarray(0, 0x38), 0);
 setU64(oddLayer, 0, BigInt(oddLayer.length));
@@ -355,6 +357,87 @@ const cmSized = readContainer(midFile(sizedHeader(0x190, 2.54, 0.0254 ** 2, 0.02
 check(cmSized.units === "Centimeters", `centimetres under a Dutch name: ${cmSized.units}`);
 const inSized = readContainer(legacyFile(sizedHeader(0x178, 1, 1 / 144, 1 / 1728, 0, "Zoll"), narrowRecs));
 check(inSized.units === "Inches", `inches (style 0) at the 2013 offset: ${inSized.units}`);
+
+// ---- the Vectorworks 2017 format: u64 sizes under a 0x48-byte header (the GUID, no 8 bytes after it) ----
+
+/** A 2018+ record as the 2017 layout: the inverse of legacy.ts's lengthen (its +0x48 bytes are dropped, its GUID kept). */
+function shortenLate(rec: Uint8Array): Uint8Array {
+  const out = new Uint8Array(rec.length - 8);
+  out.set(rec.subarray(0, 0x48), 0);
+  out.set(rec.subarray(0x50), 0x48);
+  setU64(out, 0, BigInt(out.length));
+  return out;
+}
+
+/** A file a newer Vectorworks exported for 2017: the 2017 settings length, and "VectorWorks 191" where a saved file names its versions. */
+function lateFile(header: Uint8Array, records: Uint8Array[], versions = "VectorWorks 191"): Uint8Array {
+  const settings = 0x8b8;
+  const h = header.slice(0, 0x94 + settings);
+  setU32be(h, 0, settings);
+  setU32(h, 0x94, settings);
+  h.fill(0, 0x0e, 0x2e);
+  h.set(new TextEncoder().encode(versions), 0x0e);
+  const file = concat([h, ...records]);
+  setU32be(file, 0x54, file.length);
+  return file;
+}
+
+/** Whether legacy.ts gives the body of the 2018+ record `rec` back as it is, read as a 2017 body. */
+function keptAsIsLate(rec: Uint8Array): boolean {
+  if (rec[0x19] === 0) return true;
+  try {
+    const made = lateBody(rec[0x19], rec.subarray(0x50));
+    return made != null && same(made, rec.subarray(0x50));
+  } catch {
+    return false;
+  }
+}
+const lateRecords = blankAll.filter(keptAsIsLate);
+const lateRecs = lateRecords.map(shortenLate);
+
+// 22. records under 0x48-byte headers read back as they were, GUIDs and all
+check(lateRecords.length >= 3 && lateRecs.some((r) => r[0x19] === 0 && r.length === 0x50), `${lateRecords.length} of the blank's ${blankAll.length} records keep their bodies as 2017 ones (its terminators are 0x50 bytes)`);
+const late = readContainer(lateFile(blank, lateRecs));
+const lateBack = splitRecords(late.raw).map((r) => r.data);
+check(late.chunkCount === 0 && late.converted === "2017", `a 2017-format body reads as records and is marked so (${late.converted})`);
+check(lateBack.length === lateRecords.length && lateBack.every((r, i) => same(r, lateRecords[i])), `every 2017 record reads back as it was, its own GUID kept (${lateBack.length})`);
+check(late.savedWith === "191" && new TextDecoder().decode(late.header.subarray(0x0e, 0x2e)).startsWith("VW31.2.0"), `an exported file's "VectorWorks 191" is kept as its saved-with (${late.savedWith}) and the drawing gets a 2018+ header`);
+const lateStreamed = await readContainerStream(bytesSource(lateFile(blank, lateRecs)), { slice: 4 << 10 });
+check(lateStreamed.converted === "2017" && lateStreamed.records.length === lateBack.length && lateStreamed.records.every((r, i) => same(r, lateBack[i])), "2017-format file streamed in 4 KB slices: the same records");
+check(readContainer(lateFile(blank, lateRecs, "VW22.0.1 VW22.0.1")).converted === "2017", "the same body under versions a saved 2017 file names reads the same");
+
+// 23. the three u64 layouts are told apart by their terminators: 0x40, 0x50 and 0x58 bytes
+check(mid.converted === "2016" && late.converted === "2017" && wide.converted === "2018", "terminators of 0x40, 0x50 and 0x58 bytes give the 2016, 2017 and 2018+ layouts");
+const noEnd = lateRecs.filter((r) => r[0x19] !== 0);
+const noEndRead = readContainer(lateFile(blank, noEnd));
+check(noEndRead.converted === (noEnd.some((r) => r.length < 0x50) ? "2017" : "2018"), `a body with no terminator goes by its shortest record (${noEndRead.converted})`);
+
+// 24. a 2017-format file whose layers are a size never measured is refused with the reason; under versions naming 2017, with the year
+const oddLate = new Uint8Array(0x48 + 700);
+oddLate.set(lateRecs.find((r) => r[0x19] !== 0)!.subarray(0, 0x48), 0);
+setU64(oddLate, 0, BigInt(oddLate.length));
+oddLate[0x19] = 31;
+const oddLateError = failure(lateFile(blank, [...lateRecs, oddLate]));
+check(oddLateError === "Rodeo could not read this file's records (its layers are 700-byte records, not the 742 Rodeo reads)", `an exported file with layers of another size says so: ${oddLateError}`);
+const oddLateNamed = failure(lateFile(blank, [...lateRecs, oddLate], "VW22.0.1 VW22.0.1"));
+check(
+  oddLateNamed === "This file was saved by Vectorworks 2017, which Rodeo can't read yet: save it from Vectorworks 2018 or newer. (its layers are 700-byte records, not the 742 Rodeo reads)",
+  `the same file saved by 2017 names its year too: ${oddLateNamed}`,
+);
+
+// 25. a file from before 2013 that walks as records but doesn't convert names its year alone: what
+// the attempt met says nothing to anyone (Rodeo reads no layout that old)
+const badTable = new Uint8Array(0x28 + 0x60);
+setU32(badTable, 0, badTable.length);
+setU32(badTable, 4, 0x05792ca4);
+badTable[0x0d] = 55;
+setU32(badTable, 0x1a, 0x1000);
+setU32(badTable, 0x28 + 8, 3);
+const older = oldHeader.slice();
+const olderError = failure(legacyFile(older, [badTable, ...narrowRecs]));
+check(olderError === "This file was saved by Vectorworks 2007, which Rodeo can't read yet: save it from Vectorworks 2013 or newer.", `a 2007 file that fails to convert names its year alone: ${olderError}`);
+const sameIn2013 = failure(legacyFile(blank, [badTable, ...narrowRecs]));
+check(sameIn2013.startsWith("Rodeo could not read this file's records (the name table"), `the same records under a current version say what failed: ${sameIn2013}`);
 
 console.log(failures ? `\n${failures} failed` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

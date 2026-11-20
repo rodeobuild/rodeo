@@ -57,7 +57,7 @@ stream round-trips byte-for-byte.
 ### 1.1 Vectorworks 2013 files (core/legacy.ts)
 
 Measured on one file saved by VW 18.0.5 (2013, build 208827), 8,602 records;
-§1.2 has what is known of 2014 to 2017. The header up to 0x94 is laid out as above
+§1.2 and §1.3 have the 2016 and 2017 layouts. The header up to 0x94 is laid out as above
 (here a 0x880-byte settings block, with the length unit as ASCII text, not
 UTF-16). The **body is the record stream itself, uncompressed**: walking u32
 sizes from the body's start lands exactly on the end of the file. Records
@@ -79,9 +79,11 @@ Bodies, 2013 against 2018+ (record offsets):
   +0x60, polygon count +0x62 and vertices +0x64, symbol matrix +0x6a).
 * Type 4 is an oval: a rectangle's layout, the ellipse inside its frame.
 * Text (10): 16 bytes of point sizes fewer before the font; chars UTF-16LE.
-* Name table (55): count at +0x30, entries from +0x78, each a u32 index, a u8
-  length, that many Mac OS Roman bytes and a block of 0 to 64 bytes (colour
-  indices, sometimes a braced GUID) that parses only one way to the count.
+* Name table (55): count at +0x30, entries from +0x78, each 68 bytes: a u32
+  index and a 64-byte slot holding a u8 length, that many Mac OS Roman bytes
+  and whatever the slot held before (the end of a longer name, colour
+  indices, sometimes a braced GUID). The body is exactly 0x50 + 68 × count
+  in the 2013 file (419), three 2016 files and a 2017-format file (180).
 * Classes (94, 112 bytes), layers (31, 764 bytes, name as a u8 length and Mac
   OS Roman at +0x9c), fonts (74, 262-byte entries of Mac OS Roman) and record
   formats (47, 70-byte fields) are shorter than 2018+'s and are rebuilt.
@@ -95,13 +97,13 @@ textures (97), preview images (119), wall styles (127), the document header
 (33), and records of other types neither converts that hold nothing. Other
 containers of unknown types keep their 2013 bodies.
 
-### 1.2 Vectorworks 2014 to 2017 files (core/legacy.ts, core/legacyMid.ts)
+### 1.2 Vectorworks 2016 files (core/legacy.ts, core/legacyMid.ts)
 
 Measured on three public files saved by Vectorworks 2016 (VW 21.0.1, 21.0.2
 and 21.0.3; builds 283922, 288897 and 301288; 95, 83 and 244 records, 422 in
-all). **No file saved by 2014, 2015 or 2017 has been seen**; what is known of
-2017 comes from error reports and is marked so. "3 of 3" below means every
-one of the three files.
+all). **No file saved by 2014 or 2015 has been seen.** The 2017 format is
+another layout again (§1.3). "3 of 3" below means every one of the three
+files.
 
 **Container** (3 of 3). The header up to 0x94 is §1's; the saved-with version
 is at 0x0c as there, and the byte at 0x45 is its major number (21; also 13,
@@ -147,27 +149,15 @@ owners as in §2 and ends with no list left open in each file.
 
 **Not in any of the three files:** rectangles, ovals, arcs, rounded
 rectangles, texts, dimensions, viewports, images, worksheets, sheet layers,
-hidden or grey classes. Their 2014 to 2017 layouts are unmeasured.
-
-**2017, from error reports.** Six reports of files that failed to open (14 to
-18 November 2026) carry where the reader stopped: each body starts with a
-u64-sized record of 0x50 bytes or more with a u64 mark, reads as u64-sized
-records for 9 to 127 records, and then holds a record of 0x4c bytes (five)
-or 0x48 (one), which a 0x50-byte header does not allow and a 0x38-byte one
-does. One was saved by Vectorworks 2017. The other five name no year from
-2014 to 2017 in their header: three are, by their names, exports for 2017
-from a newer Vectorworks, which then seems to keep its own version there (no
-such file has been seen), and the 0x48 one is, by its name, an export for
-2019, which is unexplained. So 2017's records are sized as 2016's; whether
-their bodies are 2016's is not known.
+hidden or grey classes. Their 2016 layouts are unmeasured.
 
 **What openvwx does.** A body is told by its records, not by the saved-with
-version (which those reports show can't be relied on): u32 sizes with 2013's mark is §1.1's layout; u64 sizes is this one
-when any record is shorter than 0x50 bytes (every drawing has terminators),
-and 2018+ records as they are when none is (never seen in a file). A 2014 or
-2015 file opens when its body reads as one of these from end to end. Each
-body is made a 2013 one (legacyMid.ts: the pointers narrowed) and then
-converted as §1.1 says, with these differences:
+version: u32 sizes with 2013's mark is §1.1's layout; u64 sizes is this one
+when a list's terminator is 0x40 bytes (0x50: §1.3; 0x58: 2018+ records as
+they are, never seen uncompressed in a file). A 2014 or 2015 file opens when
+its body reads as one of these from end to end. Each body is made a 2013 one
+(legacyMid.ts: the pointers narrowed) and then converted as §1.1 says, with
+these differences:
 
 * A layer must be 732 bytes and a class 76; a file with either of another
   size is refused, naming its year and the size, as its fields would be read
@@ -178,17 +168,100 @@ converted as §1.1 says, with these differences:
   +0x38 and come in as 3D: the three extrudes and the sweep of one file each
   build a solid the size of the 3D box its record stores. Of any other size
   they are left out, as are the other 3D types.
+* A line type (96) takes its dashes from the dash table (30), as §1.3 says:
+  one of the three files holds one, of the same 18 bytes as the 2017
+  format's, and its table entry of the same name.
 * The unmeasured types are read as 2013's only where the record itself fits:
-  a rectangle, oval, arc or rounded rectangle of 2013's exact size; a text
-  whose count and closing UTF-16 characters read as text; a viewport whose
-  layer and class list sits at 2013's place, once its pointers are narrowed,
-  and ends the record. Any other is left out, with what it holds. A
-  dimension keeps only its attributes and plan box, as in §1.1.
+  a rectangle, oval, arc or rounded rectangle of 2013's exact size (the 2017
+  format's rectangles and arcs do have them); a text whose count and closing
+  UTF-16 characters read as text (taken as 2013's one-line layout when its
+  length fits that, and otherwise rebuilt from its box and characters, which
+  are at the same places in the 2017 format's texts); a viewport whose layer and class list sits
+  at 2013's place and ends the record, as it is (the 2017 format's viewports
+  have 2013's length) or once two pointers are narrowed. Any other is left
+  out, with what it holds. A dimension keeps only its attributes and plan
+  box, as in §1.1.
 
 A drawing read this way is marked converted (`DocumentInfo.converted`): it
 opens without its file handle, so saving writes a new 2018+ file and the
 original stays as Vectorworks wrote it. A file saved in 2014 to 2017 that
 still fails says its year, and why in brackets.
+
+### 1.3 The Vectorworks 2017 format (core/legacy.ts, core/legacyLate.ts)
+
+Measured on one public drawing that Vectorworks 2022 (build 646432) exported
+twice: for Vectorworks 2017 (26 MB, 41,942 records) and for Vectorworks 2021
+(8 MB, 42,507 records, the 2018+ layout of §2). **No file that Vectorworks
+2017 itself saved has been seen**; six error reports of files that failed to
+open (14 to 18 November 2026) fit this layout by their record sizes (a first
+record of 0x50 bytes or more, then records of 0x4c and 0x48 bytes: aux
+records with a 4-byte body or none), and one of the six was saved by
+Vectorworks 2017.
+
+**An exported file's header.** Where a saved file has `VW<created> VW<saved>`
+at 0x0e, both exports have `VectorWorks 191` (for 2017) and `VectorWorks 210`
+(for 2021): a format number, not a version. The build at 0x50 and the byte at
+0x45 (27) are the exporting Vectorworks 2022's. So the saved-with version
+names no year for such a file (five of the six reports named none). The
+settings block is 0x8b8 bytes, with the units as §1.2's.
+
+**Records** (41,942 of 41,942). The body is the record stream, uncompressed.
+Sizes and pointers are u64 and the header is **0x48 bytes: the 2018+ header to
+the end of its GUID**, without the 8 zero bytes 2018+ has at +0x48. The body
+starts at +0x48; a terminator is 0x50 bytes. Every next mark is 0x05792ca4 or
+0, the sizes land exactly on the end of the file, and the tree ends with no
+list left open.
+
+**The pairing.** Both exports keep each record's GUID, so 32,720 records
+pair by it; 9,135 more (mesh faces and 3D bodies, which have no GUID of their
+own) pair by their place under a paired parent. "Every pair" below is every
+pair of that type.
+
+**Bodies, 2017 format against 2018+** (body offsets; the 2018+ record offset
+is 0x50 more):
+
+| Type | 2017 | 2018+ | Difference | Pairs |
+|---|---|---|---|---|
+| line (2), loci (9, 17), class (94), line markers (125), aux (76), palette (80), preview image (119), 27, 28, 44, 70, 79, 91, 100, 112, 123, 124 | | same | identical in every pair (aux: 14,627 of 14,676; those that differ are tagged data holding text) | 3,733; 73; 16; 469; … |
+| rectangle (3), polygon (5), arc (6), text (10), group (11), polyline (21), extrude (24), mesh (40), solids (84, 111), lists 54, 57, 65, 78, 92 | n | n + 4 | no u32 material slot at +0x38; everything after it identical in every pair (a text but for six bytes of a pointer at 2018+ +0xa8, zero here) | 326; 312; 607; 573; 2,128; 1,979; 5; 3; 1,006; 5 |
+| symbol definition (16) | 258 | 266 | the slot, and `01 00 01 00` at the end | 21 |
+| plug-in object (86) | 272 | 280 | the slot, and `01 00 01 00` before the last four bytes | 1,026 |
+| layer (31) | 742 | varies | no slot; the name in a 52-byte slot at +0x7c (a length byte and 8-bit text, four zero bytes before it) in the middle of the fixed part; the sheet title in a 128-byte slot at +0x266, to the end. 2018+: the slot, the fixed part without the name's 56 bytes, 16 zero bytes, then name and title as `u32 len + UTF-16` and a u32 0 | 19 |
+| viewport (122) | n | n + 132 | the slot; two 64-byte text slots at +0xdc and +0x11c that 2018+ has as 128-byte UTF-16 slots (no length byte) at +0xe0 and +0x160. The layer and class list is at +0x264, as in 2013 (2018+: +0x2e8) | 26 (25 exact; one differs in one flag byte) |
+| dimension (63) | 524 | 768 | the slot; leader and trailer text (`[` and `]` in all 18) in slots at +0xe6 and +0x126, UTF-16 at 2018+ +0x10a and +0x18a; 24 bytes from +0x166 at +0x1fa; 64 zero bytes at +0x17e that are 128 in 2018+ (+0x212); the rest from +0x1be at +0x292, and 32 zero bytes at the end. What the 32 bytes 2018+ has before the leader are is not known | 18 |
+| record format (47) | 16 + 70 n | 16 + 136 n | the 16-byte head identical; each field's type (u16 +0) and name the same in all 3,416 fields, the number format a u16 at +4 (2018+: +6), the name a length byte and 63 8-bit characters at +6 (2018+: UTF-16 at +8). The value offset (u16 +2) differs in 3,120 fields: it counts into the record data, which 2018+ lays out wider | 85 |
+| font list (74) | 2 + 262 n | 2 + 518 n | as §1.1: the three fonts made so are the 2021 file's | 1 |
+| name table (55) | 0x50 + 68 n | | as §1.1; 172 of 180 names are the 2021 file's under the same index (the other 8 are plug-in names the 2021 export doesn't keep) | 1 |
+| mesh face (41) | n | n + 6 | the slot; its u16 vertex count at +0x3a moves to just before its u32 vertex numbers (here from +0x78), leaving a zero u16 | 8,113 |
+| 3D body (114) | n | n + 10 | ten more bytes at the start (`01 0d` or `02 0d` and mostly zeros; all zero in 26); the rest identical | 1,012 |
+| slab (71) | 184 | 190 | the slot and two zero bytes at the end | 1 |
+| line type (96) | 18 | 274 | see below | 1 |
+| record data (48) | | | values and text laid out differently; not worked out | 1,151 |
+
+**Line types.** A line type (96) is 18 bytes and holds no dashes. They are in
+the drawing's dash table, a type-30 record 2018+ doesn't have: a u16 count,
+then 324-byte entries, each 90 bytes of dashes (`01`, a count byte, then up
+to 11 f64), zeros, and the name in a slot at +260. The 2018+ line type is the
+18 bytes with the entry of its name put in after the first 16, and 166 zero
+bytes at the end: the body made so is the 2021 file's, byte for byte.
+
+**Not in the drawing:** ovals, rounded rectangles, symbol instances, sweeps,
+multiple extrudes, lights, images, worksheets, textures. Their 2017 layouts
+are unmeasured.
+
+**What openvwx does** (legacyLate.ts). Each body is made the 2018+ one the
+table gives. Rounded rectangles, symbols, sweeps and lights are taken as
+2018+'s without the slot only at the size 2013 and 2016 files give them
+(120, 196, 272, 316), and an oval as §1.1's. Left out, with what they hold:
+record data (48), slab components (69), the style lists 102, 107 and 127,
+profile caches (42), a type 2018+ doesn't have (128), images (14), worksheets
+(18), multiple extrudes (38) and textures (97). A layer must be 742 bytes, or
+the file is refused with the size.
+
+**Checked as drawn.** The converted 2017 file and the 2021 file export all 19
+layers (5 design layers, 14 sheets with their viewports, sections and
+dimensions) to the same SVG, byte for byte, and build the same 3D model (80
+meshes, 50,852 triangles, identical).
 
 ## 2. Record stream
 

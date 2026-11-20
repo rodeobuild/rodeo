@@ -5,40 +5,47 @@
 //   narrow  Vectorworks 2013: u32 sizes and pointers, a 0x28-byte header and no GUID. Measured on
 //           a 2013 file of 8,602 records: every size lands exactly on the next record, every
 //           next-sibling mark is 0x05792ca4 or 0, and +0x0c is 0 throughout.
-//   mid     Vectorworks 2016 (three files, 422 records), and by the sizes in six error reports
-//           Vectorworks 2017 too: u64 sizes and pointers, a 0x38-byte header, which is the 2018+
-//           header without its GUID. No 2014, 2015 or 2017 file has been seen; one opens when
-//           its body reads as narrow or mid from end to end.
+//   mid     Vectorworks 2016 (three files, 422 records): u64 sizes and pointers, a 0x38-byte
+//           header, which is the 2018+ header without its GUID.
+//   late    the Vectorworks 2017 format (one file a newer Vectorworks exported for it, 41,942
+//           records; six error reports' sizes fit it, one of them from a file Vectorworks 2017
+//           saved): u64 sizes, a 0x48-byte header, which is the 2018+ header to the end of its
+//           GUID, without the 8 bytes after it.
 //   wide    u64 sizes and the whole 0x50-byte 2018+ header, uncompressed. Never seen in a file:
 //           kept so such a body passes through as it is.
 //
-//   2013          2016          2018+         field
-//   +0x00 u32     +0x00 u64     +0x00 u64     size
-//   +0x04 u32     +0x08 u64     +0x08 u64     next-sibling mark
-//   +0x08 u32     +0x10 u64     +0x10 u64     aux-list pointer
-//   +0x0c u8      +0x18 u8      +0x18 u8      (0 in all 8,602)
-//   +0x0d u8      +0x19 u8      +0x19 u8      object type
-//   +0x0e u16     +0x1a u16     +0x1a u16     name index
-//   +0x10 3 B     +0x1c 3 B     +0x1c 3 B     (zero in all but 2 of 8,602)
-//   +0x13 u8      +0x1f u8      +0x1f u8      flags
-//   +0x14 u32     +0x20 u32     +0x20 u32     class index
-//   +0x18 u16     +0x24 u16     +0x24 u16     by-class flags
-//   +0x1a u32     +0x26 u64     +0x26 u64     owner pointer
-//   +0x1e 10 B    +0x2e 10 B    +0x2e 10 B    copied across (what they hold is not known)
-//   (none)        (none)        +0x38 16 B    GUID: made here from the record's place and header
-//   +0x28 ...     +0x38 ...     +0x50 ...     body, converted per type
+// No 2014 or 2015 file has been seen; one opens when its body reads as one of these end to end.
+//
+//   2013          2016          2017          2018+         field
+//   +0x00 u32     +0x00 u64     +0x00 u64     +0x00 u64     size
+//   +0x04 u32     +0x08 u64     +0x08 u64     +0x08 u64     next-sibling mark
+//   +0x08 u32     +0x10 u64     +0x10 u64     +0x10 u64     aux-list pointer
+//   +0x0c u8      +0x18 u8      +0x18 u8      +0x18 u8      (0 in all 8,602)
+//   +0x0d u8      +0x19 u8      +0x19 u8      +0x19 u8      object type
+//   +0x0e u16     +0x1a u16     +0x1a u16     +0x1a u16     name index
+//   +0x10 3 B     +0x1c 3 B     +0x1c 3 B     +0x1c 3 B     (zero in all but 2 of 8,602)
+//   +0x13 u8      +0x1f u8      +0x1f u8      +0x1f u8      flags
+//   +0x14 u32     +0x20 u32     +0x20 u32     +0x20 u32     class index
+//   +0x18 u16     +0x24 u16     +0x24 u16     +0x24 u16     by-class flags
+//   +0x1a u32     +0x26 u64     +0x26 u64     +0x26 u64     owner pointer
+//   +0x1e 10 B    +0x2e 10 B    +0x2e 10 B    +0x2e 10 B    copied across (what they hold is not known)
+//   (none)        (none)        +0x38 16 B    +0x38 16 B    GUID: made here where the record has none
+//   (none)        (none)        (none)        +0x48 8 B     zero
+//   +0x28 ...     +0x38 ...     +0x48 ...     +0x50 ...     body, converted per type
 //
 // A 2013 terminator's body is a u32 (later: a u64), so it is widened with zeros. A 2016 body is
 // first made a 2013 body (legacyMid.ts: its pointers narrowed), and a 2013 body a 2018+ one
-// (legacyDoc.ts, legacyShapes.ts). Records are made 2018+ records in memory; saving writes them as
-// Snappy chunks under a 2018+ header (legacyHeader).
+// (legacyDoc.ts, legacyShapes.ts); a 2017 body is made a 2018+ one directly (legacyLate.ts).
+// Records are made 2018+ records in memory; saving writes them as Snappy chunks under a 2018+
+// header (legacyHeader).
 //
 // Units: the settings block of these files keeps its length unit as three sizes and an 8-bit name
 // ("Feet & Inches"), not the UTF-16 fields settings.ts reads from 2018+ files, so the unit is told
 // by its sizes (unitsBySize), or else by looking for the unit names.
 
 import { blankHeader } from "./blank.ts";
-import { docBody } from "./legacyDoc.ts";
+import { docBody, nameEntries } from "./legacyDoc.ts";
+import { lateBody, lineTypeBodies } from "./legacyLate.ts";
 import { midBody, midDirect } from "./legacyMid.ts";
 import { shapeBody, shapeType } from "./legacyShapes.ts";
 import { setU32, setU64, u32, u64 } from "./bytes.ts";
@@ -46,6 +53,7 @@ import { LENGTH_UNITS, unitsBySize, unitsName, unitsPatch } from "./settings.ts"
 
 const NARROW_HEAD = 0x28;
 const MID_HEAD = 0x38;
+const LATE_HEAD = 0x48;
 const WIDE_HEAD = 0x50;
 const MARK = 0x05792ca4;
 const TERMINATOR = 0;
@@ -62,8 +70,9 @@ export type BodyConversion = Uint8Array | null | undefined;
 
 /**
  * The layouts a body can have that are not Snappy chunks, as its first bytes tell them apart:
- * narrow records (u32 sizes, Vectorworks 2013) or long ones (u64 sizes: 2014 to 2017's 0x38-byte
- * headers, or whole 2018+ headers, which only the records themselves tell apart, see longRecords).
+ * narrow records (u32 sizes, Vectorworks 2013) or long ones (u64 sizes: 2016's 0x38-byte headers,
+ * 2017's 0x48-byte ones or whole 2018+ headers, which only the records themselves tell apart, see
+ * longRecords).
  */
 export type LegacyLayout = "narrow" | "long";
 
@@ -93,11 +102,11 @@ export function legacyStart(first: Uint8Array): LegacyLayout | null {
 }
 
 /**
- * Which records a converted body held, by the first year measured: "2013" its narrow ones (2D
- * only comes in), "2016" the 0x38-byte headers of 2014 to 2017 (2D, extrudes and sweeps), "2018"
- * whole 2018+ records without compression (everything, as they are).
+ * Which records a converted body held, by the year they were measured in: "2013" its narrow ones
+ * (2D only comes in), "2016" 0x38-byte headers (2D, extrudes and sweeps), "2017" 0x48-byte headers
+ * (2D and 3D), "2018" whole 2018+ records without compression (everything, as they are).
  */
-export type LegacyKind = "2013" | "2016" | "2018";
+export type LegacyKind = "2013" | "2016" | "2017" | "2018";
 
 /**
  * The whole body as 2018+ records, when it is the layout `layout` from its first record to its
@@ -156,14 +165,28 @@ function cutRecords(layout: LegacyLayout, body: Uint8Array): Uint8Array[] | null
 }
 
 /**
- * A body of u64-sized records. A whole 2018+ header is 0x50 bytes, so a body holding any shorter
- * record (a list's terminator is 0x40 bytes under a 0x38-byte header, and every drawing has lists)
- * is 2014 to 2017's, converted; one holding none is 2018+ records as they are, uncompressed.
+ * The header length of a body of u64-sized records, from its first terminator: a terminator's
+ * body is a u64, so it is 8 bytes longer than the header (0x40, 0x50 or 0x58 bytes), and every
+ * drawing has lists. A body with no terminator goes by its shortest record. Null when the length
+ * is none of the three known.
+ */
+function longHead(recs: readonly Uint8Array[]): number | null {
+  const end = recs.find((r) => r[0x19] === TERMINATOR);
+  const head = end ? end.length - 8 : recs.reduce((least, r) => Math.min(least, r.length), WIDE_HEAD) < LATE_HEAD ? MID_HEAD : recs.some((r) => r.length < WIDE_HEAD) ? LATE_HEAD : WIDE_HEAD;
+  return head === MID_HEAD || head === LATE_HEAD || head === WIDE_HEAD ? head : null;
+}
+
+/**
+ * A body of u64-sized records: 2016's (0x38-byte headers) or 2017's (0x48), converted, or whole
+ * 2018+ records as they are, uncompressed (0x50). Null when its headers are none of those, or a
+ * record is shorter than its header.
  */
 function longRecords(body: Uint8Array): { records: Uint8Array[]; kind: LegacyKind } | null {
   const recs = cutRecords("long", body);
-  if (!recs) return null;
-  if (recs.some((r) => r.length < WIDE_HEAD)) return { records: convert(MID, recs), kind: "2016" };
+  const head = recs && longHead(recs);
+  if (!recs || head === null || recs.some((r) => r.length < head)) return null;
+  if (head === MID_HEAD) return { records: convert(MID, recs), kind: "2016" };
+  if (head === LATE_HEAD) return { records: convert(LATE, recs), kind: "2017" };
   return { records: recs.map((r) => r.slice()), kind: "2018" };
 }
 
@@ -176,13 +199,30 @@ interface OldLayout {
   owner(rec: Uint8Array): number | bigint;
   /** whether the record's next mark is 0 (the last of its list's aux part, or a terminator) */
   last(rec: Uint8Array): boolean;
-  /** the record's body as a 2013 body; null to leave the record out with what it holds */
-  body(type: number, rec: Uint8Array): Uint8Array | null;
-  /** the record's 2018+ body, for a type this layout converts itself and the 2013 converters leave out; undefined for the rest */
-  direct?(type: number, rec: Uint8Array): Uint8Array | undefined;
+  /**
+   * the converter for one drawing's records, made once from all of them: it gives a record's 2018+
+   * body, null to leave the record out with what it holds, undefined for a type not converted
+   */
+  reader(recs: readonly Uint8Array[]): (type: number, rec: Uint8Array) => BodyConversion;
+  /** types not converted whose bodies are kept as they are, whether they hold others or not */
+  readonly same: ReadonlySet<number>;
+  /** types not converted that are left out with what they hold */
+  readonly leftOut: ReadonlySet<number>;
   /** the record's header over `body` (its 2018+ body) as a 2018+ record; `index` is its place in the stream */
   widen(rec: Uint8Array, index: number, body: Uint8Array): Uint8Array;
 }
+
+/** A 2013 body's 2018+ body, by the document's converter or else the shapes'. */
+function from2013(type: number, old: Uint8Array): BodyConversion {
+  const doc = docBody(type, old);
+  return doc !== undefined ? doc : shapeBody(type, old);
+}
+
+/** Types whose 2013 and 2016 bodies are read as they are: aux data (tagged dictionaries), the symbol library and its folders (Rodeo reads only their names and what they hold). */
+const SAME_BODY: ReadonlySet<number> = new Set([76, 54, 92]);
+/** Types neither 2013 converter takes that Rodeo reads (worksheets, textures, preview images, wall styles): left out with what they hold. */
+const LEFT_OUT: ReadonlySet<number> = new Set([18, 97, 119, 127]);
+const NONE: ReadonlySet<number> = new Set();
 
 /** Vectorworks 2013 records. */
 const NARROW: OldLayout = {
@@ -190,38 +230,83 @@ const NARROW: OldLayout = {
   type: (rec) => rec[0x0d],
   owner: (rec) => u32(rec, 0x1a),
   last: (rec) => u32(rec, 0x04) === 0,
-  body: (_type, rec) => rec.subarray(NARROW_HEAD),
+  reader: () => (type, rec) => from2013(type, rec.subarray(NARROW_HEAD)),
+  same: SAME_BODY,
+  leftOut: LEFT_OUT,
   widen,
 };
 
-/** Vectorworks 2014 to 2017 records (measured on 2016 files). */
+/**
+ * The 2018+ bodies of the line types (96) of a drawing of u64-sized records under `head`-byte
+ * headers, by their records (legacyLate.ts lineTypeBodies): the names come from its name table.
+ */
+function lineTypes(head: number, recs: readonly Uint8Array[]): Map<Uint8Array, Uint8Array> {
+  const out = new Map<Uint8Array, Uint8Array>();
+  const mine = recs.filter((r) => r[0x19] === 96 || r[0x19] === 30);
+  if (!mine.some((r) => r[0x19] === 96)) return out;
+  const table = recs.find((r) => r[0x19] === 55);
+  const names = new Map<number, string>();
+  if (table) for (const e of nameEntries(table.subarray(head))) names.set(e.index, e.name);
+  const older = mine.map((r) => ({ type: r[0x19], name: r[0x1a] | (r[0x1b] << 8), body: r.subarray(head) }));
+  const bodies = lineTypeBodies(older, names);
+  older.forEach((o, i) => {
+    const made = bodies.get(o);
+    if (made) out.set(mine[i], made);
+  });
+  return out;
+}
+
+/** Vectorworks 2016 records: an extrude or sweep is made 2018+'s directly, the rest by way of their 2013 bodies. */
 const MID: OldLayout = {
   head: MID_HEAD,
   type: (rec) => rec[0x19],
   owner: (rec) => u64(rec, 0x26),
   last: (rec) => u64(rec, 0x08) === 0n,
-  body: (type, rec) => midBody(type, rec.subarray(MID_HEAD)),
-  direct: (type, rec) => midDirect(type, rec.subarray(MID_HEAD)),
-  widen: lengthen,
+  reader: (recs) => {
+    const lines = lineTypes(MID_HEAD, recs);
+    return (type, rec) => {
+      const line = lines.get(rec);
+      if (line) return line;
+      const body = rec.subarray(MID_HEAD);
+      const direct = midDirect(type, body);
+      if (direct !== undefined) return direct;
+      const old = midBody(type, body);
+      return old === null ? null : from2013(type, old);
+    };
+  },
+  same: SAME_BODY,
+  leftOut: LEFT_OUT,
+  widen: (rec, index, body) => lengthen(MID_HEAD, rec, index, body),
 };
 
-/** Types whose older bodies are read as they are: aux data (tagged dictionaries), the symbol library and its folders (Rodeo reads only their names and what they hold). */
-const SAME_BODY = new Set([76, 54, 92]);
-/** Types neither converter takes that Rodeo reads (worksheets, textures, preview images, wall styles): left out with what they hold. */
-const LEFT_OUT = new Set([18, 97, 119, 127]);
+/** Vectorworks 2017 records: legacyLate.ts names every type it keeps, converts or leaves out. */
+const LATE: OldLayout = {
+  head: LATE_HEAD,
+  type: (rec) => rec[0x19],
+  owner: (rec) => u64(rec, 0x26),
+  last: (rec) => u64(rec, 0x08) === 0n,
+  reader: (recs) => {
+    const lines = lineTypes(LATE_HEAD, recs);
+    return (type, rec) => lines.get(rec) ?? lateBody(type, rec.subarray(LATE_HEAD));
+  },
+  same: NONE,
+  leftOut: NONE,
+  widen: (rec, index, body) => lengthen(LATE_HEAD, rec, index, body),
+};
 
 /**
- * The older records `recs` as 2018+ records, each body converted by legacyDoc.ts or legacyShapes.ts
- * from its 2013 form. A record they leave out (null) or of a LEFT_OUT type is dropped with
- * everything under it; one of a type neither converts is kept as it is when SAME_BODY names it or
- * it holds others (Rodeo reads such containers only for what they hold), else dropped, so no older
- * body is read as a 2018+ one where Rodeo reads it. When a dropped record closed its list's aux
+ * The older records `recs` as 2018+ records, each body converted by its layout. A record left out
+ * (null), or of a type the layout leaves out, is dropped with everything under it; one of a type
+ * not converted is kept as it is when the layout says its body is the same or it holds others
+ * (Rodeo reads such containers only for what they hold), else dropped, so no older body is read as
+ * a 2018+ one where Rodeo reads it. When a dropped record closed its list's aux
  * part (next mark 0), the record before it in the same list takes the 0. The tree is walked as
  * records.ts buildTree walks it, from the owner pointers.
  */
 function convert(layout: OldLayout, recs: Uint8Array[]): Uint8Array[] {
   const out: Uint8Array[] = [];
   const stack: { owner: number | bigint; last: Uint8Array | null }[] = [];
+  const body = layout.reader(recs);
   /** while a dropped record's subtree is being skipped, the depth of the list that record was in */
   let skipping = 0;
   for (let i = 0; i < recs.length; i++) {
@@ -247,16 +332,9 @@ function convert(layout: OldLayout, recs: Uint8Array[]): Uint8Array[] {
     const parent = nextOwner !== null && type !== TERMINATOR && !stack.some((e) => e.owner === nextOwner);
     const own = rec.subarray(layout.head);
     let made: BodyConversion = own;
-    const direct = type === TERMINATOR ? undefined : layout.direct?.(type, rec);
-    if (direct !== undefined) made = direct;
-    else if (type !== TERMINATOR) {
-      const old = layout.body(type, rec);
-      if (old === null) made = null;
-      else {
-        const doc = docBody(type, old);
-        made = doc !== undefined ? doc : shapeBody(type, old);
-        if (made === undefined) made = LEFT_OUT.has(type) ? null : SAME_BODY.has(type) || parent ? own : null;
-      }
+    if (type !== TERMINATOR) {
+      made = body(type, rec);
+      if (made === undefined) made = layout.leftOut.has(type) ? null : layout.same.has(type) || parent ? own : null;
     }
     if (made == null) {
       if (layout.last(rec) && list.last) setU64(list.last, 0x08, 0n);
@@ -294,14 +372,15 @@ function widen(rec: Uint8Array, index: number, body: Uint8Array): Uint8Array {
 }
 
 /**
- * A 2014 to 2017 record's header over `body` (its 2018+ body) as a 2018+ record: its 0x38 bytes
- * are the 2018+ header's first 0x38, so only the size changes and the GUID is made.
+ * A 2016 or 2017 record's header (`head` bytes: 0x38 or 0x48) over `body` (its 2018+ body) as a
+ * 2018+ record: the header's bytes are the 2018+ header's first, so only the size changes. A 2016
+ * record has no GUID, so one is made; a 2017 record keeps its own.
  */
-function lengthen(rec: Uint8Array, index: number, body: Uint8Array): Uint8Array {
+function lengthen(head: number, rec: Uint8Array, index: number, body: Uint8Array): Uint8Array {
   const out = new Uint8Array(WIDE_HEAD + body.length);
-  out.set(rec.subarray(0, MID_HEAD), 0);
+  out.set(rec.subarray(0, head), 0);
   setU64(out, 0x00, BigInt(out.length));
-  out.set(guidOf(index, rec.subarray(0, MID_HEAD)), 0x38);
+  if (head < LATE_HEAD) out.set(guidOf(index, rec.subarray(0, head)), 0x38);
   out.set(body, WIDE_HEAD);
   return out;
 }
@@ -359,8 +438,9 @@ export function savedYear(savedWith: string): number | null {
 
 /**
  * The message for a file that can't be read, when it was saved before 2013 (Rodeo reads none of
- * those) or in 2014 to 2017 (Rodeo reads the layout measured in 2016 files; one that still fails is
- * some other). Null for the other years, whose errors are the reader's own.
+ * those) or in 2014 to 2017 (Rodeo reads the layouts measured in 2016 files and in the 2017
+ * format; one that still fails is some other). Null for the other years, whose errors are the
+ * reader's own.
  */
 export function unreadableMessage(savedWith: string): string | null {
   const year = savedYear(savedWith);

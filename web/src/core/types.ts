@@ -587,10 +587,10 @@ export interface DocumentInfo {
   units: string;
   /**
    * the records a file from before Vectorworks 2018 held, when it came in converted to the current
-   * format (legacy.ts): "2013" (its 2D came in), "2016" (2014 to 2017: its 2D, extrudes and sweeps)
-   * or "2018" (current records without compression: everything); null for a file read as it is
+   * format (legacy.ts): "2013" (its 2D came in), "2016" (its 2D, extrudes and sweeps), "2017" (its
+   * 2D and 3D) or "2018" (current records without compression: everything); null for a file read as it is
    */
-  converted: "2013" | "2016" | "2018" | null;
+  converted: "2013" | "2016" | "2017" | "2018" | null;
 }
 
 export type ChangeKind = "objects" | "layers" | "classes" | "all";

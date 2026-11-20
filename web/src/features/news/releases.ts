@@ -23,13 +23,15 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 export const RELEASES: readonly Release[] = [
   release(
     "2026-11-20T12:03:00Z",
-    "vectorworks-2014-2017",
-    "Vectorworks 2014 to 2017 drawings open",
-    `Files saved by Vectorworks 2014 to 2017 open, where Rodeo refused them and asked for a copy saved from 2018 or newer, or opened them empty.
-- Their 2D comes in: lines, polygons, polylines, symbols, lighting and other plug-in objects as drawn, layers and classes, in the file's units.
-- Extrudes and sweeps come in as 3D. Other 3D objects, images, worksheets and textures aren't read yet and are left out.
-- Saving writes a new file in the current Vectorworks format, so the original stays as it was. That holds for a file a newer Vectorworks exported for an older version, too.
-- This is checked on files saved by Vectorworks 2016. A 2014, 2015 or 2017 file that is laid out another way is still refused, and the message says its year and why.`,
+    "vectorworks-2016-2017",
+    "Vectorworks 2016 and 2017 drawings open",
+    `Files in the Vectorworks 2016 and 2017 formats open, where Rodeo refused them and asked for a copy saved from 2018 or newer, or opened them empty.
+- Vectorworks 2017: the whole drawing comes in, 2D and 3D: lines, shapes, text, dimensions, dashed lines, groups, plug-in objects as drawn, meshes, extrudes and solids, layers, sheets with their viewports, and classes.
+- That includes a file a newer Vectorworks exported for 2017.
+- Vectorworks 2016: lines, polygons, polylines, symbols, plug-in objects as drawn, layers and classes come in, and extrudes and sweeps in 3D.
+- Images, worksheets, textures and the data attached to objects aren't read yet from either.
+- Saving writes a new file in the current Vectorworks format, so the original stays as it was.
+- Files saved by Vectorworks 2014 and 2015 haven't been tested. One that is laid out another way is still refused, and the message says its year and why.`,
     "plan3d",
   ),
   release(

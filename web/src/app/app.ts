@@ -1799,8 +1799,8 @@ export class App {
       done();
       // a file in a layout from before Vectorworks 2018 opens converted to the current format: it keeps
       // no file handle, so saving asks where to write and the original stays as Vectorworks wrote it.
-      // The reader says so, not the saved-with version: such files have come in under versions that
-      // name no year before 2018 (exports for an older version, by their names).
+      // The reader says so, not the saved-with version: a file a newer Vectorworks exported for an
+      // older one names no version in its header ("VectorWorks 191" where a saved file has two).
       const converted = session.doc.info.converted;
       const year = savedYear(session.doc.info.savedWith);
       const named = year !== null && year < 2018;
@@ -1808,6 +1808,8 @@ export class App {
       if (file.handle) void rememberRecent(file.handle);
       if (converted === "2013" && named) toast(`${baseName(file.name)} is from Vectorworks ${year}: its 2D came in, its 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.`, "info");
       else if (converted === "2016" && named) toast(`${baseName(file.name)} is from Vectorworks ${year}: its 2D, extrudes and sweeps came in, its other 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.`, "info");
+      // the 2017 format, also when a newer Vectorworks exported for it (its header then names no year)
+      else if (converted === "2017") toast(`${baseName(file.name)} is a Vectorworks ${named ? year : 2017} file: its 2D and 3D came in, its images, worksheets, textures and the data attached to objects aren't read yet. Saving makes a new file in the current format, so the original stays as it is.`, "info");
       else if (converted === "2013" || converted === "2016") toast(`${baseName(file.name)} is in an older Vectorworks format: its 2D came in, most of its 3D objects and its images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.`, "info");
       return "open";
     } catch (err) {

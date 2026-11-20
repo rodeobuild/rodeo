@@ -160,7 +160,7 @@ for (const [type, size, what] of [
   check(midBody(10, new Uint8Array(0x40)) === null, "a text shorter than its fixed part is left out");
 }
 
-// 6. viewports: taken when, with the pointers narrowed, the layer and class list sits at 2013's place and ends the record
+// 6. viewports: taken when the layer and class list sits at 2013's place and ends the record, as they are or with two pointers narrowed
 {
   const layers = 2, classes = 1;
   const b13 = new Uint8Array(0x28c - 0x28 + 6 + 8 * (layers + classes));
@@ -172,7 +172,7 @@ for (const [type, size, what] of [
   check(back !== null && same(back, b13), "a viewport with its pointers grown comes back as its 2013 body");
   const lists = viewportLists(record(shapeBody(122, back!) as Uint8Array));
   check(!!lists && lists.layers.map((e) => e.name).join() === "5,6" && lists.classes.map((e) => e.name).join() === "9", "its layer and class list reads back (layers 5 and 6, class 9)");
-  check(midBody(122, b13) === null, "a viewport of 2013's own size is left out (the list is not where it must be)");
+  check(midBody(122, b13) === b13, "a viewport laid out as 2013's passes as it is");
   const moved = new Uint8Array(grown(b13).length + 8);
   moved.set(grown(b13), 0);
   check(midBody(122, moved) === null, "a viewport whose list doesn't end the record is left out");

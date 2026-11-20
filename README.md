@@ -4,7 +4,7 @@ Rodeo is a free, open-source drawing and 3D modelling app that runs in the brows
 
 **Use it at [rodeo.build](https://rodeo.build).** No account is needed, and the files you open stay on your computer unless you save them to the cloud.
 
-**Status: v0.2, early.** It reads VW 2018+ files (checked on Vectorworks 2022 and on the 2023, 2024, 2025 and 2026 releases of a public demo project) and VW 2013 to 2017 files, mostly their 2D (checked on one 2013 file and three 2016 files), draws 2D geometry, sheets and a textured 3D model, and edits layers, classes and 2D objects. Files it writes re-read cleanly in both implementations, but **have not yet been opened in Vectorworks**. Keep originals and check edited copies in Vectorworks or the free Vectorworks Viewer before relying on them.
+**Status: v0.2, early.** It reads VW 2018+ files (checked on Vectorworks 2022 and on the 2023, 2024, 2025 and 2026 releases of a public demo project) and files in the VW 2013, 2016 and 2017 formats (checked on one 2013 file, three 2016 files and one drawing exported for 2017), draws 2D geometry, sheets and a textured 3D model, and edits layers, classes and 2D objects. Files it writes re-read cleanly in both implementations, but **have not yet been opened in Vectorworks**. Keep originals and check edited copies in Vectorworks or the free Vectorworks Viewer before relying on them.
 
 ## Using Rodeo
 

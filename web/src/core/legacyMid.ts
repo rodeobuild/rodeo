@@ -1,6 +1,6 @@
-// Bodies of the records Vectorworks wrote between 2013 and 2018 (measured on three files saved by
-// Vectorworks 2016, FORMAT.md §1.2) as Vectorworks 2013 bodies, which legacyDoc.ts and
-// legacyShapes.ts then make 2018+ ones. legacy.ts calls midBody for every such record but terminators.
+// Bodies of the records of Vectorworks 2016 files (three measured, FORMAT.md §1.2) as Vectorworks
+// 2013 bodies, which legacyDoc.ts and legacyShapes.ts then make 2018+ ones. legacy.ts calls
+// midBody for every such record but terminators. (The 2017 format is another: legacyLate.ts.)
 //
 // These bodies are the 2013 bodies with their pointers grown from 32 to 64 bits:
 //
@@ -20,10 +20,11 @@
 // 2018+ records less the material slot, so they come in as 3D (midDirect); the 2013 converters
 // leave them out. The other 3D types stay left out.
 //
-// No 2014 to 2017 file seen holds a rectangle, oval, arc, rounded rectangle, text, dimension or
-// viewport. Those are taken as 2013's only where the record itself says the layout fits (its size
-// for the fixed-size shapes, its characters for a text, its layer and class list for a viewport)
-// and are left out otherwise, so none is drawn from a layout that was never measured.
+// No 2016 file seen holds a rectangle, oval, arc, rounded rectangle, text, dimension or viewport.
+// Those are taken as 2013's only where the record itself says the layout fits (its size for the
+// fixed-size shapes, its characters for a text, its layer and class list for a viewport) and are
+// left out otherwise, so none is drawn from a layout that was never measured. (In the 2017 format
+// a rectangle and an arc do have 2013's sizes; its text and viewports are laid out as 2018+'s.)
 
 import { i16, setI16, u16 } from "./bytes.ts";
 
@@ -88,7 +89,11 @@ const TEXT_FIXED = 0xb4;
 
 /**
  * A text, when it reads as 2013's: its count is at least one, and its last 2 × count bytes are
- * UTF-16 characters (printable, or a tab or line break), as 2013 texts end. Null otherwise.
+ * UTF-16 characters (printable, or a tab or line break), as 2013 texts end. Null otherwise. The
+ * 2013 converter then takes it as it is when its one-line layout fits, and otherwise rebuilds it
+ * from its box and characters, which sit at these places in the 2017 format's texts too (those
+ * have 20 bytes more after +0xb4): so a 2016 text laid out as either comes in, the second with a
+ * rebuilt size. Telling the two apart by length alone would misread 10 of the 2013 file's 644.
  */
 function textBody(body: Uint8Array): Uint8Array | null {
   if (body.length < TEXT_FIXED) return null;
@@ -105,20 +110,28 @@ function textBody(body: Uint8Array): Uint8Array | null {
 /** where a 2013 viewport's layer and class list starts in its body (record +0x28c): u16 0, u16 layers, u16 classes, 8 bytes each */
 const VIEW_LIST_2013 = 0x28c - 0x28;
 
-/**
- * A viewport, when it reads as 2013's with the pointers grown: the layer and class list is then
- * at 2013's place and runs exactly to the record's end. Null otherwise.
- */
-function viewportBody(body: Uint8Array): Uint8Array | null {
-  if (body.length < PAIR_AT + PAIR_HERE) return null;
-  const made = narrowPair(body);
+/** Whether `body` holds a viewport's layer and class list at 2013's place, running exactly to its end. */
+function listEnds(body: Uint8Array): boolean {
   const at = VIEW_LIST_2013;
-  if (at + 6 > made.length || u16(made, at) !== 0) return null;
-  return at + 6 + 8 * (u16(made, at + 2) + u16(made, at + 4)) === made.length ? made : null;
+  if (at + 6 > body.length || u16(body, at) !== 0) return false;
+  return at + 6 + 8 * (u16(body, at + 2) + u16(body, at + 4)) === body.length;
 }
 
 /**
- * The 2013 body (legacyDoc.ts and legacyShapes.ts read it) for a 2014 to 2017 record of type
+ * A viewport, when it reads as 2013's: the layer and class list is then at 2013's place and runs
+ * exactly to the record's end, in the body as it is (a viewport starts with its rotation, not with
+ * two pointers, and the 2017 format's viewports have 2013's length) or else with two pointers
+ * narrowed. Null otherwise.
+ */
+function viewportBody(body: Uint8Array): Uint8Array | null {
+  if (listEnds(body)) return body;
+  if (body.length < PAIR_AT + PAIR_HERE) return null;
+  const made = narrowPair(body);
+  return listEnds(made) ? made : null;
+}
+
+/**
+ * The 2013 body (legacyDoc.ts and legacyShapes.ts read it) for a 2016 record of type
  * `type` whose body (from its +0x38) is `body`; null to leave the record out, with what it holds.
  * A layer or class of a size never measured throws, which refuses the file.
  */

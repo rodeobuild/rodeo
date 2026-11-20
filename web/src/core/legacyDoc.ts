@@ -73,6 +73,9 @@ const NT_FIRST = 0x50;
  */
 const NT_MAX_BLOCK = 64;
 
+/** an entry when the table is laid out whole: a u32 index, then a 64-byte slot holding the name's length byte and its characters */
+const NT_ENTRY = 68;
+
 interface NameStart {
   at: number;
   index: number;
@@ -86,9 +89,18 @@ interface NameStart {
  * printable or 8-bit bytes. The entries are the one run of starts that begins at +0x50, holds
  * exactly the count, and runs to the end of the body with each block at most NT_MAX_BLOCK bytes;
  * with more than one such run, or none, the table is refused.
+ *
+ * A table whose body is exactly its count of 68-byte entries is read as those: a u32 index and a
+ * 64-byte slot (the length byte, the name, and whatever the slot held before). The 2013 file's
+ * table (419 entries), three 2016 files' and a 2017-format file's (180) are all that size, and
+ * for each this gives the names the search finds; the search stays for a table of any other size.
  */
 export function nameEntries(body: Uint8Array): { index: number; name: string }[] {
   const count = u32(body, NT_COUNT);
+  if (count > 0 && body.length === NT_FIRST + NT_ENTRY * count) {
+    const whole = wholeEntries(body, count);
+    if (whole) return whole;
+  }
   const starts: NameStart[] = [];
   for (let q = NT_FIRST; q + 5 <= body.length; q++) {
     const index = u32(body, q);
@@ -139,7 +151,21 @@ export function nameEntries(body: Uint8Array): { index: number; name: string }[]
   return out;
 }
 
-function nameTableBody(body: Uint8Array): Uint8Array {
+/** The entries of a table of `count` 68-byte entries, or null when one doesn't read as an index and a name. */
+function wholeEntries(body: Uint8Array, count: number): { index: number; name: string }[] | null {
+  const out: { index: number; name: string }[] = [];
+  for (let k = 0; k < count; k++) {
+    const at = NT_FIRST + NT_ENTRY * k;
+    const index = u32(body, at);
+    const len = body[at + 4];
+    if (index < 1 || index > 0xffff || len < 1 || len > NT_ENTRY - 5) return null;
+    out.push({ index, name: macRoman(body.subarray(at + 5, at + 5 + len)) });
+  }
+  return out;
+}
+
+/** A 2013 name table's body as the 2018+ one: the same first 8 bytes, the count, then each entry as a u32 index, a u32 byte length and UTF-16. */
+export function nameTableBody(body: Uint8Array): Uint8Array {
   const entries = nameEntries(body);
   let size = 0x0c;
   for (const e of entries) size += 8 + 2 * e.name.length;
