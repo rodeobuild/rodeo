@@ -49,7 +49,7 @@ import { attempt, moveObjects, setActiveClass, setSelection } from "../commands.
 import { dimensionValue, measureShape } from "../dimension.ts";
 import { showTab, tabbed } from "../dock.ts";
 import { h } from "../dom.ts";
-import { pluginDriver, type PluginDriver, type PluginWidget } from "../ext.ts";
+import { infoSections, pluginDriver, type PluginDriver, type PluginWidget } from "../ext.ts";
 import { bboxOfPoints, clamp } from "../geom.ts";
 import { MONTHS, dayOfYear, hourLabel, readHour } from "../heliodon.ts";
 import { TAB_ICON } from "../icons.ts";
@@ -372,6 +372,8 @@ function singlePanel(doc: VwxDocument, o: ObjectInfo): { shape: HTMLElement; dat
   // a plug-in's parameters belong on Shape, as in Vectorworks; attached records on Data
   const records = doc.records(o.id);
   const primary = records.find((r) => r.parametric);
+  // what features add for this object (a Marionette node's ports and script)
+  shape.append(...infoSections(doc, o));
   if (primary) shape.append(recordPanel(doc, o.id, primary, true));
   const others = records.filter((r) => r !== primary);
   const data = h("div", { cls: "info" }, head());

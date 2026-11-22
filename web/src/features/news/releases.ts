@@ -83,6 +83,32 @@ export const RELEASES: readonly Release[] = [
     "paint",
   ),
   release(
+    "2026-11-23T00:00:00Z",
+    "2026-11-22T12:04:00Z",
+    "marionette-and-drawing-scripts",
+    "Marionette networks and a drawing's own scripts, to read",
+    `Rodeo now reads two kinds of script a Vectorworks drawing holds.
+- Select a Marionette node or Marionette object: Object Info shows its ports and typed values, and View Script… opens its Python script. Tools › Plug-ins › Marionette Nodes… lists a drawing's networks.
+- Script palettes kept in a drawing show in Window › Script Palettes, marked as kept in the drawing. Double-click a script to run it, or copy it to your own palettes to edit it.
+- Marionette networks aren't run yet, so a Marionette object stays as Vectorworks last drew it.
+- Scripts in a drawing are read only, and Rodeo has seen just one such drawing so far, with a Python script.`,
+    "code",
+  ),
+  release(
+    "2026-11-22T12:03:00Z",
+    "more-vectorworks-plug-ins",
+    "Many more Vectorworks plug-ins and scripts run",
+    `Rodeo knows more than twice as many of Vectorworks' script calls: about 1,160, up from 490. Of 141 public plug-ins and scripts we tried that don't check for a Vectorworks licence, 35 ran to the end before and 89 do now.
+- Path objects: draw one by clicking its corners with the Plug-in Insertion tool, and move its corners and control points with Reshape.
+- Tools that handle their own events get a bar with their modes and take their clicks in the drawing.
+- A plug-in keeps the files installed with it: its own Python packages, settings files, Vectorscript include files and the strings in its .vwr.
+- Dialogs gain list browsers, sliders, tree controls and symbol menus, and follow each keystroke.
+- Scripts can model in 3D (extrudes, sweeps, solids), draw walls, make record formats, symbols and worksheets, read a file you choose and hand files back as downloads.
+- Vectorscript: WITH, lengths written as 1.75in or 300mm, and every call's by-reference parameters.
+- Still out of reach: plug-ins whose script is encrypted, plug-ins that check a Vectorworks licence, objects set into walls, and about two thirds of Vectorworks' calls. A plug-in that needs one says which.`,
+    "plug",
+  ),
+  release(
     "2026-11-23T12:00:00Z",
     "vectorworks-2018-2019",
     "Vectorworks 2018 and 2019 drawings open",

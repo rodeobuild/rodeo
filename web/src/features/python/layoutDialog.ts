@@ -38,6 +38,96 @@ interface Item {
   readonly right?: number;
   readonly indent?: number;
   readonly space?: number;
+  /** a slider's largest value, and whether it reports each move while dragged */
+  readonly max?: number;
+  readonly live?: boolean;
+  /** a frame's size in pixels, when the script gave one */
+  readonly pw?: number | null;
+  readonly ph?: number | null;
+  /** an edit field's hint text, and whether it hides its text */
+  readonly prompt?: string;
+  readonly pwd?: boolean;
+  /** a static text's look: its justification, italic, underline, size class and colour */
+  readonly just?: string;
+  readonly italic?: boolean;
+  readonly underline?: boolean;
+  readonly tsize?: string;
+  readonly color?: readonly number[];
+  readonly clickable?: boolean;
+  /** a push button: a toggle (its value is pressed), and whether it shows an image (labelled by its tip) */
+  readonly toggle?: boolean;
+  readonly image?: boolean | string;
+  /** a tab control that shows its panes without a strip of tabs (a swap control) */
+  readonly swap?: boolean;
+  /** a list browser's columns, rows, header and flags; its sort; the check marks by "row,column" */
+  readonly cols?: readonly LbCol[];
+  readonly rows?: readonly LbRow[];
+  readonly sort?: readonly [number, boolean] | null;
+  readonly sorting?: boolean;
+  readonly single?: boolean;
+  readonly colLines?: boolean;
+  readonly hdr?: boolean;
+  readonly checks?: Record<string, boolean>;
+  /** a tree control's items as [id, text, parent (0 at the top), has children], depth first, and its open items */
+  readonly tree?: readonly (readonly [number, string, number, boolean])[];
+  readonly open?: readonly number[];
+}
+
+/** A list browser's column as the script set it. */
+interface LbCol {
+  readonly header: string;
+  readonly width: number;
+  /** 1 static text, 2 radio (one row on per column), 3 multi state (a check box), others drawn as text */
+  readonly ctype: number;
+  /** justification: 1 left, 2 centre, 3 right */
+  readonly hjust: number;
+  readonly tip?: string;
+}
+
+/** A list browser's cell: its text, its check mark (for a check or radio column) and its look. */
+interface LbCell {
+  readonly text?: string;
+  readonly check?: number;
+  readonly just?: number | null;
+  readonly style?: number;
+  readonly tcolor?: readonly number[] | null;
+  readonly fill?: readonly number[] | null;
+}
+
+interface LbRow {
+  readonly cells: readonly LbCell[];
+}
+
+/** The event a list browser sends with its click or key: a kMessage constant, the row and the column (-1 for none). */
+interface LbEvent {
+  readonly type: number;
+  readonly row: number;
+  readonly col: number;
+}
+
+const JUSTIFY = ["left", "left", "center", "right"];
+
+const rgb = (c: readonly number[]): string => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+
+/** A static text's classes: its weight, slant, underline, size class and justification. */
+function staticClasses(i: Item): string {
+  return [
+    "ld-text",
+    i.bold ? "ld-bold" : "",
+    i.italic ? "ld-italic" : "",
+    i.underline ? "ld-underline" : "",
+    i.tsize ? `ld-${i.tsize}` : "",
+    i.just ? `ld-just-${i.just}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** The check marks of a list browser's rows by "row,column". */
+function checkMarks(rows: readonly LbRow[]): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  rows.forEach((r, n) => r.cells.forEach((c, k) => (out[`${n},${k}`] = c.check === 1)));
+  return out;
 }
 
 interface Spec {
@@ -55,10 +145,25 @@ interface DialogEvent {
   readonly item: number;
   readonly data: number;
   readonly values: Record<string, Values>;
+  /** the control holding the focus when the event came, or null */
+  readonly focus: number | null;
 }
 
 const OK = 1;
 const CANCEL = 2;
+/** a list browser's events (vs.GetLBEventInfo's kMessage values) */
+const LB_SELECT = -4;
+const LB_CHECK = -2;
+const LB_DOUBLE = -5;
+const LB_SORT = -10;
+const LB_DELETE = -6;
+const LB_UP = -7;
+const LB_DOWN = -8;
+const LB_ENTER = -12;
+/** a row's height and a standard character's pixels in a list browser */
+const LB_ROW = 22;
+/** how long a typed field waits for the next key before its event is sent */
+const TYPING_MS = 150;
 const LENGTHS: ReadonlySet<number> = new Set([3, 4, 5]);
 /** a standard character's width, and a line of spacing, in px */
 const STD_CHAR = 7;
@@ -99,9 +204,11 @@ class LayoutDialog {
   /** each control's values as sent with the event the script is answering */
   private sent = new Map<number, Values>();
   /** events the script hasn't taken yet, each with its controls' values as sent */
-  private readonly queue: { event: DialogEvent; sent: Map<number, Values> }[] = [];
+  private readonly queue: { event: DialogEvent; sent: Map<number, Values>; typing: boolean }[] = [];
   private waiting: ((e: DialogEvent) => void) | null = null;
   private readonly returnFocus: HTMLElement | null;
+  /** the pending typing event of each typed field (see typed) */
+  private readonly timers = new Map<number, number>();
 
   constructor(spec: Spec) {
     this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -150,7 +257,10 @@ class LayoutDialog {
       if (!c) continue;
       c.el.hidden = !item.visible;
       for (const input of c.inputs) input.disabled = !item.enabled;
-      if (c.label && item.text !== undefined) c.label.textContent = item.text;
+      // a list or a tree has no inputs to disable: it dims instead
+      c.el.classList.toggle("ld-disabled", !item.enabled && c.el.matches(".ld-lb, .ld-tree"));
+      // an image button has no picture drawn, so its tooltip is its label
+      if (c.label && item.text !== undefined) c.label.textContent = item.image && !item.text ? (item.tip ?? "") : item.text;
       if (item.tip) c.el.title = item.tip;
       const sent = this.sent.get(item.id);
       if (c.write && (!sent || !same(this.state(item), sent))) c.write(item);
@@ -166,8 +276,33 @@ class LayoutDialog {
   }
 
   close(): void {
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
     this.backdrop.remove();
     this.returnFocus?.focus();
+  }
+
+  /**
+   * A typed field's event after a key: sent once the typing pauses (TYPING_MS), without the field
+   * losing the focus. Later keys in the pause restart the wait; a change or a button settles it first.
+   */
+  private typed(id: number): void {
+    this.settle(id);
+    this.timers.set(
+      id,
+      window.setTimeout(() => {
+        this.timers.delete(id);
+        this.fire(id, 0, true);
+      }, TYPING_MS),
+    );
+  }
+
+  /** Drops a typed field's pending event: the event that is about to be sent carries its text. */
+  private settle(id: number): void {
+    const t = this.timers.get(id);
+    if (t === undefined) return;
+    clearTimeout(t);
+    this.timers.delete(id);
   }
 
   /** An item's values as the script holds them, to compare with those sent. */
@@ -181,26 +316,43 @@ class LayoutDialog {
       case "popup":
       case "list":
         return { sel: [...(item.sel ?? [])], choices: [...(item.choices ?? [])] };
+      case "lb":
+        // what the table shows (its rows, columns and flags) is compared as a whole, so a sort or a new row redraws it
+        return {
+          sel: [...(item.sel ?? [])],
+          sort: item.sort ?? null,
+          checks: item.checks ?? checkMarks(item.rows ?? []),
+          shown: JSON.stringify([item.cols, item.rows, item.hdr, item.sorting, item.single, item.multi, item.lines, item.colLines]),
+        };
+      case "tree":
+        return { sel: [...(item.sel ?? [])], open: [...(item.open ?? [])].sort((a, b) => a - b), shown: JSON.stringify(item.tree ?? []) };
       default:
         return { value: item.value ?? null };
     }
   }
 
-  private fire(item: number, data: number): void {
+  private fire(item: number, data: number, typing = false): void {
+    // a button ends the dialog with what is typed now, so no typed event is left to follow it
+    if (item === OK || item === CANCEL) for (const id of [...this.timers.keys()]) this.settle(id);
     const values: Record<string, Values> = {};
     const sent = new Map<number, Values>();
+    let focus: number | null = null;
     for (const [id, c] of this.controls) {
+      if (focus === null && c.el.contains(document.activeElement)) focus = id;
       const v = c.read?.();
       if (!v) continue;
       values[id] = v;
       const it = this.items.get(id);
       if (it) sent.set(id, this.state({ ...it, ...v } as Item));
     }
-    const event: DialogEvent = { item, data, values };
+    const event: DialogEvent = { item, data, values, focus };
     const resolve = this.waiting;
     this.waiting = null;
     if (!resolve) {
-      this.queue.push({ event, sent });
+      // a typed field's events queue up behind a slow handler: only the latest text is still wanted
+      const last = this.queue[this.queue.length - 1];
+      if (typing && last?.typing && last.event.item === item) this.queue[this.queue.length - 1] = { event, sent, typing };
+      else this.queue.push({ event, sent, typing });
       return;
     }
     this.sent = sent;
@@ -245,20 +397,40 @@ class LayoutDialog {
     const change = (data = 0) => () => this.fire(item.id, data);
     switch (item.kind) {
       case "static": {
-        const el = h("span", { cls: item.bold ? "ld-text ld-bold" : "ld-text", text: item.text ?? "" });
+        const el = h("span", { text: item.text ?? "" });
+        // the look is set again with each update (a static text sends no value, so it is never compared)
+        const look = (i: Item): void => {
+          el.className = staticClasses(i);
+          el.style.color = i.color ? rgb(i.color) : "";
+        };
+        look(item);
         this.sized(el, item);
-        return { el, inputs: [], label: el };
+        el.addEventListener("click", () => {
+          if (this.items.get(item.id)?.clickable) this.fire(item.id, 0);
+        });
+        return { el, inputs: [], label: el, write: look };
       }
       case "edit": {
-        const el = (item.lines ?? 1) > 1 ? h("textarea", { cls: "menu-dialog-input ld-edit", attrs: { rows: String(item.lines) } }) : h("input", { cls: "menu-dialog-input ld-edit", attrs: { type: "text" } });
+        const el = (item.lines ?? 1) > 1 ? h("textarea", { cls: "menu-dialog-input ld-edit", attrs: { rows: String(item.lines) } }) : h("input", { cls: "menu-dialog-input ld-edit", attrs: { type: item.pwd ? "password" : "text" } });
+        if (item.prompt) el.placeholder = item.prompt;
         this.sized(el, item);
-        el.addEventListener("change", change());
+        el.addEventListener("change", () => {
+          this.settle(item.id);
+          this.fire(item.id, 0);
+        });
+        el.addEventListener("input", () => this.typed(item.id));
         return {
           el,
           inputs: [el],
           read: () => ({ text: el.value }),
           write: (i) => {
-            el.value = i.text ?? "";
+            const text = i.text ?? "";
+            if (el.value !== text) {
+              // the caret stays where it was, as far as the text still reaches it
+              const at = document.activeElement === el ? el.selectionStart : null;
+              el.value = text;
+              if (at !== null) el.setSelectionRange(Math.min(at, text.length), Math.min(at, text.length));
+            }
             el.readOnly = i.readonly === true;
           },
         };
@@ -267,7 +439,11 @@ class LayoutDialog {
       case "int": {
         const el = h("input", { cls: "menu-dialog-input", attrs: { type: "text" } });
         this.sized(el, item);
-        el.addEventListener("change", change());
+        el.addEventListener("change", () => {
+          this.settle(item.id);
+          this.fire(item.id, 0);
+        });
+        el.addEventListener("input", () => this.typed(item.id));
         const length = item.kind === "real" && LENGTHS.has(item.edit ?? 1);
         return {
           el,
@@ -311,9 +487,35 @@ class LayoutDialog {
       }
       case "button": {
         const el = h("button", { cls: "btn small", text: item.text ?? "", attrs: { type: "button" } });
-        el.addEventListener("click", change());
-        return { el, inputs: [el], label: el };
+        this.sized(el, item);
+        if (!item.toggle) {
+          el.addEventListener("click", change());
+          return { el, inputs: [el], label: el };
+        }
+        // a toggle keeps its pressed state as its value, which each click sends
+        let pressed = item.value === true;
+        const show = (): void => el.setAttribute("aria-pressed", String(pressed));
+        show();
+        el.addEventListener("click", () => {
+          pressed = !pressed;
+          show();
+          change()();
+        });
+        return {
+          el,
+          inputs: [el],
+          label: el,
+          read: () => ({ value: pressed }),
+          write: (i) => {
+            pressed = i.value === true;
+            show();
+          },
+        };
       }
+      case "lb":
+        return this.listBrowser(item);
+      case "tree":
+        return this.tree(item);
       case "popup":
       case "list": {
         const el = h("select", { cls: "menu-dialog-input ld-select" });
@@ -419,7 +621,8 @@ class LayoutDialog {
           }
           for (const [id, tab] of tabs) tab.setAttribute("aria-selected", String(id === current));
         };
-        const box = h("div", { cls: "ld-tabbed" }, strip);
+        // a swap control has no strip: the script switches its panes, and the user doesn't
+        const box = h("div", { cls: "ld-tabbed" }, ...(item.swap ? [] : [strip]));
         for (const id of item.panes ?? []) {
           const pane = this.items.get(id);
           const tab = h("button", { cls: "ld-tab", text: pane?.text ?? "", attrs: { type: "button", role: "tab" } });
@@ -429,7 +632,7 @@ class LayoutDialog {
             change(id)();
           });
           tabs.set(id, tab);
-          strip.append(tab);
+          if (!item.swap) strip.append(tab);
           const body = h("div", { cls: "ld-pane", attrs: { role: "tabpanel" } });
           const inner = pane?.first === null || pane?.first === undefined ? null : this.block(pane.first, seen, id);
           if (inner) body.append(inner);
@@ -439,7 +642,7 @@ class LayoutDialog {
         show();
         return {
           el: box,
-          inputs: [...tabs.values()],
+          inputs: item.swap ? [] : [...tabs.values()],
           read: () => ({ value: current }),
           write: (i) => {
             if (typeof i.value === "number" && panes.has(i.value)) current = i.value;
@@ -452,10 +655,254 @@ class LayoutDialog {
         this.sized(el, item);
         return { el, inputs: [] };
       }
+      case "slider": {
+        // a slider's events: each move while dragged when live, else its release
+        const el = h("input", { cls: "ld-slider-bar", attrs: { type: "range", min: "0", max: String(item.max ?? 0), step: "1" } });
+        const label = h("span", { text: item.text ?? "" });
+        el.addEventListener("change", () => {
+          this.settle(item.id);
+          this.fire(item.id, 0);
+        });
+        el.addEventListener("input", () => {
+          if (this.items.get(item.id)?.live) this.fire(item.id, 0, true);
+        });
+        return {
+          el: h("label", { cls: "ld-slider" }, label, el),
+          inputs: [el],
+          label,
+          read: () => ({ value: Number(el.value) }),
+          write: (i) => {
+            el.max = String(i.max ?? 0);
+            el.value = String(typeof i.value === "number" ? i.value : 0);
+          },
+        };
+      }
+      case "frame": {
+        // a picture, symbol, swatch or custom area: an empty framed box of the size the script gave
+        const el = h("span", { cls: "ld-frame", text: item.text ?? "" });
+        if (item.pw) el.style.width = `${item.pw}px`;
+        if (item.ph) el.style.height = `${item.ph}px`;
+        return { el, inputs: [], label: el };
+      }
       default:
         // an image from the plug-in's resources, which aren't read
         return { el: h("span", { cls: "ld-image" }), inputs: [] };
     }
+  }
+
+  /**
+   * A list browser: a header row over the rows. A click selects a row (shift extends the selection
+   * from the last row clicked, command or control toggles one, unless the list is single-line); a
+   * header click asks for a sort when sorting is on; a check or radio column toggles on click; a
+   * double click and the arrow, delete and enter keys send their events. Images, owner-drawn cells
+   * and typing into a cell aren't drawn.
+   */
+  private listBrowser(item: Item): Control {
+    let cols: readonly LbCol[] = item.cols ?? [];
+    let rows: readonly LbRow[] = item.rows ?? [];
+    let flags: Item = item;
+    let sel = new Set<number>(item.sel ?? []);
+    let anchor = sel.size ? Math.min(...sel) : 0;
+    let sortNow: readonly [number, boolean] | null = item.sort ?? null;
+    /** the sort the user asked for, sent with the next event */
+    let sortAsk: [number, boolean] | null = null;
+    let checks = checkMarks(rows);
+    let pending: LbEvent | null = null;
+    const head = h("div", { cls: "ld-lb-head" });
+    const body = h("div", { cls: "ld-lb-body", attrs: { tabindex: "0", role: "grid" } });
+    body.style.height = `${(item.lines ?? 8) * LB_ROW}px`;
+    const el = h("fieldset", { cls: "ld-lb" }, head, body);
+    const live = (): boolean => this.items.get(item.id)?.enabled !== false;
+    const width = (k: number): string => `${(cols[k]?.width ?? 10) * STD_CHAR + 12}px`;
+    const send = (data: number, event: LbEvent): void => {
+      if (!live()) return;
+      pending = event;
+      this.fire(item.id, data);
+    };
+    const paint = (): void => {
+      head.hidden = flags.hdr === false;
+      head.replaceChildren(
+        ...cols.map((c, k) => {
+          const arrow = sortAsk ?? sortNow;
+          const mark = arrow && arrow[0] === k ? (arrow[1] ? " ▲" : " ▼") : "";
+          const th = h("button", { cls: "ld-lb-th", text: `${c.header}${mark}`, attrs: { type: "button", title: c.tip || c.header } });
+          th.style.width = width(k);
+          th.style.textAlign = JUSTIFY[c.hjust] ?? "left";
+          th.addEventListener("click", () => {
+            if (!live() || !flags.sorting) return;
+            const next: [number, boolean] = sortNow && sortNow[0] === k ? [k, !sortNow[1]] : [k, true];
+            sortAsk = next;
+            send(k, { type: LB_SORT, row: -1, col: k });
+          });
+          return th;
+        }),
+      );
+      body.replaceChildren(
+        ...rows.map((r, n) => {
+          const tr = h("div", { cls: sel.has(n) ? "ld-lb-tr ld-sel" : "ld-lb-tr", attrs: { role: "row", "data-row": String(n), "aria-selected": String(sel.has(n)) } });
+          r.cells.forEach((cell, k) => {
+            const col = cols[k];
+            if (!col) return;
+            const td = h("span", { cls: "ld-lb-td", attrs: { role: "gridcell", "data-col": String(k) } });
+            td.style.width = width(k);
+            td.style.textAlign = JUSTIFY[cell.just ?? col.hjust] ?? "left";
+            const style = cell.style ?? 0;
+            td.classList.toggle("ld-bold", (style & 1) !== 0);
+            td.classList.toggle("ld-italic", (style & 2) !== 0);
+            td.classList.toggle("ld-underline", (style & 4) !== 0);
+            if (cell.tcolor) td.style.color = rgb(cell.tcolor);
+            if (cell.fill) td.style.background = rgb(cell.fill);
+            if (col.ctype === 2 || col.ctype === 3) {
+              const on = checks[`${n},${k}`] === true;
+              td.classList.toggle("ld-on", on);
+              td.append(h("span", { cls: col.ctype === 2 ? "ld-lb-radio" : "ld-lb-box", attrs: { role: col.ctype === 2 ? "radio" : "checkbox", "aria-checked": String(on) } }));
+            } else {
+              td.textContent = cell.text ?? "";
+            }
+            tr.append(td);
+          });
+          return tr;
+        }),
+      );
+    };
+    const hit = (e: Event): { row: number; col: number } | null => {
+      const t = e.target instanceof HTMLElement ? e.target : null;
+      const tr = t?.closest<HTMLElement>(".ld-lb-tr");
+      if (!tr) return null;
+      const td = t?.closest<HTMLElement>(".ld-lb-td");
+      return { row: Number(tr.dataset.row), col: td ? Number(td.dataset.col) : -1 };
+    };
+    body.addEventListener("click", (e) => {
+      const at = hit(e);
+      if (!at || !live()) return;
+      const { row: n, col: k } = at;
+      const col = cols[k];
+      if (col && (col.ctype === 2 || col.ctype === 3)) {
+        // a radio column has one row on; a check column flips its row
+        if (col.ctype === 2) rows.forEach((_, r) => (checks[`${r},${k}`] = false));
+        checks[`${n},${k}`] = col.ctype === 2 ? true : !checks[`${n},${k}`];
+        paint();
+        send(n, { type: LB_CHECK, row: n, col: k });
+        return;
+      }
+      // the second click of a double click: the row is rebuilt on each click, so the browser may not
+      // send a dblclick, and the click's own count says it
+      if (e.detail === 2) {
+        send(n, { type: LB_DOUBLE, row: n, col: k });
+        return;
+      }
+      const multi = flags.multi === true && flags.single !== true;
+      if (e.shiftKey && multi) {
+        const lo = Math.min(anchor, n);
+        const hi = Math.max(anchor, n);
+        const span: number[] = [];
+        for (let r = lo; r <= hi; r++) span.push(r);
+        sel = new Set(span);
+      } else if ((e.metaKey || e.ctrlKey) && multi) {
+        if (sel.has(n)) sel.delete(n);
+        else sel.add(n);
+        anchor = n;
+      } else {
+        sel = new Set([n]);
+        anchor = n;
+      }
+      paint();
+      send(n, { type: LB_SELECT, row: n, col: k });
+    });
+    body.addEventListener("keydown", (e) => {
+      if (!rows.length || !live()) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const n = Math.min(rows.length - 1, Math.max(0, anchor + (e.key === "ArrowDown" ? 1 : -1)));
+        sel = new Set([n]);
+        anchor = n;
+        paint();
+        send(n, { type: e.key === "ArrowDown" ? LB_DOWN : LB_UP, row: n, col: -1 });
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        send(anchor, { type: LB_DELETE, row: anchor, col: -1 });
+      } else if (e.key === "Enter") {
+        send(anchor, { type: LB_ENTER, row: anchor, col: -1 });
+      }
+    });
+    paint();
+    return {
+      el,
+      inputs: [],
+      read: () => {
+        const v = { sel: [...sel].sort((a, b) => a - b), sort: sortAsk ?? sortNow, checks: { ...checks }, event: pending };
+        sortAsk = null;
+        pending = null;
+        return v;
+      },
+      write: (i) => {
+        flags = i;
+        cols = i.cols ?? [];
+        rows = i.rows ?? [];
+        sel = new Set(i.sel ?? []);
+        anchor = sel.size ? Math.min(...sel) : 0;
+        sortNow = i.sort ?? null;
+        checks = checkMarks(rows);
+        paint();
+      },
+    };
+  }
+
+  /** A tree control: each item indented under its parent, a triangle to open and close those with children; a click selects, and the triangle sends the item. */
+  private tree(item: Item): Control {
+    let flat: readonly (readonly [number, string, number, boolean])[] = item.tree ?? [];
+    let sel = new Set<number>(item.sel ?? []);
+    let open = new Set<number>(item.open ?? []);
+    const el = h("div", { cls: "ld-tree", attrs: { role: "tree" } });
+    const paint = (): void => {
+      const parents = new Map(flat.map(([id, , p]) => [id, p] as const));
+      const depth = (id: number): number => {
+        let d = 0;
+        for (let p = parents.get(id) ?? 0; p !== 0; p = parents.get(p) ?? 0) d += 1;
+        return d;
+      };
+      // an item shows when every item above it is open
+      const shown = flat.filter(([id]) => {
+        for (let p = parents.get(id) ?? 0; p !== 0; p = parents.get(p) ?? 0) if (!open.has(p)) return false;
+        return true;
+      });
+      el.replaceChildren(
+        ...shown.map(([id, text, , kids]) => {
+          const twist = h("span", { cls: "ld-tree-twist", text: kids ? (open.has(id) ? "▾" : "▸") : "", attrs: { "aria-hidden": "true" } });
+          const row = h("div", { cls: sel.has(id) ? "ld-tree-row ld-sel" : "ld-tree-row", attrs: { role: "treeitem", "data-id": String(id) } }, twist, h("span", { text }));
+          row.style.paddingLeft = `${depth(id) * 16 + 6}px`;
+          if (kids) row.setAttribute("aria-expanded", String(open.has(id)));
+          return row;
+        }),
+      );
+    };
+    el.addEventListener("click", (e) => {
+      const t = e.target instanceof HTMLElement ? e.target : null;
+      const row = t?.closest<HTMLElement>(".ld-tree-row");
+      if (!row || this.items.get(item.id)?.enabled === false) return;
+      const id = Number(row.dataset.id);
+      const kids = flat.find(([i]) => i === id)?.[3] === true;
+      if (t?.classList.contains("ld-tree-twist")) {
+        if (!kids) return;
+        if (open.has(id)) open.delete(id);
+        else open.add(id);
+      } else {
+        sel = new Set([id]);
+      }
+      paint();
+      this.fire(item.id, id);
+    });
+    paint();
+    return {
+      el,
+      inputs: [],
+      read: () => ({ sel: [...sel], open: [...open] }),
+      write: (i) => {
+        flat = i.tree ?? [];
+        sel = new Set(i.sel ?? []);
+        open = new Set(i.open ?? []);
+        paint();
+      },
+    };
   }
 
   private radio(group: number, box: HTMLInputElement): void {

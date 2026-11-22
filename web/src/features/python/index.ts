@@ -13,6 +13,7 @@ import { openManager } from "../plugins/manager.ts";
 import { openConsole } from "../plugins/repl.ts";
 import { SCRIPT_PALETTES, scriptPaletteMenuRows, scriptPalettesBody, scriptPalettesMenu } from "./scriptPalettes.ts";
 import "./python.css";
+import "./marionette.ts";
 
 /** a page of code: the script palettes */
 const SCRIPTS_ICON =

@@ -156,8 +156,8 @@ export interface LayerExtension {
  */
 export interface PluginDriver {
   readonly name: string;
-  /** how the tool places one: a click (and a drag to turn it), a drag along it, or a drag across it */
-  readonly shape: "point" | "linear" | "rect";
+  /** how the tool places one: a click (and a drag to turn it), a drag along it, a drag across it, or clicks along a path */
+  readonly shape: "point" | "linear" | "rect" | "path";
   /** drawn by Rodeo itself, placed by a tool of its own, so Plug-in Insertion doesn't offer it */
   readonly builtIn?: boolean;
   /** what Object Info says over its parameters, instead of how a change draws it */
@@ -180,6 +180,11 @@ export interface PluginDriver {
    * length (linear) or width and height (rect), in mm, or null for a click.
    */
   place(layerId: string, at: Pt, angle: number, size: { readonly width: number; readonly height: number } | null): void;
+  /**
+   * For a "path" driver: places a new one on `layerId` whose path runs through `points` (the first is its
+   * insertion point; `closed` when its last joins its first), as the Plug-in Insertion tool drew it.
+   */
+  placePath?(layerId: string, points: readonly Pt[], closed: boolean): void;
   /** Sets fields of the object `id` (as its record holds them) and draws it again, as one undo step. */
   edit(id: string, values: Readonly<Record<string, RecordValue>>): void;
   /** Draws the object `id` again from its parameters, as one undo step: null when done, else why it failed (nothing shown). */
@@ -430,6 +435,21 @@ export function registerLayerExtension(ext: LayerExtension): void {
 /** Adds rows to the drawing's right-click menu: `rows` is given the object under the pointer (null over empty space) and gives the feature's rows for it, shown with the object's own commands. */
 export function registerContextRows(rows: (under: string | null) => readonly Row[]): void {
   contextRows.push(rows);
+}
+
+/** A section a feature adds to Object Info's Shape tab for one selected object, or null when it has none for it. */
+export type InfoSection = (doc: VwxDocument, object: ObjectInfo) => HTMLElement | null;
+
+const infoSectionSources: InfoSection[] = [];
+
+/** Adds a section to Object Info's Shape tab, above the object's parameters, for the objects `section` answers for. */
+export function registerInfoSection(section: InfoSection): void {
+  infoSectionSources.push(section);
+}
+
+/** The sections features add to Object Info for `object`. */
+export function infoSections(doc: VwxDocument, object: ObjectInfo): HTMLElement[] {
+  return infoSectionSources.map((s) => s(doc, object)).filter((e): e is HTMLElement => e !== null);
 }
 
 /** Adds plug-in kinds the feature draws: `drivers` gives them as they are now (installed ones come and go). */

@@ -6,6 +6,8 @@
 // HCenter...) are given the variables to fill from what the Python call returns. Each line of the
 // Python keeps the Vectorscript line it came from, for errors.
 
+import { VS_SIGNATURES } from "./vsSignatures.ts";
+
 export const VSC_SOURCE = String.raw`
 import copy as _copymod
 import math as _m
@@ -81,6 +83,25 @@ class _Arr(object):
 class _Rec(object):
     def __init__(self, **fields):
         self.__dict__.update(fields)
+
+
+class _Pt2(_Rec):
+    """A POINT: x and y, which a vs call also takes as a pair (p[0], p[1], or x, y = p)."""
+    _order = ("x", "y")
+
+    def __iter__(self):
+        return iter([getattr(self, "v_" + f) for f in self._order])
+
+    def __getitem__(self, i):
+        return list(self)[i]
+
+    def __len__(self):
+        return len(self._order)
+
+
+class _Pt3(_Pt2):
+    """A POINT3D or VECTOR: x, y and z."""
+    _order = ("x", "y", "z")
 
 
 def _alloc(make, dims):
@@ -234,6 +255,26 @@ def _outs(r, refs):
     return r[0]
 
 
+def _vsout(name, r, refs, isfn):
+    """A vs call that hands VAR values back: its function result (when isfn), and the values set into refs
+    in the order the call returns them. A point given for two VAR numbers is spread out to them."""
+    items = list(r) if isinstance(r, (tuple, list)) else [r]
+    head = None
+    if isfn:
+        head = items[0] if items else None
+        items = items[1:]
+    n = len(refs)
+    if not isfn and n == 1:
+        items = [r]
+    if len(items) != n:
+        items = _flat(items)
+    if len(items) != n:
+        raise TypeError("vs.%s hands back %d values for its %d VAR arguments" % (name, len(items), n))
+    for ref, v in zip(refs, items):
+        ref.set(v)
+    return head
+
+
 def runtime():
     g = dict((k, v) for k, v in globals().items() if k.startswith("_") and not k.startswith("__"))
     g["vs"] = vs
@@ -263,6 +304,8 @@ _BUILTIN_VAR = {
     "upperstring": (0, "(lambda s: s.upper())"), "lowerstring": (0, "(lambda s: s.lower())"),
     "uprstring": (0, "(lambda s: s.upper())"),
 }
+# the file reads: each VAR argument is read as its variable's type
+_READ_CALLS = ("readln", "read", "stdreadln", "stdread")
 # vs procedures that hand values back through VAR parameters: how many come before them
 _VS_OUT = {
     "colorindextorgb": 1, "getbbox": 1, "getfillback": 1, "getfillfore": 1, "getlocpt": 1, "getopacity": 1,
@@ -281,6 +324,23 @@ _VS_FN_OUT = {"getcustomobjectinfo": 0, "getplugininfo": 0, "geteditreal": 3, "g
 # hand values back through their last arguments: how many those are
 _VS_OUT_LAST = {"linelineintersection": 3, "comp": 2, "unionrect": 2}
 _VS_FN_OUT_LAST = {"circlecircleinters": 2, "linecircleintersect": 2}
+# the VAR parameters of the other vs calls, generated from the public function reference: one line each,
+# the name, p or f, a letter per Pascal parameter (i in, o out, b both, x not taken by Python), then the
+# Pascal positions in the order Python returns them, when that is not the Pascal order
+_SIG_TEXT = ${JSON.stringify(VS_SIGNATURES)}
+
+
+def _gen_table(text):
+    table = {}
+    for ln in text.split("\n"):
+        f = ln.split()
+        if len(f) >= 3:
+            order = [int(x) for x in f[3].split(",")] if len(f) > 3 else None
+            table[f[0]] = (f[1] == "f", f[2], order)
+    return table
+
+
+_GEN = _gen_table(_SIG_TEXT)
 # the text faces of Vectorscript's TEXTSTYLE sets
 _FACES = {"bold": 1, "italic": 2, "underline": 4, "outline": 8, "shadow": 16}
 _PARAM_TYPES = {"bool": ("bool",), "int": ("int",), "real": ("real",), "str": ("str",)}
@@ -302,7 +362,12 @@ _SIMPLE_TYPES = {
     "real": _REAL, "extended": _REAL, "double": _REAL, "single": _REAL,
     "boolean": _BOOL, "string": _STR, "char": _STR, "handle": _HANDLE,
     "vector": ("rec", [("x", _REAL), ("y", _REAL), ("z", _REAL)]),
+    "point": ("rec", [("x", _REAL), ("y", _REAL)]),
+    "point3d": ("rec", [("x", _REAL), ("y", _REAL), ("z", _REAL)]),
+    "rgbcolor": ("rec", [("red", _INT), ("green", _INT), ("blue", _INT)]),
 }
+# the type each file read takes its VAR argument as
+_READ_KINDS = [(_INT, "int"), (_REAL, "float"), (_BOOL, "bool"), (_STR, "str")]
 
 
 def _attr(name):
@@ -311,7 +376,21 @@ def _attr(name):
 
 # ---- the source as tokens ------------------------------------------------------------------------
 
-def _lex(src):
+def _include(name, line, files, texts, depth):
+    """The tokens of a {$INCLUDE} file: the plug-in file whose base name is name, case not mattering."""
+    if depth > 8:
+        raise VsError("{$INCLUDE} files nest too deep", line)
+    want = name.replace("\\", "/").split("/")[-1].lower()
+    for path in sorted(files):
+        if want and path.replace("\\", "/").split("/")[-1].lower() == want:
+            texts.append(files[path])
+            sub = _lex(files[path], len(texts) - 1, files, texts, depth + 1)
+            return [(t[0], t[1], line, t[3], t[4], t[5]) for t in sub[:-1]]
+    raise VsError("{$INCLUDE %s} isn't one of the plug-in's files" % name, line)
+
+
+def _lex(src, idx, files, texts, depth):
+    """The tokens of one source text: idx is its index in texts, which each token records with its positions."""
     toks = []
     i, line, n = 0, 1, len(src)
     while i < n:
@@ -325,8 +404,11 @@ def _lex(src):
             j = src.find("}", i)
             if j < 0:
                 raise VsError("a { comment isn't closed", line)
-            if src[i + 1:i + 9].upper().startswith("$INCLUDE") or src[i + 1:i + 4].upper() == "$I ":
-                raise VsError("{$INCLUDE} files aren't available in Rodeo", line)
+            body = src[i + 1:j].strip()
+            up = body.upper()
+            if up.startswith("$INCLUDE") or (up.startswith("$I") and up[2:3] in (" ", "'", '"')):
+                name = (body[8:] if up.startswith("$INCLUDE") else body[2:]).strip().strip("'\"").strip()
+                toks.extend(_include(name, line, files, texts, depth))
             line += src.count("\n", i, j)
             i = j + 1
         elif src.startswith("(*", i):
@@ -338,7 +420,7 @@ def _lex(src):
         elif src.startswith("//", i):
             j = src.find("\n", i)
             i = n if j < 0 else j
-        elif c.isdigit() or (c == "$" and i + 1 < n and src[i + 1] in "0123456789abcdefABCDEF"):
+        elif c.isdigit() or (c == "." and src[i + 1:i + 2].isdigit()) or (c == "$" and i + 1 < n and src[i + 1] in "0123456789abcdefABCDEF"):
             i = _number(src, i, line, toks)
         elif c == "'" or c == "#":
             s, j = "", i
@@ -385,7 +467,22 @@ def _lex(src):
             else:
                 raise VsError("unexpected character %r" % c, line)
     toks.append(("eof", None, line, n, n))
-    return toks
+    # tokens from an included file already name their source
+    return [t if len(t) > 5 else t + (idx,) for t in toks]
+
+
+# the unit names a number may carry with no space (case-insensitive), and each one's size in millimetres
+_UNIT_NAMES = (("mm", 1.0), ("cm", 10.0), ("km", 1000000.0), ("um", 0.001), ("\u00b5m", 0.001), ("pt", 25.4 / 72),
+               ("in", 25.4), ("ft", 304.8), ("yd", 914.4), ("mi", 1609344.0), ("m", 1000.0))
+
+
+def _unit_at(src, j):
+    """(millimetres per unit, end) when a unit name starts at j and no letter or digit follows it, else None."""
+    for name, mm in _UNIT_NAMES:
+        end = j + len(name)
+        if src[j:end].lower() == name and not (end < len(src) and (src[end].isalnum() or src[end] == "_")):
+            return mm, end
+    return None
 
 
 def _number(src, i, line, toks):
@@ -411,6 +508,20 @@ def _number(src, i, line, toks):
         while j < n and src[j].isdigit():
             j += 1
     v = float(src[i:j]) if real else int(src[i:j])
+    # a fraction of a unit, 5/8in: the unit binds to the whole simple fraction, not to the 8
+    if not real and j < n and src[j] == "/":
+        m = j + 1
+        while m < n and src[m].isdigit():
+            m += 1
+        hit = _unit_at(src, m) if m > j + 1 else None
+        if hit:
+            toks.append(("len", v / float(src[j + 1:m]) * hit[0], line, i, hit[1]))
+            return hit[1]
+    # a length with a unit name: 1.75in, 25mm, 2pt (immediately after the number, and not the start of a name)
+    hit = _unit_at(src, j)
+    if hit:
+        toks.append(("len", v * hit[0], line, i, hit[1]))
+        return hit[1]
     # a length with its unit mark: 2" (inches), 3' (feet), 3'6" or 3'-6"
     if j < n and src[j] == '"':
         toks.append(("len", v * 25.4, line, i, j + 1))
@@ -440,6 +551,15 @@ class _Var(object):
         self.typ = typ
         self.kind = kind  # var, const, param, ref
         self.depth = depth
+
+
+class _WithVar(_Var):
+    """A field of a record that a WITH names: the record itself is kept in the Python name tmp."""
+
+    def __init__(self, name, typ, tmp, rec):
+        _Var.__init__(self, name, typ, "with", -1)
+        self.tmp = tmp
+        self.rec = rec
 
 
 class _Proc(object):
@@ -472,9 +592,14 @@ class _Scope(object):
 # ---- the translator ------------------------------------------------------------------------------
 
 class _Translator(object):
-    def __init__(self, src):
+    def __init__(self, src, files=None, extra=None):
         self.src = src
-        self.toks = _lex(src)
+        self.texts = [src]
+        self.toks = _lex(src, 0, files or {}, self.texts, 0)
+        # the generated table, and more lines of the same shape for a test to add
+        self.gen = dict(_GEN)
+        if extra:
+            self.gen.update(_gen_table(extra))
         self.p = 0
         self.out = []
         self.ind = 0
@@ -699,7 +824,9 @@ class _Translator(object):
         if k == "dyn":
             return "_Arr(1, 0, lambda: %s)" % self.default(typ[2])
         if k == "rec":
-            return "_Rec(%s)" % ", ".join("%s=%s" % (_attr(f), self.default(ft)) for f, ft in typ[1])
+            names = [f for f, _ in typ[1]]
+            cls = {("x", "y"): "_Pt2", ("x", "y", "z"): "_Pt3"}.get(tuple(names), "_Rec")
+            return "%s(%s)" % (cls, ", ".join("%s=%s" % (_attr(f), self.default(ft)) for f, ft in typ[1]))
         return "None"
 
     def copy_if(self, typ, code):
@@ -720,6 +847,9 @@ class _Translator(object):
                 names = [self.ident()]
                 while self.atsym(","):
                     self.take()
+                    if self.atsym(":"):
+                        # a stray comma before the colon (PROCEDURE P(a, : HANDLE)), which Vectorworks accepts
+                        break
                     names.append(self.ident())
                 self.want_sym(":")
                 ptyp = self.type_()
@@ -865,8 +995,8 @@ class _Translator(object):
         elif self.atkw("allocate"):
             self.take()
             v = self.ident()
-            var = self.scope.find(v[1].lower())
-            if not isinstance(var, _Var) or not var.typ or var.typ[0] != "dyn":
+            lv = self.lvalue(v, False)
+            if not lv[2] or lv[2][0] != "dyn":
                 self.err("ALLOCATE takes a DYNARRAY variable", v)
             self.want_sym("[")
             dims = []
@@ -879,10 +1009,13 @@ class _Translator(object):
                     break
                 self.take()
             self.want_sym("]")
-            make = "lambda: %s" % self.default(var.typ[2])
-            self.emit(self.set((var, [], var.typ), "_alloc(%s, [%s])" % (make, ", ".join(dims))), line)
-        elif t[0] == "id" and t[1].lower() in ("with", "goto") and self.scope.find(t[1].lower()) is None:
-            self.err("%s isn't available in Rodeo's Vectorscript" % t[1].upper(), t)
+            make = "lambda: %s" % self.default(lv[2][2])
+            self.emit(self.set(lv, "_alloc(%s, [%s])" % (make, ", ".join(dims))), line)
+        elif t[0] == "id" and t[1].lower() == "with" and self.scope.find("with") is None:
+            self.take()
+            self.with_(line)
+        elif t[0] == "id" and t[1].lower() == "goto" and self.scope.find("goto") is None:
+            self.err("GOTO isn't available in Rodeo's Vectorscript", t)
         elif t[0] == "id":
             self.take()
             lname = t[1].lower()
@@ -938,12 +1071,17 @@ class _Translator(object):
         self.want_kw("end")
 
     # variables
-    def lvalue(self, t):
-        """A variable (or a function's result) with its indexes and fields: (base, selectors, type)."""
+    def lvalue(self, t, selectors=True):
+        """A variable (or a function's result, or a field a WITH names) with its indexes and fields: (base, selectors, type)."""
         lname = t[1].lower()
         found = self.scope.find(lname)
+        pre = []
         if isinstance(found, _Proc) and found.isfunc and self.inside(found):
             base, typ = ("result", found), found.ret
+        elif isinstance(found, _WithVar):
+            base, typ = ("code", found.tmp), found.rec
+            pre = [("field", found.name, found.rec)]
+            typ = found.typ
         elif isinstance(found, _Var):
             if found.kind == "const":
                 self.err("%s is a constant" % t[1], t)
@@ -952,8 +1090,8 @@ class _Translator(object):
             self.err("%s isn't declared" % t[1], t)
         else:
             self.err("%s can't be assigned to" % t[1], t)
-        sels = []
-        while self.atsym("[", "."):
+        sels = pre
+        while selectors and self.atsym("[", "."):
             if self.take()[1] == "[":
                 while True:
                     i, _ = self.expr()
@@ -979,6 +1117,8 @@ class _Translator(object):
 
     def base_get(self, base):
         if isinstance(base, tuple):
+            if base[0] == "code":
+                return base[1]
             return "%s._result" % self.frame(base[1].depth)
         code = "%s.%s" % (self.frame(base.depth), _attr(base.name))
         return code + ".get()" if base.kind == "ref" else code
@@ -1035,6 +1175,9 @@ class _Translator(object):
             return
         if isinstance(found, _Var):
             self.err("%s is a variable: assign with :=" % t[1], t)
+        if lname in _READ_CALLS:
+            self.read_call(t, lname)
+            return
         if lname in _VS_OUT or lname in _VS_OUT_LAST:
             n_in = _VS_OUT[lname] if lname in _VS_OUT else self.arg_count() - _VS_OUT_LAST[lname]
             args = self.ext_args(lname, set(range(n_in, 99)))
@@ -1058,6 +1201,9 @@ class _Translator(object):
             lv = args[pos]
             vals = [self.get(a) if isinstance(a, tuple) else a for a in args]
             self.emit(self.set(lv, "%s(%s)" % (fn, ", ".join(vals))), line)
+            return
+        if lname in self.gen and lname not in _BUILTINS:
+            self.emit(self.generic_call(t, lname), line)
             return
         self.emit(self.ext_call(t, lname), line)
 
@@ -1140,7 +1286,12 @@ class _Translator(object):
     def raw_arg(self):
         toks = self.arg_tokens()
         self.p += len(toks)
-        return self.src[toks[0][3]:toks[-1][4]] if toks else ""
+        if not toks:
+            return ""
+        k = toks[0][5]
+        if any(t[5] != k for t in toks):
+            self.err("a criteria can't run into an included file")
+        return self.texts[k][toks[0][3]:toks[-1][4]]
 
     def arg_count(self):
         """How many arguments the call about to be read has, counted ahead without reading them."""
@@ -1177,6 +1328,100 @@ class _Translator(object):
             # Vectorscript's Message writes numbers and booleans its own way: 5, TRUE
             return "vs.Message(_concat(%s))" % ", ".join(args)
         return "vs.%s(%s)" % (self.vs_names.get(lname, t[1]), ", ".join(args))
+
+    def generic_call(self, t, lname):
+        """A vs call of the generated table: its VAR arguments are variables it sets from what it returns (_vsout)."""
+        is_fn, letters, order = self.gen[lname]
+        n = len(letters)
+        if self.arg_count() != n:
+            self.err("%s takes %d argument%s" % (t[1], n, "" if n == 1 else "s"), t)
+        self.take()
+        ins, lvs = [], {}
+        for pos in range(1, n + 1):
+            letter = letters[pos - 1]
+            if letter in "ob":
+                lvs[pos] = self.out_arg(t, pos)
+                if letter == "b":
+                    ins.append(self.get(lvs[pos]))
+            elif letter == "x":
+                self.expr()
+            elif _CRITERIA.get(lname) == pos - 1 and self.raw_criteria():
+                ins.append(repr(self.raw_arg()))
+            else:
+                ins.append(self.expr()[0])
+            if pos < n:
+                self.want_sym(",")
+        self.want_sym(")")
+        name = self.vs_names.get(lname, t[1])
+        ret = order or [p for p in range(1, n + 1) if letters[p - 1] in "ob"]
+        refs = ", ".join(self.ref(lvs[p]) for p in ret)
+        return "_vsout(%r, vs.%s(%s), [%s], %s)" % (name, name, ", ".join(ins), refs, is_fn)
+
+    def out_arg(self, t, pos):
+        """The variable named by a VAR argument (with its indexes and fields)."""
+        start = self.p
+        toks = self.arg_tokens()
+        msg = "argument %d of %s is a VAR parameter, so it must be a variable" % (pos, t[1])
+        if not toks or toks[0][0] != "id":
+            self.err(msg, t)
+        lv = self.lvalue(self.take())
+        if self.p - start != len(toks):
+            self.err(msg, t)
+        return lv
+
+    def read_call(self, t, lname):
+        """ReadLn, Read, StdReadLn and StdRead: each VAR argument is read as its variable's type (None when it has
+        none), and the values are set into the variables in order."""
+        name = self.vs_names.get(lname, t[1])
+        lvs, kinds = [], []
+        if self.atsym("("):
+            self.take()
+            while not self.atsym(")"):
+                lv = self.out_arg(t, len(lvs) + 1)
+                lvs.append(lv)
+                kinds.append(next((k for ty, k in _READ_KINDS if ty == lv[2]), None))
+                if self.atsym(","):
+                    self.take()
+                elif not self.atsym(")"):
+                    self.err("expected , or ) in the arguments", t)
+            self.take()
+        args = ", ".join("%r" % k if k else "None" for k in kinds)
+        line = t[2]
+        if not lvs:
+            self.emit("vs.%s()" % name, line)
+            return
+        o = self.temp()
+        self.emit("%s = _spread(vs.%s(%s), %d)" % (o, name, args, len(lvs)), line)
+        for k, lv in enumerate(lvs):
+            self.emit(self.set(lv, "%s[%d]" % (o, k)), line)
+
+    def with_(self, line):
+        """WITH r1, r2 DO statement: inside it the fields of the records are names of their own, shadowing the rest, as in Pascal."""
+        recs = []
+        while True:
+            v = self.ident()
+            recs.append((v, self.lvalue(v)))
+            if not self.atsym(","):
+                break
+            self.take()
+        self.want_kw("do")
+        outer = self.scope
+        for v, lv in recs:
+            typ = lv[2]
+            if not typ or typ[0] != "rec":
+                self.err("WITH takes a record variable, and %s isn't one" % v[1], v)
+            tmp = self.temp()
+            self.emit("%s = %s" % (tmp, self.get(lv)), line)
+            scope = _Scope(self.scope, self.scope.depth, self.scope.proc)
+            for fname, ftyp in typ[1]:
+                scope.names[fname] = _WithVar(fname, ftyp, tmp, typ)
+            self.scope = scope
+        # the statement at the same depth as the WITH: its records are held in the names emitted above
+        if self.atsym(";") or self.atkw("end", "else", "until", "otherwise"):
+            self.emit("pass", line)
+        else:
+            self.statement()
+        self.scope = outer
 
     # expressions: (code, type)
     def expr(self):
@@ -1311,13 +1556,18 @@ class _Translator(object):
             return self.fn_out_call(t, lname), _BOOL
         if lname in _VS_OUT or lname in _VS_OUT_LAST or lname in _BUILTIN_VAR:
             self.err("%s hands values back through its arguments: call it as a statement" % t[1], t)
+        if lname in self.gen and lname not in _BUILTINS:
+            if not self.gen[lname][0]:
+                self.err("%s hands values back through its arguments: call it as a statement" % t[1], t)
+            return self.generic_call(t, lname), None
         typ = _STR if lname in ("concat", "copy", "chr", "num2str", "getname", "getclass", "getlname", "gettext", "strdialog", "getfontname") else None
         return self.ext_call(t, lname), typ
 
 
-def translate(src):
-    """Python for a Vectorscript, and the Vectorscript line of each of its lines."""
-    tr = _Translator(src)
+def translate(src, files=None, extra=None):
+    """Python for a Vectorscript, and the Vectorscript line of each of its lines. files maps the plug-in's
+    file paths to their text, for {$INCLUDE}; extra is more table text, for tests of the table."""
+    tr = _Translator(src, files, extra)
     tr.program()
     lines = []
     where = []

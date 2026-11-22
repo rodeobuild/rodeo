@@ -1,6 +1,6 @@
 # Symbols and plug-in objects
 
-This page covers symbols, the Resources panel that holds them with the drawing's other resources, plug-in objects such as doors, windows and title blocks, the data records attached to objects, and textures: making and editing them, and how they are set and mapped on an object's parts.
+This page covers symbols, the Resources panel that holds them with the drawing's other resources, plug-in objects such as doors, windows and title blocks, installing and running Vectorworks plug-ins, the data records attached to objects, and textures: making and editing them, and how they are set and mapped on an object's parts.
 
 ## Symbols
 
@@ -119,6 +119,34 @@ The **Plug-in Insertion** tool (the Insertion tool set) places plug-in objects o
 The copy keeps that object's class, parameters and drawing, since Rodeo can't redraw a plug-in from its parameters.
 
 **Limits:** tags, section lines, cameras and Heliodons (their own tools place them), site models and design layer viewports aren't offered.
+
+### Vectorworks plug-ins
+
+**Plug-ins › Vectorworks Plug-ins** installs and runs plug-ins made with Vectorworks' Plug-in Manager: menu commands (`.vsm`), tools (`.vst`) and objects (`.vso`), written in Python or Vectorscript. They run on the same calls as scripts do; the [Scripts](scripting.md) page lists them.
+
+**Install…** takes the plug-in file with every file that came with it, chosen together, or a zip of the plug-in's folder: the Python modules it imports, Vectorscript include files, settings files and its `.vwr` resource file or folder. They are kept in this browser, and **Manage…** removes a plug-in. A file over 5 MB is left out, and the message says so.
+
+- **Menu commands** run from the submenu.
+- **Tools** start from the submenu. A tool that asks for points (GetPt, GetLine, GetRect) takes clicks in the drawing; Esc ends it and keeps what it drew. A tool that handles its own events shows a bar with its name, its modes and pull-down menus and its help text: click its points in the drawing, and each finished object is one undo step. Esc drops the points so far, a second Esc or **End tool** ends it, and so does choosing another tool.
+- **Objects** are placed with the **Plug-in Insertion** tool. Click for a point object and drag to turn it; drag along a linear one; drag across a rectangular one. A path object is drawn by clicking its corners, and a double-click or Enter ends it. A click on a wall puts a point or linear object on the wall's centre line, turned along the wall.
+- The **Reshape** tool moves a path object's corners and an object's control points, and the object draws again.
+- **Object Info** shows an object's parameters with their display names, popup choices and class menus, or the layout the plug-in sets up itself: its own order and indents, dividers, text, buttons, popups it fills, and the rows it greys or hides. A change draws the object again, as one undo step.
+- A plug-in's script may draw in 3D: extrudes, sweeps and solids go inside the object and show in the 3D view.
+- **Dialogs** a plug-in builds are shown over the drawing: text, number and length fields, check boxes, radio buttons, push buttons, pull-down menus, class, layer and symbol menus, list boxes, list browsers with sortable columns and check columns, sliders, tree controls, colour menus, group boxes, tabs and swap panes. The plug-in's handler runs for each change, on each keystroke in a field.
+- A plug-in reads its own strings from its `.vwr` with GetVWRString, and its own files through its plug-in folder.
+- **Tools › Utilities › Reset All Plug-Ins** draws every object of the installed plug-ins again.
+
+**Limits:**
+
+- Plug-ins whose script is encrypted, and plug-ins built with the SDK (`.vlb`), are refused.
+- A plug-in that checks a Vectorworks licence or serial number stops at that check: Rodeo has neither.
+- A plug-in that needs a call Rodeo lacks stops with a message naming the call.
+- An object placed on a wall isn't set into it: it cuts no opening and doesn't move with the wall.
+- A path object has a 2D path only, with no profile, and a script can't make one with CreateCustomObjectPath.
+- In dialogs, pictures and icons from resource files aren't shown (a picture button shows its name), texture menus and the line style, line weight, marker and pattern menus are empty, a list browser's cells can't be edited in place, and a resizable dialog doesn't resize its controls.
+- A plug-in's numbered strings (GetPluginString) read as empty unless its `.vwr` holds one under that number, and GetResourceString isn't available.
+- A tool that handles its own events: the event numbers are taken from public tools, not from Vectorworks' documents; the data bar isn't shown; 3D points lose their height; and the tool's own variables don't last from one click to the next.
+- Untested in Vectorworks: the plug-in file doesn't say an object's shape, so Rodeo takes it from what its script reads (its path, PLineLength, PBoxWidth and PBoxHeight); a rectangular object's origin is taken to be the middle of its left side.
 
 ### Title Block Manager
 

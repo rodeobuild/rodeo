@@ -1,6 +1,6 @@
 # Scripts
 
-This page covers running Python scripts and Vectorscripts written for Vectorworks, script palettes, writing a drawing out as a script, and the format library and Node command line behind Rodeo.
+This page covers running Python scripts and Vectorscripts written for Vectorworks, what they can do with files, preferences and dialogs, script palettes, reading Marionette networks, writing a drawing out as a script, and the format library and Node command line behind Rodeo. Installing and running Vectorworks plug-ins is on the [Symbols and plug-in objects](symbols-plugins.md#vectorworks-plug-ins) page.
 
 ## Running scripts
 
@@ -12,7 +12,7 @@ Python written for Vectorworks runs on the open drawing from **Tools › Plug-in
 - opens and saves `.py` files
 - shows what it prints, with a failing line linked.
 
-The script runs in Pyodide in a Web Worker (fetched from jsDelivr the first time, about 11 MB) with a `vs` module of more than 450 of Vectorworks' calls:
+The script runs in Pyodide in a Web Worker (fetched from jsDelivr the first time, about 11 MB) with a `vs` module of more than 1,100 of Vectorworks' calls:
 
 - drawing: Rect, Oval, Arc, Poly, BeginPoly with ArcTo, CurveTo and CurveThrough, Poly3D, BeginPoly3D with Add3DPt, Locus, CreateText, BeginGroup…
 - symbols: Symbol places one by name; GetSymLoc, GetSymRot, SetActSymbol, SymbolToGroup
@@ -25,17 +25,58 @@ The script runs in Pyodide in a Web Worker (fetched from jsDelivr the first time
 - the attributes new objects take: FFillPat, FPenSize, FFillFore…
 - text: SetTextSize, SetTextFont with GetFontID, SetTextStyle, SetTextJust, SetTextOrientation, TextFont and TextFace for new texts… A text is styled as a whole, so a call's run of characters styles all of it.
 - math, strings, vectors and 2D geometry: Sqrt, Num2StrF, SubString, Ang2Vec, Vec2Ang, CrossProduct, LineLineIntersection, CircleCircleInters, PtInPoly, Centroid…
-- the dialogs: StrDialog and the others wait for the answer where the browser can pause WebAssembly, as Chrome can.
+- 3D: BeginXtrd with EndXtrd, BeginMXtrd, BeginSweep, HExtrude, CreateExtrudeAlongPath, CreateTaperedExtrude, AddSolid, SubtractSolid, IntersectSolid, CreateSphere, CreateCone, Locus3D, Move3DObj, Set3DRot, Rotate3D, Get3DCntr, Get3DInfo, ObjVolume, ObjSurfaceArea…
+- walls: Wall draws a plain wall with WallWidth and WallHeight; GetWallThickness, GetWallWidth, HWallHeight, SetWallHeights, SetWallWidth, JoinWalls, ReverseWallSides…
+- records and resources: NewField makes a record format or adds a field, SetRecord, GetRecord, NumRecords, NumFields, GetFldName, GetFldType, BuildResourceList with GetNameFromResourceList, Name2Index, NameObject, SetParent (to a layer)
+- symbol definitions: BeginSym with EndSym makes one from what is drawn between them; FSymDef, NextSymDef and FInSymDef walk the definitions and what is in them
+- worksheets: CreateWS, SetWSCellFormula, GetWSCellValue, GetWSCellString, SetWSColumnWidth, InsertWSRows, ShowWS…
+- 2D shapes: RectangleN, ConvertToPolygon, ConvertToPolyline, OffsetPoly, ClipSurface, AddSurface, IntersectSurface, LinearDim, AngularDim, and line markers with SetObjBeginningMarker and SetObjEndMarker
+- menu commands by name: DoMenuTextByName runs Group, Ungroup, Select All, Deselect All, Duplicate, Clear, Bring to Front, Send to Back, Send Forward, Send Backward, Rotate Left 90°, Rotate Right 90°, Flip Horizontal and Flip Vertical
+- the dialogs: StrDialog and the others wait for the answer where the browser can pause WebAssembly, as Chrome can. AlertInform, AlertCritical and AlertQuestion show Rodeo's own alert with the script's buttons; PtDialog, DistDialog and AngDialog ask for numbers.
+- the program: GetVersion answers as Vectorworks 2024 does; GetSavedSetting and SetSavedSetting keep a script's settings in this browser.
 
 The script works on a copy of the drawing taken as it starts, so it sees its own changes. They are applied when it ends, as one undo step, and a script that fails or is stopped changes nothing.
 
 Lengths are in the drawing's units (inches for feet and inches), and colours are the drawing's nearest palette colour. What a script draws takes the Attributes palette's settings for new objects, and the ones the script sets, as in Vectorworks.
 
+Search criteria take class, layer, type, name, selection and visibility terms, record terms (`R IN ['Part Info']`), record fields (`'Part Info'.'Count'>1`), lists with IN, and fill and pen attributes, joined with & and |.
+
 **Limits:**
 
-- Calls Rodeo lacks say so by name.
+- Calls Rodeo lacks say so by name. About two thirds of Vectorworks' 3,250 calls are still missing: NURBS, textures, viewports, IFC, roofs, stairs, Spotlight, site models and the rest.
 - Attributes on a new object that neither the script nor the Attributes palette set read as 0 until it ends.
 - A layer's thickness isn't kept: it reads 0.
+- 3D: a script's z is above the active layer. Sweeps, spheres, cones and hemispheres are made as meshes. SetRot3D, Get3DOrientation and SetPolyPt3D work on what the script made in the same run, not on objects already in the drawing. The order of a 3D turn about more than one axis (x, then y, then z) is Rodeo's reading.
+- Walls: 16 of Vectorworks' 85 wall calls. Wall styles, components, symbols in walls and round walls aren't available.
+- Records: a date field is refused, and number formats are kept as plain numbers. A script reads a symbol definition's contents but can't change them. Symbols can't be put in folders. CreateCustomObject places only a kind of plug-in object the drawing already has.
+- Worksheets: a drawing with no worksheet can't make one yet. A formula's result is stored as a number, so it won't recalculate; formulas beyond arithmetic, SUM, AVERAGE, MIN, MAX, COUNT, ROUND, IF and CONCAT are kept as text. Borders, colours, merged cells and the selection last for the run only. Database rows, images in cells and placing a worksheet on the drawing aren't available.
+- Dimensions need a dimension already in the drawing to copy. Text width and wrapping, class markers and a class's Use at Creation can't be set.
+- Line markers: an arrow, a dot or a slash.
+- Progress dialogs show nothing; the script runs on.
+- GetMouse, MouseDown and TrackObject aren't available.
+
+### Files and folders in scripts
+
+A browser gives a script no disk, so Rodeo stands in a small one that lasts for the run.
+
+- **GetFile** and **GetFileN** open the browser's file chooser. The script then reads the chosen file with Python's `open`, or with Open, ReadLn, Read and EOF.
+- **PutFile** gives a file name to write to (with Rewrite or Append, Write and WriteLn, or `open`). When the script ends without an error, each file it wrote is downloaded.
+- **GetFolderPath** answers a folder for every number Vectorworks has. For a plug-in, the plug-in folders are the folder of the files installed with it, so it can import its own modules and read its own settings files. The other folders are empty.
+- **FindFileInPluginFolder** finds a file installed with the plug-in.
+- **OpenURL** opens an http or https address in a new tab.
+- Python's `sqlite3`, `ssl` and `lzma` load when a script imports them.
+
+**Limits:** GetFolder always answers as if cancelled. A file read or written is limited to 50 MB. Scripts have no network: `urllib`, `requests`, sockets, `subprocess` and threads fail. ReadBin and WriteBin aren't available.
+
+### Preferences and object variables
+
+GetPref, SetPref, GetPrefInt, GetPrefReal, GetPrefString, GetPrefRGB and their Set calls, and GetObjectVariableInt, GetObjectVariableReal, GetObjectVariableBoolean, GetObjectVariableString and their Set calls, take every selector number Vectorworks publishes.
+
+- 35 of them answer from the drawing or the editor: the units, the active layer's scale, the grid, snapping, a layer's kind and visibility, an object's attributes and the like.
+- The others answer what the script last set in the run, or 0, false or empty text. So a script that reads a preference, changes it and puts it back runs. The developer console lists the selectors a run used this way.
+- A number Vectorworks doesn't list is an error that names it.
+
+**Limits:** setting a preference Rodeo doesn't have changes nothing in the drawing. Vectorworks' own defaults for the selectors Rodeo doesn't keep aren't known, so they read as 0, false or empty.
 
 ### Vectorscript
 
@@ -44,12 +85,15 @@ Lengths are in the drawing's units (inches for feet and inches), and colours are
 - Nested procedures and functions keep their variables in frame objects, so a nested routine reaches its parent's, and a VAR argument is a reference to a variable, array element or record field.
 - Arrays keep their own bounds, and records and arrays copy on assignment.
 - Lengths written with `'` and `"` become the drawing's units.
-- The vs procedures that hand values back through VAR parameters (GetBBox, GetUnits…) fill the variables from what the Python call returns.
+- The vs procedures that hand values back through VAR parameters (GetBBox, GetUnits…) fill the variables from what the Python call returns. Which parameters those are comes from Vectorworks' published signatures, for every call that has them.
 - Search criteria written out (`((T=RECT) & (SEL=TRUE))`) are passed as text.
-- A POINT argument can be a VECTOR variable or x and y, and a point or vector a call returns fills a VECTOR's x, y and z.
+- A POINT argument can be a POINT or VECTOR variable or x and y, and a point or vector a call returns fills a variable's x, y and z.
+- A number with a unit written straight after it (`1.75in`, `5/8in`, `300mm`) is a length in that unit.
+- WITH works, and so does `{$INCLUDE}` of a file installed with a plug-in.
+- ReadLn and Read fill several variables, each by its type.
 - Errors are given at the Vectorscript's own lines.
 
-**Limits:** `{$INCLUDE}`, WITH and GOTO are refused.
+**Limits:** GOTO is refused. `{$INCLUDE}` finds only the files installed with a plug-in, so a script run from the Run Script window can't include one. A CHAR is read as a string.
 
 ### Script palettes
 
@@ -75,6 +119,15 @@ The **Custom Tools** dialog ticks what's recorded, in four groups, each with **A
 Choose **Create VectorScript** or **Create Python Script**, then name it. It goes in a script palette. Double-click it there to set all of that again, ready to draw.
 
 Any script that sets attributes, text size, the class, the layer or the tool (with `SetTool`) leaves them set after it runs, as in Vectorworks. `PushAttrs` and `PopAttrs` put attributes back.
+
+### Marionette
+
+Rodeo reads the Marionette networks in a drawing. It doesn't run them.
+
+- Select a Marionette node or Marionette object: Object Info shows its kind, its input and output ports and its typed values, and **View Script…** opens its Python script to read and copy.
+- **Tools › Plug-ins › Marionette Nodes…** lists the drawing's networks with their nodes and wires. Click a node to select it in the drawing.
+
+**Limits:** nothing is run, so a Marionette object stays as Vectorworks last drew it. A node inside a symbol can't be picked out in the drawing. Which port a wire joins is read from where the wire is drawn. How a Marionette object on a layer finds its network isn't known yet.
 
 ## Drawings as scripts
 

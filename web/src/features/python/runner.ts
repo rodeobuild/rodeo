@@ -23,6 +23,9 @@ import { toast } from "../../app/toast.ts";
 import { millimetresPerUnit, parseLength } from "../../app/units.ts";
 import { showAlert } from "../plugins/ui.ts";
 import { closeLayoutDialog, closeLayoutDialogs, runLayoutDialog } from "./layoutDialog.ts";
+import { isVectorscript, RUN_PY } from "./runPy.ts";
+import { extraStep, hostAsk, objectParts, resultHandlers, snapshotParts, type StepContext } from "./steps.ts";
+import "./vs/steps.ts";
 import { VS_SOURCE } from "./vsModule.ts";
 import { VSC_SOURCE } from "./vscriptModule.ts";
 
@@ -36,51 +39,6 @@ const TEXT_PAPER_MM = 2.5;
 /** a point, mm: TextSize gives points */
 const MM_PER_POINT = 25.4 / 72;
 
-/** Runs the script in the worker: the vs module set up over the snapshot, the script's own globals fresh. */
-const RUN_PY = `
-import json as _json, traceback as _tb
-import sys as _sys, importlib as _importlib
-import vs as _vs
-# a plug-in's own modules: imported fresh each run, as its files may have changed
-if _plugin_dir not in _sys.path:
-    _sys.path.insert(0, _plugin_dir)
-for _n in [k for k, m in list(_sys.modules.items()) if (getattr(m, "__file__", None) or "").startswith(_plugin_dir + "/")]:
-    del _sys.modules[_n]
-_importlib.invalidate_caches()
-_vs._init(_snapshot)
-_g = {"__name__": "__main__", "__file__": _file}
-_err = None
-_where = None
-try:
-    _src = _code
-    if _vectorscript:
-        import _vsc
-        _src, _where = _vsc.translate(_code)
-        _g.update(_vsc.runtime())
-    exec(compile(_src, _file, "exec"), _g)
-except SystemExit as e:
-    if e.code not in (None, 0):
-        _err = {"name": "SystemExit", "message": str(e.code), "line": None}
-except BaseException as e:
-    _line = getattr(e, "lineno", None) if isinstance(e, SyntaxError) and e.filename == _file else None
-    for _f in _tb.extract_tb(e.__traceback__):
-        if _f.filename == _file:
-            _line = _f.lineno
-    _name = type(e).__name__
-    _msg = str(e)
-    if _name == "VsError":
-        _name, _line = "Error", e.line
-    elif _where is not None:
-        if _line is not None:
-            _line = _where[_line - 1] if 0 < _line <= len(_where) else None
-        if _name == "NotImplementedError":
-            _msg = _msg.replace("vs.", "", 1)
-    _err = {"name": _name, "message": _msg, "line": _line}
-_out = _json.loads(_vs._result()) if _err is None else {}
-_out["error"] = _err
-_json.dumps(_out)
-`;
-
 function workerSource(): string {
   return `
 importScripts(${JSON.stringify(PYODIDE + "pyodide.js")});
@@ -91,6 +49,10 @@ const DIR = ${JSON.stringify(PLUGIN_DIR)};
 const asks = new Map();
 let seq = 0;
 let py = null;
+// fetch as it is before the worker turns it off: for loading the three packages below, once, and nothing else
+const NATIVE_FETCH = self.fetch;
+// the Python packages Pyodide keeps out of its standard library, loaded when a script imports one
+const PACKAGES = ["ssl", "sqlite3", "lzma"];
 const ready = (async () => {
   py = await loadPyodide({ indexURL: ${JSON.stringify(PYODIDE)} });
   py.registerJsModule("_rodeo", {
@@ -127,7 +89,34 @@ function writeModules(files) {
   for (const [path, text] of Object.entries(files)) {
     const cut = path.lastIndexOf("/");
     if (cut > 0) FS.mkdirTree(DIR + "/" + path.slice(0, cut));
-    FS.writeFile(DIR + "/" + path, text);
+    // a binary file comes as "base64:" and its data (install keeps it so)
+    const bytes = text.startsWith("base64:") ? Uint8Array.from(atob(text.slice(7)), (c) => c.charCodeAt(0)) : text;
+    FS.writeFile(DIR + "/" + path, bytes);
+  }
+}
+async function loadPackagesFor(code, modules) {
+  const wanted = [];
+  for (const src of [code].concat(Object.values(modules).filter((t) => !t.startsWith("base64:")))) {
+    for (const raw of src.split("\\n")) {
+      const line = raw.trim();
+      let name = "";
+      if (line.startsWith("import ")) name = line.slice(7).split(",")[0].trim().split(" ")[0];
+      else if (line.startsWith("from ")) name = line.slice(5).trim().split(" ")[0];
+      const top = name.split(".")[0];
+      if (PACKAGES.includes(top) && !wanted.includes(top)) wanted.push(top);
+      for (const extra of line.startsWith("import ") ? line.slice(7).split(",").slice(1) : []) {
+        const more = extra.trim().split(" ")[0].split(".")[0];
+        if (PACKAGES.includes(more) && !wanted.includes(more)) wanted.push(more);
+      }
+    }
+  }
+  if (!wanted.length) return;
+  const blocked = self.fetch;
+  self.fetch = NATIVE_FETCH;
+  try {
+    await py.loadPackage(wanted);
+  } finally {
+    self.fetch = blocked;
   }
 }
 onmessage = async (e) => {
@@ -153,6 +142,7 @@ onmessage = async (e) => {
   py.globals.set("_plugin_dir", DIR);
   try {
     writeModules(m.modules || {});
+    await loadPackagesFor(m.code || "", m.modules || {});
     postMessage({ type: "done", result: await py.runPythonAsync(RUN) });
   } catch (err) {
     postMessage({ type: "done", result: JSON.stringify({ error: { name: "Error", message: String(err && err.message || err), line: null } }) });
@@ -241,6 +231,7 @@ function snapshot(s: EditSession, jspi: boolean, run?: PluginRun): string {
       }
       const box = g?.bbox ?? o.bounds ?? null;
       objects.push({
+        ...Object.assign({}, ...objectParts.map((part) => part(o, doc) ?? {})),
         id: o.id,
         type: o.type,
         typeName: o.typeName,
@@ -306,6 +297,9 @@ function snapshot(s: EditSession, jspi: boolean, run?: PluginRun): string {
         name: "",
         bbox: null,
         attrs: store.drawAttrs,
+        // where the script's GetSymLoc and GetSymRot read the object's place, as Vectorworks has them
+        ins: [run.place.at.x, run.place.at.y],
+        turned: run.place.angle,
         sym: null,
         records: { [run.name]: Object.fromEntries(params.map(([name, , value]) => [name, value])) },
         shape: null,
@@ -313,9 +307,10 @@ function snapshot(s: EditSession, jspi: boolean, run?: PluginRun): string {
     }
     // the plug-in's own format, made as the run is applied when the drawing hasn't one
     if (!formats.has(run.name)) formats.set(run.name, NEW_FORMAT);
-    plugin = { name: run.name, object, isNew: !run.object, params, event: run.event ?? RECALCULATE, eventData: run.eventData ?? 0 };
+    plugin = { name: run.name, object, isNew: !run.object, params, event: run.event ?? RECALCULATE, eventData: run.eventData ?? 0, info: run.info ?? {}, tool: run.tool ?? null };
   }
   return JSON.stringify({
+    ...Object.assign({}, ...snapshotParts.map((part) => part(s))),
     units,
     layers: doc.layers().map((l) => ({ id: l.id, name: l.name, kind: l.kind, scale: l.scale, vis: l.visibility, elev: l.elevation ?? 0 })),
     classes: classes.map((c) => ({ name: c.name, vis: c.visibility, attrs: c.attrs, textStyle: c.textStyle })),
@@ -448,6 +443,7 @@ function applySteps(s: EditSession, steps: readonly unknown[][], around: Around 
   const made = new Map<string, string>();
   const real = (v: unknown): string => made.get(str(v)) ?? str(v);
   const classIndex = (name: string): number => s.doc.classes().find((c) => c.name === name)?.index ?? s.createClass(name);
+  const ctx: StepContext = { s, made, real, ids, classIndex };
   s.batch(() => {
     around.before?.(made);
     for (const step of steps) {
@@ -580,8 +576,11 @@ function applySteps(s: EditSession, steps: readonly unknown[][], around: Around 
           s.setRecordField(id, format, str(a[2]), fieldValue(s, id, format, str(a[2]), str(a[3])));
           break;
         }
-        default:
-          throw new Error(`unknown step ${str(kind)}`);
+        default: {
+          const extra = extraStep(str(kind));
+          if (!extra) throw new Error(`unknown step ${str(kind)}`);
+          extra(a, ctx);
+        }
       }
     }
     around.after?.(made);
@@ -728,6 +727,8 @@ async function answer(w: Worker, id: number, kind: string, rawArgs: string): Pro
     value = await runLayoutDialog(args[0] ?? "{}");
   } else if (kind === "DialogClose") {
     closeLayoutDialog(Number(args[0]));
+  } else if (hostAsk(kind)) {
+    value = await hostAsk(kind)?.(args);
   } else if (kind === "AlrtDialog") {
     await showAlert("Script", args[0] ?? "");
   } else if (kind === "YNDialog") {
@@ -761,18 +762,10 @@ export function stopScript(): void {
   done?.({ error: { name: "Stopped", message: "Stopped: nothing was changed.", line: null } });
 }
 
+export { isVectorscript };
+
 export function scriptRunning(): boolean {
   return running !== null;
-}
-
-/**
- * Whether a script is Vectorscript: one that starts (after its comments) with PROCEDURE or FUNCTION,
- * as no Python script does, or a .vs or .px file that doesn't start as Python does.
- */
-export function isVectorscript(code: string, file: string): boolean {
-  const head = code.replace(/^(\s|\{[^}]*\}|\(\*[\s\S]*?\*\)|\/\/[^\n]*)*/, "");
-  if (/^(procedure|function)\s+[a-z_]\w*\s*[;(:]/i.test(head)) return true;
-  return /\.(vs|px)$/i.test(file) && !/^\s*(import|from|def|class|#|print\s*\()/.test(code);
 }
 
 export interface RunOutcome {
@@ -791,8 +784,24 @@ export interface RunOutcome {
   readonly ignored?: number;
 }
 
+/** What a plug-in's script may ask about its own parameters, as the vs module's plug-in calls read it (the snapshot's plugin.info). */
+export interface PluginInfo {
+  /** its control points: the X and Y parameters' names (their values are the object's frame in mm) */
+  readonly controlPoints?: readonly { readonly x: string; readonly y: string }[];
+  /** each popup or radio parameter's choices: the value kept and the name shown, by parameter name */
+  readonly choices?: Readonly<Record<string, readonly { readonly value: string; readonly label: string }[]>>;
+  /** the parameters an edit set, with the value each held before (vsoStateGetParamChng reports them) */
+  readonly changed?: readonly { readonly name: string; readonly old: string }[];
+  /** each parameter's display name, by parameter name */
+  readonly labels?: Readonly<Record<string, string>>;
+  /** the number of the layout widget showing each parameter, by parameter name (from its layout) */
+  readonly widgets?: Readonly<Record<string, number>>;
+}
+
 /** A Vectorworks plug-in's run: a command's or tool's, or an object's (one in the drawing, or one to place). */
 export interface PluginRun {
+  /** what the script may ask about its own parameters, see PluginInfo */
+  readonly info?: PluginInfo;
   /** its name, which its parameters' record format has */
   readonly name: string;
   /** its parameters with their defaults, as its record holds them (lengths in millimetres) */
@@ -812,6 +821,11 @@ export interface PluginRun {
    */
   readonly event?: number;
   readonly eventData?: number;
+  /**
+   * A tool's run in its session (toolRun.ts): the event and its messages, the points, the pointer, the
+   * mode bar and the data it keeps. The snapshot's plugin.tool; the run's steps are applied as usual.
+   */
+  readonly tool?: Readonly<Record<string, unknown>>;
 }
 
 /** An event run's changes to its object's own parameters, as the record holds them; the rest are counted. */
@@ -947,6 +961,7 @@ export async function runScript(code: string, file: string, events: RunEvents, p
     setSelection([...store.selection].filter((id) => s.doc.object(id)));
   }
   applyDefaults(result);
+  for (const handle of resultHandlers) handle(result as unknown as Record<string, unknown>, s, !!plugin);
   for (const text of result.alerts ?? []) await showAlert("Script", text);
   return { error: null, steps: steps.length, object, ui: result.ui ?? null };
 }

@@ -2149,6 +2149,72 @@ layer's elevation, and reshapes one only when the room its walls close has
 changed. The label's extra fields are openvwx's own: a data record of the
 format `Space Label` attached to the Space, its `Fields` text the parameter
 names. Untested in Vectorworks.
+### 7.6 Marionette (visual script networks)
+
+Read by `web/src/core/marionette.ts` and checked by `web/src/core/marionette.check.ts` on the 2023 demo drawing
+(189 plug-in objects, 134 scripts, 153 wires) and by counts alone on its 2026 save. What every record of the kind
+agrees on is marked **confirmed**; the rest **likely** or **unknown**.
+
+* **Node.** A plug-in object (type 86) whose type-48 child has the record format `MarionetteNode` or `MarionetteObject2D` (a wrapper). Counts in the demo: 127 and 62. **confirmed**
+* **Parameters.** The type-48 record is read with the ordinary record-format reader (`readValues`), field types
+  as in §7.3: `NodeType`, `NodeName` (blank in 117 of 189), `NodeWidth`, `NodeDef_DataPorts` and
+  `NodeDef_OIPControls` (text, JSON with a `data` list), `ParametricWrapper`. Port counts in the JSON equal
+  `NumPortsIn` / `NumPortsOut` in 189 of 189. **confirmed**
+* **Script.** A type-76 aux child of the node with tag `CSPM` at +0x50. UTF-16LE text from +0x56 to a final
+  0x0000 (+0x54 holds 0x0009, not text). 134 records in the demo, 127 under `MarionetteNode` and 7 under wrappers;
+  40 distinct texts. Wrappers without `CSPM` hold no script (see Networks). **confirmed**
+* **Ports.** Type-6 arcs in the node's own drawing, centre (y at +0xb0, x at +0xb8) in node-local units. Input
+  arcs have x = 0, output arcs x = `NodeWidth`. Inputs (and outputs) sorted by y, top first, matched to the JSON
+  entries of that direction in order. The arc count equals the port count in 189 of 189 nodes. The port order
+  itself is **likely** (not checked against Vectorworks).
+* **Node placement.** The node's matrix at +0xf0 (row vectors, as `readPluginMatrix`): world = local × linear
+  part + translation at +0x138 / +0x140. **confirmed** by the wire ends.
+* **Wires.** An open polyline (type 21, closed flag +0x8d = 0, vertex count u16 at +0x8e, 36-byte vertices from
+  +0x90, y then x) inside its source node's drawing: first vertex on one of the source's output arcs, last vertex
+  on an input arc of another node. Each wire is drawn twice (once under the node, once in one of its groups); the
+  reader keeps one per (output, input) pair. 153 wires in the demo; 306 polylines of this kind. **confirmed**
+  There is no link record. Output ports fan out. Each input with a wire has one, except one input (`list`) with two,
+  which is **unknown**.
+* **Networks.** A network is the set of nodes in one container: a layer, a group or a symbol definition. The
+  demo has two networks with wires, of 36 and 91 nodes (39 and 114 wires), both inside wrapper groups in
+  symbol definitions; both are acyclic. Wrappers on layers (60) and in symbol definitions (2) hold no network in
+  the file. **confirmed** for the counts; the reading "network in the style" is **likely**.
+* **Wrapper controls.** A wrapper's controls are named `<name>_<N>_Lifted`, where `N` is the name index (+0x1a) of
+  an inner node. Which network a layer-level wrapper draws from is **unknown**.
+* **Typed controls.** `NodeDef_OIPControls` entries carry `varName`, `text` (the label), `type` and `value`. The
+  meaning of the type codes (1, 2, 3, 4, 8, 11, 16, 17) is **unknown**; values are shown as read.
+* **Reading cost.** Opening the 330 MB demo takes about 1.6 s in Node (decompress included). Listing the 189 nodes
+  takes about 35 ms (plug-in objects only). The wires of both networks take about 10 ms. Scripts are decoded
+  only when read.
+* **Not read.** `FNIP` (39 fields, 77 unexplained bytes), `TDMD` children, the runtime that evaluates the
+  networks, and the `Marionette` Python module the scripts import. The scripts are not run.
+
+### 7.7 Scripts kept in the drawing
+
+A script palette is a type-51 record in the class list (57), beside the record formats (47). Its name index names the palette. Its children are its scripts. Only the one layout below is read as text. Samples: one Python script, in a public Vectorworks 2022 drawing. Every other type-49 layout found is listed at the end.
+
+| Offset | Type | Meaning | |
+|---|---|---|---|
+| 51: +0x26 | u64 | owner: the class list (57) | confirmed |
+| 51: +0x1a | u16 | name index: the palette's name (table §3) | confirmed |
+| 51: +0x8c | u64 | the child script's heap address (its owner value for children and aux) | likely |
+| 51: +0xa6 | u64 | the palette's child-list owner (its own address) | likely |
+| 51: body (0x80 bytes) | | no text, no length | confirmed |
+| 49 (script): +0x26 | u64 | owner: the palette's child-list address; the record before it is the palette | confirmed |
+| 49: +0x1a | u16 | name index: the script's name (table §3, UTF-16LE) | confirmed |
+| 49: +0x10 | u64 | aux-list pointer (non-zero: the script has aux records) | confirmed |
+| 49: +0x50 | u64 | n = text length + 1: record size − 0x58 | confirmed |
+| 49: +0x58 | u8 | flag, 0x5f in the one sample (not part of the text) | confirmed (value meaning unknown) |
+| 49: +0x59 to end | 8-bit text | the script: 7-bit ASCII, LF line ends, no terminator, no trailing NUL; read as UTF-8 | confirmed (sample) |
+| 49 aux: type 59 × 5 | | 162 bytes, body zero; meaning unknown | confirmed (layout) |
+| 49 aux: type 76, tag `TDMD` | | 124 bytes | confirmed (tag) |
+| 0 | terminator, owner = the palette's child list, closes the scripts | | confirmed |
+
+Language: no marker is visible. A Python script has `import vs` near its top (`vs` is the module Vectorworks scripts import). Whether the flag byte gives the language is a guess; no Vectorscript sample is known.
+
+Palettes in older files: the 2018-format drawings tried have a name table that does not parse in this reader, so their palettes are unknown.
+
+Other type-49 layout (not read as script text): 89 bytes (body 9 bytes, first byte 0), one child of type 43 (about 1.3 KB of binary). Seen in the 2023, 2024 and 2025 demo drawings, 60, 32 and 79 under one palette each. What the 43 holds is unknown (not text). Vectorworks has long kept saved views among its palette entries, so these are probably the drawing's saved views (a guess: the counts weren't compared with the views).
 
 ## 8. Open questions
 

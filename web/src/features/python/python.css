@@ -183,6 +183,199 @@
   display: none;
 }
 
+/* a slider: its name, then the bar */
+.ld-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.ld-slider-bar {
+  width: 160px;
+  max-width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* static text's looks: italic, underline, a caption or reduced size, and a justification (block, so it aligns) */
+.ld-italic {
+  font-style: italic;
+}
+
+.ld-underline {
+  text-decoration: underline;
+}
+
+.ld-caption {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.ld-reduced {
+  font-size: 12px;
+}
+
+.ld-just-center,
+.ld-just-right {
+  display: block;
+}
+
+.ld-just-center {
+  text-align: center;
+}
+
+.ld-just-right {
+  text-align: right;
+}
+
+/* a list browser: a header row over a scrolling table of rows */
+.ld-lb {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ld-lb.ld-disabled,
+.ld-tree.ld-disabled {
+  opacity: 0.45;
+}
+
+.ld-lb-head {
+  display: flex;
+  border: 1px solid var(--chrome-border);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.ld-lb-head[hidden] {
+  display: none;
+}
+
+.ld-lb-th {
+  flex: none;
+  height: 24px;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-right: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.ld-lb-th:hover {
+  color: var(--text);
+}
+
+.ld-lb-body,
+.ld-tree {
+  overflow: auto;
+  border: 1px solid var(--chrome-border);
+  border-radius: 6px;
+  background: var(--surface);
+  outline: none;
+}
+
+.ld-lb-body:focus-visible,
+.ld-tree:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.ld-lb-tr,
+.ld-tree-row {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  min-width: 100%;
+  width: max-content;
+  color: var(--text);
+  cursor: default;
+  user-select: none;
+}
+
+.ld-lb-tr:nth-child(even) {
+  background: var(--fill);
+}
+
+.ld-lb-tr.ld-sel,
+.ld-tree-row.ld-sel {
+  background: var(--select);
+}
+
+.ld-lb-td {
+  flex: none;
+  box-sizing: border-box;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+.ld-lb-radio,
+.ld-lb-box {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--text-soft);
+  vertical-align: middle;
+}
+
+.ld-lb-box {
+  border-radius: 3px;
+}
+
+.ld-lb-radio {
+  border-radius: 50%;
+}
+
+.ld-lb-box[aria-checked="true"],
+.ld-lb-radio[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* a tree: each item indented under its parent, with a triangle when it has children */
+.ld-tree {
+  display: block;
+  height: auto;
+  max-height: 200px;
+  padding: 2px 0;
+}
+
+.ld-tree-twist {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--text-soft);
+}
+
+/* a picture, symbol or area the editor doesn't draw: an empty framed box */
+.ld-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 32px;
+  padding: 2px 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--chrome-border);
+  border-radius: 6px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
 /* Script Palettes (scriptPalettes.ts): a section per palette, its scripts run with a double-click */
 .sp-body .list {
   display: flex;
@@ -278,6 +471,204 @@
   border-radius: 6px;
   resize: vertical;
   background: transparent;
+  color: var(--text);
+  font: 12px/1.5 var(--mono);
+  tab-size: 4;
+  white-space: pre;
+}
+
+/* Marionette (marionette.ts): the script window and the networks dialog */
+.menu-dialog.mn-dialog {
+  width: min(680px, 100%);
+}
+
+.mn-note {
+  max-width: none;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.mn-copy-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mn-script {
+  margin: 0;
+  max-height: min(56vh, 520px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 12px/1.5 var(--mono);
+  tab-size: 4;
+  white-space: pre;
+  user-select: text;
+}
+
+.mn-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mn-networks {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+}
+
+.mn-network-title {
+  margin: 0;
+  font-size: 13px;
+}
+
+.mn-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.mn-node .btn.small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mn-ports {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tool events: the bar of an event-enabled plug-in tool, over the top of the drawing. Solid, as the other panels. */
+.vt-bar {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 8px;
+  background: var(--chrome);
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.vt-name {
+  padding: 0 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.vt-mode {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+  background: var(--fill);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.vt-mode[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--select);
+}
+
+.vt-mode:disabled,
+.vt-select:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vt-pulldown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-soft);
+}
+
+.vt-select {
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+  background: var(--chrome);
+  color: var(--text);
+  font: inherit;
+}
+
+.vt-help {
+  padding: 0 4px;
+  color: var(--text-soft);
+}
+
+.vt-end {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+  background: var(--fill);
+  color: var(--text-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* a drawing's own scripts: a section head that is not a button, and the read-only view */
+.sp-kept {
+  cursor: default;
+}
+
+.sp-kept:hover {
+  background: none;
+}
+
+.sp-kept-note {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sp-view-note {
+  max-width: none;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.menu-dialog.sp-view {
+  width: min(680px, 100%);
+}
+
+.sp-script-text {
+  margin: 0;
+  max-height: min(56vh, 520px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--surface-2);
   color: var(--text);
   font: 12px/1.5 var(--mono);
   tab-size: 4;

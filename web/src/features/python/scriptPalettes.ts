@@ -13,6 +13,9 @@ import { confirmDialog, showDialog } from "../../app/menubar.ts";
 import { store } from "../../app/state.ts";
 import { toast } from "../../app/toast.ts";
 import { showAlert } from "../plugins/ui.ts";
+import { documentScripts } from "../../core/docScripts.ts";
+import { Model } from "../../core/model.ts";
+import { isVectorscript } from "./runPy.ts";
 
 export const SCRIPT_PALETTES = "scriptPalettes";
 
@@ -285,6 +288,98 @@ function paletteRows(p: ScriptPalette): Row[] {
   ];
 }
 
+// ---- scripts the open drawing keeps --------------------------------------------------------------
+
+/** the section for a drawing's scripts whose palette has no name */
+const NO_PALETTE_NAME = "In this drawing";
+
+/** The open drawing's scripts, a palette at a time, each as a Script (its language by the app's test). */
+function drawingPalettes(): { name: string; scripts: Script[] }[] {
+  const doc = store.session?.doc;
+  if (!(doc instanceof Model)) return [];
+  const groups = new Map<string, Script[]>();
+  for (const d of documentScripts(doc)) {
+    const name = d.palette ?? NO_PALETTE_NAME;
+    const language: Language = isVectorscript(d.text, d.name) ? "vectorscript" : "python";
+    const list = groups.get(name) ?? [];
+    list.push({ name: d.name, language, code: d.text });
+    groups.set(name, list);
+  }
+  return [...groups].map(([name, scripts]) => ({ name, scripts }));
+}
+
+/** Shows a script the drawing keeps, read only (its text can't be changed or saved from here). */
+function viewDrawingScript(s: Script): void {
+  void showDialog<null>({
+    title: `Script: ${s.name}`,
+    cls: "sp-view",
+    okLabel: "Close",
+    body: [
+      h("p", { cls: "menu-dialog-text sp-view-note", text: "Kept in the drawing. This text is read only." }),
+      h("pre", { cls: "sp-script-text", attrs: { tabindex: "0", "aria-label": "Script" }, text: s.code }),
+    ],
+    check: () => ({ value: null }),
+  });
+}
+
+/** Copies a script the drawing keeps into the browser's own palettes, where it can be edited. */
+function copyToMine(paletteName: string, s: Script): void {
+  let p = palettes.find((x) => x.name.toLowerCase() === paletteName.toLowerCase());
+  if (!p) {
+    p = { name: freeName(paletteName, palettes.map((x) => x.name)), scripts: [], open: true };
+    palettes.push(p);
+  }
+  const name = freeName(s.name, p.scripts.map((x) => x.name));
+  p.scripts.push({ name, language: s.language, code: s.code });
+  p.open = true;
+  save();
+  showScriptPalette(p.name);
+  toast(`${name} is copied to ${p.name}: double-click it to run it or edit it there.`, "info");
+}
+
+function drawingScriptRows(paletteName: string, s: Script): Row[] {
+  return [
+    { label: "Run", enabled: () => !!store.session, run: () => void runScriptOf(s) },
+    { label: "View…", run: () => viewDrawingScript(s) },
+    "-",
+    { label: "Copy to My Palettes", run: () => copyToMine(paletteName, s) },
+  ];
+}
+
+/** The drawing's sections, shown above the browser's own palettes. */
+function drawingSections(list: HTMLElement): void {
+  for (const group of drawingPalettes()) {
+    list.append(
+      h(
+        "div",
+        { cls: "sp-head sp-kept", attrs: { "data-drawing-palette": group.name } },
+        h("span", { cls: "sp-name", text: group.name }),
+        h("span", { cls: "sp-kept-note", text: "kept in the drawing" }),
+        h("span", { cls: "sp-count", text: String(group.scripts.length) }),
+      ),
+    );
+    for (const s of group.scripts) {
+      const row = h(
+        "div",
+        { cls: "row sp-script sp-kept-script", attrs: { tabindex: "0", role: "button", "aria-label": `Run ${s.name}` }, title: "Double-click (or Enter) to run on the drawing; right-click for more" },
+        h("span", { cls: "sp-lang", text: s.language === "vectorscript" ? "VS" : "Py" }),
+        h("span", { cls: "name", text: s.name }),
+      );
+      row.addEventListener("dblclick", () => void runScriptOf(s));
+      row.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        void runScriptOf(s);
+      });
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        openContextMenu(drawingScriptRows(group.name, s), e.clientX, e.clientY, row);
+      });
+      list.append(row);
+    }
+  }
+}
+
 // ---- the palette ---------------------------------------------------------------------------------
 
 const body = h("div", { cls: "sp-body" });
@@ -294,8 +389,9 @@ function render(): void {
   add.addEventListener("click", () => void newPalette());
   const list = h("div", { cls: "list" });
   body.replaceChildren(h("div", { cls: "toolbar" }, add), list);
+  drawingSections(list);
   if (palettes.length === 0) {
-    list.append(h("div", { cls: "empty", text: "No script palettes yet. Make one, then add Python scripts or Vectorscripts to run with a double-click." }));
+    if (list.childElementCount === 0) list.append(h("div", { cls: "empty", text: "No script palettes yet. Make one, then add Python scripts or Vectorscripts to run with a double-click." }));
     return;
   }
   for (const p of palettes) {
@@ -349,6 +445,17 @@ render();
 window.addEventListener("storage", (e) => {
   if (e.key !== KEY) return;
   palettes = load();
+  render();
+});
+
+// the scripts a drawing keeps are shown for the drawing that is open: a session event with the same
+// records as the last one (a selection or a layer change) draws nothing
+let shownRecords: unknown = null;
+store.on("session", () => {
+  const doc = store.session?.doc;
+  const records = doc instanceof Model ? doc.recs : null;
+  if (records === shownRecords) return;
+  shownRecords = records;
   render();
 });
 

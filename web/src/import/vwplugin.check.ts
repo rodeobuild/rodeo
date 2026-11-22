@@ -9,7 +9,7 @@ import { blankDrawing } from "../core/blank.ts";
 import { readBBox } from "../core/encode.ts";
 import { openVwx } from "../core/index.ts";
 import type { PluginFieldSpec } from "../core/types.ts";
-import { isVwPlugin, looksLikeVectorscript, objectShape, readVwPlugin } from "./vwplugin.ts";
+import { controlPointsOf, isVwPlugin, looksLikeVectorscript, objectShape, readVwPlugin, type VwParam } from "./vwplugin.ts";
 
 let failures = 0;
 function check(ok: boolean, what: string): void {
@@ -193,6 +193,20 @@ for (const units of ["mm", "ftin"] as const) {
   }
   check(refused && s.doc.objects(layer.id).length === 0, `${units}: a field of an unknown type is refused, changing nothing`);
 }
+
+// ---- control points and paths ---------------------------------------------------------------------
+
+/** A parameter of the given type, for the control point pairing (its default and kind are what the reader gives). */
+function param(name: string, type: number): VwParam {
+  const kind = type === 10 ? "x" : type === 11 ? "y" : type === 7 ? "dimension" : "other";
+  return { name, label: name, type, kind: kind as VwParam["kind"], default: "0", metricDefault: "", choices: [] };
+}
+
+const pairs = controlPointsOf([param("ControlPoint01X", 10), param("ControlPoint01Y", 11), param("Length", 7), param("ControlPoint02X", 10), param("ControlPoint02Y", 11), param("Stray", 10)]);
+check(pairs.length === 2 && pairs[0].x.name === "ControlPoint01X" && pairs[0].y.name === "ControlPoint01Y", "control points: each X paired with the Y after it");
+check(pairs[1].x.name === "ControlPoint02X" && pairs[1].y.name === "ControlPoint02Y", "control points: the second pair");
+check(controlPointsOf([param("Length", 7)]).length === 0, "a plug-in with no coordinates has no control points");
+check(objectShape(["vs.GetCustomObjectPath(h)", "vs.PControlPoint01X"]) === "path", "a path plug-in is a path even with control points");
 
 if (failures) {
   console.log(`\n${failures} failed`);

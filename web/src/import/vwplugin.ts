@@ -202,6 +202,22 @@ export function readVwPlugin(bytes: Uint8Array): VwPlugin {
   };
 }
 
+/** A control point: the X and Y parameters of a point on the object, in its own frame. */
+export interface VwControlPoint {
+  readonly x: VwParam;
+  readonly y: VwParam;
+}
+
+/**
+ * The control points of a plug-in: its coordinate parameters (types 10 and 11) paired in the order
+ * they are declared, the first X with the first Y, and so on. A parameter left over is not one.
+ */
+export function controlPointsOf(params: readonly VwParam[]): VwControlPoint[] {
+  const xs = params.filter((p) => p.kind === "x");
+  const ys = params.filter((p) => p.kind === "y");
+  return xs.slice(0, ys.length).map((x, i) => ({ x, y: ys[i] }));
+}
+
 /**
  * The shape an object plug-in is placed by, from what its script (and the Python modules that come
  * with it) asks for: its path, its line's length or its rectangle's size; a point otherwise.

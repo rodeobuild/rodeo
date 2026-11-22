@@ -4,11 +4,18 @@
 // records what it changed; runner.ts applies the record to the drawing when the script ends, as one
 // undo step. Calls Rodeo doesn't have raise NotImplementedError naming them.
 
-export const VS_SOURCE = String.raw`
+import { VS_PARTS } from "./vs/index.ts";
+
+const VS_CORE = String.raw`
 import json as _json
 import math as _math
+import unicodedata as _unicodedata
 
 _S = None
+# what the module's later parts add: each _INIT_HOOKS entry is called with (state, snapshot) as a run
+# starts, each _RESULT_HOOKS entry with (state) as it ends, giving a dict merged into the result
+_INIT_HOOKS = []
+_RESULT_HOOKS = []
 
 
 class Handle(object):
@@ -158,13 +165,16 @@ class _State(object):
 
 def _init(snapshot_json):
     global _S
-    _S = _State(_json.loads(snapshot_json))
+    snap = _json.loads(snapshot_json)
+    _S = _State(snap)
+    for hook in _INIT_HOOKS:
+        hook(_S, snap)
 
 
 def _result():
     s = _S
     sel = [i for i, o in s.objs.items() if o["sel"]] if s.sel_changed else None
-    return _json.dumps({
+    out = {
         "ops": s.ops,
         "selection": sel,
         "activeLayer": s.active_layer if s.layer_changed else None,
@@ -180,7 +190,10 @@ def _result():
         "classMode": s.class_mode,
         "layerMode": s.layer_mode,
         "activeSymbol": s.active_symbol if s.symbol_changed else None,
-    })
+    }
+    for hook in _RESULT_HOOKS:
+        out.update(hook(s) or {})
+    return _json.dumps(out)
 
 
 def __getattr__(name):
@@ -445,7 +458,8 @@ def _add_poly3d(pts):
         raise ValueError("a 3D polygon needs at least two vertices")
     closed = _S.closed
     flat = [c for p in pts for c in p]
-    return _add({"kind": "poly3d", "points": flat, "closed": closed}, {"kind": "polygon", "pts": [[p[0], p[1]] for p in pts], "closed": closed})
+    # the copy keeps the heights too (pts3), for the 3D calls that read the object's drawn points
+    return _add({"kind": "poly3d", "points": flat, "closed": closed}, {"kind": "polygon", "pts": [[p[0], p[1]] for p in pts], "pts3": [list(p) for p in pts], "closed": closed})
 
 
 _VERTEX_KIND = {0: "corner", 1: "bezier", 2: "cubic", 3: "arc", 4: "through"}
@@ -807,10 +821,15 @@ def _step(h, d, selected=False):
 
 
 def NextObj(h):
+    # Vectorworks answers None for a nil handle: scripts loop with "while h != None"
+    if h is None:
+        return None
     return _step(h, 1)
 
 
 def PrevObj(h):
+    if h is None:
+        return None
     return _step(h, -1)
 
 
@@ -823,11 +842,15 @@ def PrevSObj(h):
 
 
 def GetParent(h):
+    if h is None:
+        return None
     o = _obj(h)
     return Handle(o["parent"] or o["layer"])
 
 
 def GetLayer(h):
+    if h is None:
+        return None
     return Handle(_obj(h)["layer"])
 
 
@@ -862,8 +885,12 @@ GetType = GetTypeN
 
 
 def GetName(h):
+    if h is None:
+        return ""
     if _is_record(h):
         return _S.plugin["name"]
+    if _is_layer(h):
+        return _layer(h)["name"]
     return _obj(h).get("name") or ""
 
 
@@ -872,6 +899,8 @@ def GetLName(h):
 
 
 def GetClass(h):
+    if h is None:
+        return ""
     return _obj(h)["cls"]
 
 
@@ -1225,6 +1254,15 @@ def GetPenBack(h):
 # ---- changing objects ------------------------------------------------------------------------
 
 def SetName(h, name):
+    if _is_layer(h):
+        # a layer is renamed in the drawing: the layer's own name, which no other layer may have
+        l = _layer(h)
+        name = str(name)
+        if name and any(x is not l and x["name"] == name for x in _S.layers):
+            raise ValueError("another layer is already named %r" % name)
+        l["name"] = name
+        _S.ops.append(["layername", l["id"], name])
+        return
     o = _obj(h)
     name = str(name)
     if name and any(x is not o and x.get("name") == name for x in _S.objs.values()):
@@ -1577,6 +1615,9 @@ _TYPE_NAMES = {
     "NURBSSURFACE": 113, "VIEWPORT": 122,
 }
 _SCOPE_WORDS = ("INSYMBOL", "INOBJECT", "INVIEWPORT", "NOTINDLVP", "NOTINREFDLVP", "INWALL")
+# the flags a bare word tests (SEL, VSEL, V), and the attribute codes the snapshot holds for each object
+_FLAG_WORDS = ("SEL", "VSEL", "V")
+_ATTR_CODES = {"FB": "fillBack", "FF": "fillFore", "FP": "fillPattern", "PB": "penBack", "PF": "penFore", "PP": "penPattern", "OPA": "opacity"}
 
 
 def _tokens(text):
@@ -1589,9 +1630,17 @@ def _tokens(text):
         elif ch in "()&|[],":
             out.append(ch)
             i += 1
-        elif ch == "<" and text[i:i + 2] == "<>":
-            out.append("<>")
-            i += 2
+        elif ch in "<>":
+            two = text[i:i + 2]
+            if two in ("<>", "<=", ">="):
+                out.append(two)
+                i += 2
+            else:
+                out.append(ch)
+                i += 1
+        elif ch == ".":
+            out.append(".")
+            i += 1
         elif ch == "=":
             out.append("=")
             i += 1
@@ -1603,7 +1652,10 @@ def _tokens(text):
             i = j + 1
         else:
             j = i
-            while j < len(text) and not text[j].isspace() and text[j] not in "()&|[],=<'\"":
+            while j < len(text) and not text[j].isspace() and text[j] not in "()&|[],=<>'\"":
+                # a dot ends a word, unless the word is a number and a digit follows (1.5)
+                if text[j] == "." and not (text[i:j].lstrip("+-").isdigit() and text[j + 1:j + 2].isdigit()):
+                    break
                 j += 1
             out.append(("word", text[i:j]))
             i = j
@@ -1630,7 +1682,7 @@ def _criteria(text):
 
     def expr():
         left = term()
-        while peek() == "|":
+        while _op(peek(), "|", "OR"):
             take()
             right = term()
             left = (lambda a, b: lambda o: a(o) or b(o))(left, right)
@@ -1638,7 +1690,7 @@ def _criteria(text):
 
     def term():
         left = factor()
-        while peek() == "&":
+        while _op(peek(), "&", "AND"):
             take()
             right = factor()
             left = (lambda a, b: lambda o: a(o) and b(o))(left, right)
@@ -1662,26 +1714,39 @@ def _criteria(text):
         t = take()
         if not isinstance(t, tuple):
             raise ValueError("criteria: unexpected %r in %r" % (t, text))
+        if peek() == ".":
+            # a record's field: 'Record Name'.'Field Name' <op> value
+            take()
+            f = take()
+            if not isinstance(f, tuple):
+                raise ValueError("criteria: a record's field name is expected in %r" % text)
+            op = take()
+            if op not in _FIELD_OPS:
+                raise ValueError("criteria: %s needs = <> < > <= or >= after its field in %r" % (t[1], text))
+            return _field_test(t[1], f[1], op, value())
         word = t[1].upper()
         if word == "ALL" or word in _SCOPE_WORDS:
             return lambda o: True
-        if word == "V":
-            return _visible
-        if word == "R" and isinstance(peek(), tuple) and peek()[1].upper() == "IN":
+        nxt = peek()
+        if word in _FLAG_WORDS and not (nxt in ("=", "<>") or (isinstance(nxt, tuple) and nxt[1].upper() == "IN")):
+            # a bare flag: ((SEL)) is the selected objects, the same as SEL=TRUE
+            return _criterion(word, "TRUE", text)
+        if isinstance(nxt, tuple) and nxt[1].upper() == "IN":
             take()
             if take() != "[":
-                raise ValueError("criteria: R IN takes ['record'] in %r" % text)
+                raise ValueError("criteria: %s IN takes a list in [ ] in %r" % (word, text))
             names = [value()]
             while peek() == ",":
                 take()
                 names.append(value())
-            take()
-            return lambda o: any(n in (o.get("records") or {}) for n in names)
+            if take() != "]":
+                raise ValueError("criteria: a list isn't closed in %r" % text)
+            tests = [_criterion(word, v, text) for v in names]
+            return lambda o: any(f(o) for f in tests)
         op = take()
         if op not in ("=", "<>"):
             raise ValueError("criteria: %s needs = or <> in %r" % (word, text))
-        v = value()
-        test = _criterion(word, v, text)
+        test = _criterion(word, value(), text)
         return test if op == "=" else (lambda o: not test(o))
 
     f = expr()
@@ -1690,10 +1755,90 @@ def _criteria(text):
     return f
 
 
+_FIELD_OPS = ("=", "<>", "<", ">", "<=", ">=")
+# unit marks a criteria number may end with; the number is compared without them
+_UNIT_MARKS = ("mm", "cm", "yd", "ft", "in", "m", "'", '"', "\u00b0", "%")
+
+
+def _field_number(v):
+    # the number a value reads as, or None (a text that isn't one). A unit mark after it is dropped.
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    for mark in _UNIT_MARKS:
+        if s.lower().endswith(mark) and len(s) > len(mark):
+            s = s[: -len(mark)].strip()
+            break
+    if not s or s[0] not in "+-.0123456789":
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _field_cmp(a, b, op):
+    # Rodeo's reading: numbers compare as numbers when both sides read as numbers; otherwise the texts
+    # compare ignoring case (an empty field is ""). Vectorworks' own rule may differ for mixed values.
+    na, nb = _field_number(a), _field_number(b)
+    if na is not None and nb is not None:
+        x, y = na, nb
+    else:
+        x = "" if a is None else str(a).casefold()
+        y = "" if b is None else str(b).casefold()
+    return {"=": x == y, "<>": x != y, "<": x < y, ">": x > y, "<=": x <= y, ">=": x >= y}[op]
+
+
+def _ci_key(d, name):
+    # the key of d that matches name ignoring case (record names, as field names here), or None
+    want = str(name).casefold()
+    for k in d:
+        if str(k).casefold() == want:
+            return k
+    return None
+
+
+def _field_test(rec, fld, op, v):
+    """'Record'.'Field' <op> value. An object matches only if it has the record and the field and the
+    comparison holds; one without the record never matches, not even for <> or ''. Record and field names
+    match ignoring case (Rodeo's reading)."""
+    def test(o):
+        recs = o.get("records") or {}
+        rk = _ci_key(recs, rec)
+        if rk is None:
+            return False
+        fields = recs[rk] or {}
+        fk = _ci_key(fields, fld)
+        if fk is None:
+            return False
+        return _field_cmp(fields[fk], v, op)
+    return test
+
+
+def _op(t, sym, word):
+    # & or AND, | or OR, as the criteria write them
+    return t == sym or (isinstance(t, tuple) and t[0] == "word" and t[1].upper() == word)
+
+
+def _attr_of(o, key):
+    a = o.get("attrs")
+    return a.get(key, 0) if a is not None else None
+
+
 def _criterion(word, v, text):
     truth = str(v).upper() in ("TRUE", "1")
     if word == "SEL":
         return lambda o: bool(o["sel"]) == truth
+    if word == "V":
+        return lambda o: _visible(o) == truth
+    if word == "R":
+        return lambda o: v in (o.get("records") or {})
+    if word in _ATTR_CODES:
+        key = _ATTR_CODES[word]
+        n = int(v)
+        return lambda o: _attr_of(o, key) == n
     if word == "VSEL":
         return lambda o: (bool(o["sel"]) and _visible(o)) == truth
     if word == "T":
@@ -1928,13 +2073,6 @@ def CreateStaticText(dialog, item, text, width=-1):
     _control(dialog, item, "static", text=str(text), width=_width(width))
 
 
-def CreateStyledStatic(dialog, item, text, width=-1, style=0):
-    _control(dialog, item, "static", text=str(text), width=_width(width), bold=int(style) == 1)
-
-
-CreateStyledStaticText = CreateStyledStatic
-
-
 def CreateEditText(dialog, item, text, width=20):
     _control(dialog, item, "edit", text=str(text), width=_width(width))
 
@@ -2023,9 +2161,9 @@ def CreateSeparator(dialog, item, length=20):
     _control(dialog, item, "sep", width=_width(length))
 
 
-def CreateImageControl(dialog, item, *image):
-    """An image from the plug-in's resource file, which Rodeo doesn't read: it takes no room."""
-    _control(dialog, item, "image")
+def CreateImageControl(dialog, item, width=0, height=0, *image):
+    """An image from the plug-in's resource file, which Rodeo doesn't read: an empty frame of the size given, in pixels."""
+    _control(dialog, item, "frame", text="", pw=_px(width), ph=_px(height))
 
 
 CreateImageControl2 = CreateImageControl
@@ -2224,21 +2362,40 @@ def SetFocusOnItem(dialog, item):
     _dialog(dialog)["focus"] = int(item)
 
 
+def _set_tip(dialog, item, text):
+    # a tip for an item the dialog doesn't have yet is kept and shown once the item is there (Vectorworks
+    # takes no error for it), see _dialog_json
+    d = _dialog(dialog)
+    c = d["items"].get(int(item))
+    if c is None:
+        d.setdefault("tips", {})[int(item)] = str(text)
+    else:
+        c["tip"] = str(text)
+
+
 def SetHelpText(dialog, item, text):
-    _item(dialog, item)["tip"] = str(text)
+    _set_tip(dialog, item, text)
 
 
 def SetItemToolTipText(dialog, item, text, *more):
-    _item(dialog, item)["tip"] = str(text)
+    _set_tip(dialog, item, text)
 
 
 def _dialog_json(d):
+    for i, text in d.get("tips", {}).items():
+        if i in d["items"]:
+            d["items"][i]["tip"] = text
     items = []
     for c in d["items"].values():
         c = dict(c)
         # lengths go to the editor in millimetres
         if c["kind"] == "real" and c.get("edit") in _EDIT_LENGTHS and c.get("value") is not None:
             c["value"] = _mm(c["value"])
+        if c["kind"] == "tree":
+            # the editor gets the items in order, each with its parent, and keeps no ids it doesn't need
+            c["tree"] = _tree_spec(c)
+            c.pop("nodes", None)
+            c.pop("roots", None)
         items.append(c)
     return _json.dumps({"id": d["id"], "title": d["title"], "first": d["first"], "focus": d["focus"], "items": items})
 
@@ -2248,6 +2405,12 @@ def _dialog_values(d, values):
     for key, v in values.items():
         c = d["items"].get(int(key))
         if c is None:
+            continue
+        if c["kind"] == "lb":
+            _lb_values(c, v)
+            continue
+        if c["kind"] == "tree":
+            _tree_values(c, v)
             continue
         if "text" in v:
             c["text"] = str(v["text"])
@@ -2259,7 +2422,7 @@ def _dialog_values(d, values):
             x = v["value"]
             if x is not None and c["kind"] == "real":
                 x = _un(float(x)) if c.get("edit") in _EDIT_LENGTHS else float(x)
-            elif x is not None and c["kind"] in ("int", "check3", "color", "tabs"):
+            elif x is not None and c["kind"] in ("int", "check3", "color", "tabs", "slider"):
                 x = int(x)
             elif x is not None and c["kind"] in ("check", "radio", "checkgroup", "radiogroup"):
                 x = bool(x)
@@ -2281,8 +2444,9 @@ def RunLayoutDialog(dialog, handler=None):
     _handle(handler, _SETUP_DIALOG, 0)
     try:
         while True:
-            got = _json.loads(_host("Dialog", _dialog_json(d)))
+            got = _json.loads(_host("Dialog", _dialog_json(d))) or {}
             _dialog_values(d, got.get("values") or {})
+            d["active"] = got.get("focus")
             item = _handle(handler, int(got.get("item", _CANCEL)), int(got.get("data", 0)))
             if item in (_OK, _CANCEL):
                 break
@@ -2290,6 +2454,1546 @@ def RunLayoutDialog(dialog, handler=None):
     finally:
         _host("DialogClose", d["id"])
     return item
+
+
+def _px(v):
+    """A size in pixels a script gave, or None when it gave none (or a size no more than 0)."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def CreateControl(dialog, item, kind, name, data):
+    """The extended controls: kind 3 is a slider from 0 to data, the picture-like kinds an empty frame."""
+    k = int(kind)
+    if k == 3:
+        _control(dialog, item, "slider", text=str(name), max=max(0, int(data)), value=0, live=False)
+    elif k in (1, 2, 26):
+        _control(dialog, item, "frame", text=str(name), pw=None, ph=None)
+    elif k == 10:
+        _control(dialog, item, "popup", choices=[], sel=[], width=None)
+    else:
+        raise NotImplementedError("vs.CreateControl's control kind %s isn't available in Rodeo yet" % (k,))
+
+
+def SetSliderLiveUpdate(dialog, item, liveUpdate):
+    """A slider reports each move while it is dragged, not only its release."""
+    c = _item(dialog, item)
+    if c["kind"] != "slider":
+        raise ValueError("item %r of dialog %s isn't a slider" % (item, _dialog(dialog)["id"]))
+    c["live"] = bool(liveUpdate)
+
+
+def GetControlData(dialog, item):
+    """A slider's position, or an image's resource ID as SetControlData gave it."""
+    c = _item(dialog, item)
+    if c["kind"] == "slider":
+        return int(c.get("value") or 0)
+    if c["kind"] == "frame":
+        return int(c.get("image") or 0)
+    raise NotImplementedError("vs.GetControlData isn't available in Rodeo yet for this kind of control")
+
+
+def SetControlData(dialog, item, data):
+    """A slider's position (kept within its range), or an image's resource ID (drawn as an empty frame)."""
+    c = _item(dialog, item)
+    if c["kind"] == "slider":
+        c["value"] = min(max(0, int(data)), int(c.get("max") or 0))
+    elif c["kind"] == "frame":
+        c["image"] = int(data)
+    else:
+        raise NotImplementedError("vs.SetControlData isn't available in Rodeo yet for this kind of control")
+
+
+def GetActiveEditItem(dialog):
+    """The control holding the keyboard focus when the last event came (0 when none)."""
+    return int(_dialog(dialog).get("active") or 0)
+
+
+# List browsers: a table of columns and rows, each cell keeping its text and what is set on it. Rows
+# and columns are numbered from 0. The editor draws the table and reports selections, checks, sorts
+# and events; what it doesn't draw (images, owner-drawn cells, patterns, markers, line styles...) is
+# kept on the cell all the same, so the Get calls return what the script set.
+
+_LB_EVENT_SELECT = -4
+_LB_EVENT_CHECK = -2
+_LB_EVENT_DOUBLE = -5
+_LB_EVENT_SORT = -10
+
+
+def _lb(dialog, item):
+    c = _item(dialog, item)
+    if c["kind"] != "lb":
+        raise ValueError("item %r of dialog %s isn't a list browser" % (item, _dialog(dialog)["id"]))
+    return c
+
+
+def _lb_row(c, index):
+    i = int(index)
+    if not 0 <= i < len(c["rows"]):
+        raise ValueError("the list browser has no item %r (its items are 0 to %d)" % (index, len(c["rows"]) - 1))
+    return c["rows"][i]
+
+
+def _lb_column(c, index):
+    i = int(index)
+    if not 0 <= i < len(c["cols"]):
+        raise ValueError("the list browser has no column %r (its columns are 0 to %d)" % (index, len(c["cols"]) - 1))
+    return i
+
+
+def _lb_cell(c, row, sub):
+    return _lb_row(c, row)["cells"][_lb_column(c, sub)]
+
+
+def _lb_new_cell():
+    return {"text": "", "num": None, "image": 0, "check": 0, "just": None, "style": 0, "tcolor": None, "fill": None, "fillb": None, "data": 0, "attr": {}}
+
+
+def _lb_new_col(header, width):
+    w = _width(width)
+    return {"header": str(header), "width": w if w else 10, "ctype": 1, "dtype": 0, "etype": 0, "hjust": 1, "tip": "", "subtip": "", "tracking": True, "radio": False, "image": 0, "owner": 0, "data": []}
+
+
+def _lb_attr(c, row, sub, name, value):
+    _lb_cell(c, row, sub)["attr"][name] = value
+
+
+def _lb_get(c, row, sub, name, default):
+    return _lb_cell(c, row, sub)["attr"].get(name, default)
+
+
+def _lb_sort_key(cell):
+    return (0, cell["num"], "") if cell.get("num") is not None else (1, 0, cell["text"].lower())
+
+
+def _lb_sort(c, col, ascending):
+    """Puts the rows in order by a column; the selection follows its rows. Rodeo's reading: a sort is stable, so equal rows keep their order."""
+    chosen = [c["rows"][i] for i in c["sel"] if 0 <= i < len(c["rows"])]
+    c["rows"].sort(key=lambda r: _lb_sort_key(r["cells"][col]), reverse=not ascending)
+    c["sel"] = sorted(i for i, r in enumerate(c["rows"]) if any(r is x for x in chosen))
+    c["sort"] = [col, bool(ascending)]
+
+
+def CreateLB(dialog, item, width=20, height=8):
+    _control(dialog, item, "lb", cols=[], rows=[], sel=[], multi=True, single=False, sorting=False, sort=None,
+             colLines=False, hdr=True, readonly=False, dragdrop=False, hier=False, hiercol=-1, lines=max(1, int(height)),
+             width=_width(width), event=None, tabs=[])
+
+
+def InsertLBColumn(dialog, item, columnIndex, headerString, width):
+    c = _lb(dialog, item)
+    i = int(columnIndex)
+    if not 0 <= i <= len(c["cols"]):
+        i = len(c["cols"])
+    c["cols"].insert(i, _lb_new_col(headerString, width))
+    for r in c["rows"]:
+        cell = _lb_new_cell()
+        if i == 0 and r.get("lead") is not None:
+            cell["text"] = r["lead"]
+        r["cells"].insert(i, cell)
+    if c["hiercol"] >= i:
+        c["hiercol"] += 1
+    return i
+
+
+def DeleteLBColumn(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    i = _lb_column(c, columnIndex)
+    del c["cols"][i]
+    for r in c["rows"]:
+        del r["cells"][i]
+    if c.get("sort") and c["sort"][0] == i:
+        c["sort"] = None
+
+
+def GetNumLBColumns(dialog, item):
+    return len(_lb(dialog, item)["cols"])
+
+
+def InsertLBItem(dialog, item, itemIndex, itemString):
+    c = _lb(dialog, item)
+    i = int(itemIndex)
+    if not 0 <= i <= len(c["rows"]):
+        i = len(c["rows"])
+    row = {"cells": [_lb_new_cell() for _ in c["cols"]], "lead": str(itemString)}
+    if c["cols"]:
+        row["cells"][0]["text"] = str(itemString)
+    c["rows"].insert(i, row)
+    c["sel"] = [s + 1 if s >= i else s for s in c["sel"]]
+    return i
+
+
+def DeleteLBItem(dialog, item, itemIndex):
+    c = _lb(dialog, item)
+    _lb_row(c, itemIndex)
+    i = int(itemIndex)
+    del c["rows"][i]
+    c["sel"] = [s - 1 if s > i else s for s in c["sel"] if s != i]
+
+
+def DeleteAllLBItems(dialog, item):
+    c = _lb(dialog, item)
+    c["rows"] = []
+    c["sel"] = []
+
+
+def GetNumLBItems(dialog, item):
+    return len(_lb(dialog, item)["rows"])
+
+
+def SetLBItemInfo(dialog, item, itemIndex, subItemIndex, itemString, imageIndex):
+    """In a check or radio column the image index is the state: non-zero is on (Rodeo's reading; the reference doesn't name the on image)."""
+    c = _lb(dialog, item)
+    cell = _lb_cell(c, itemIndex, subItemIndex)
+    cell["text"] = str(itemString)
+    cell["num"] = None
+    cell["image"] = int(imageIndex)
+    if c["cols"][_lb_column(c, subItemIndex)]["ctype"] in (2, 3):
+        cell["check"] = 1 if int(imageIndex) else 0
+    return True
+
+
+def GetLBItemInfo(dialog, item, itemIndex, subItemIndex):
+    c = _lb(dialog, item)
+    cell = _lb_cell(c, itemIndex, subItemIndex)
+    image = cell["check"] if c["cols"][_lb_column(c, subItemIndex)]["ctype"] in (2, 3) else cell["image"]
+    return (True, cell["text"], image)
+
+
+def SetLBNumericItemInfo(dialog, item, itemIndex, subItemIndex, itemString, itemNumVal, imageIndex):
+    cell = _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)
+    cell["text"] = str(itemString)
+    cell["num"] = float(itemNumVal)
+    cell["image"] = int(imageIndex)
+    return True
+
+
+def SetLBSelection(dialog, item, firstItemIndex, lastItemIndex, select):
+    c = _lb(dialog, item)
+    lo, hi = sorted((int(firstItemIndex), int(lastItemIndex)))
+    _lb_row(c, lo)
+    _lb_row(c, hi)
+    span = range(lo, hi + 1)
+    if not select:
+        c["sel"] = [s for s in c["sel"] if s not in span]
+    elif c["single"]:
+        c["sel"] = [lo]
+    else:
+        c["sel"] = sorted(set(c["sel"]) | set(span))
+    return True
+
+
+def GetNumSelectedLBItems(dialog, item):
+    return len(_lb(dialog, item)["sel"])
+
+
+def IsLBItemSelected(dialog, item, itemIndex):
+    return int(itemIndex) in _lb(dialog, item)["sel"]
+
+
+def EnableLB(dialog, item, enable):
+    _item(dialog, item)["enabled"] = bool(enable)
+
+
+def EnableLBSingleLineSelection(dialog, item, enable):
+    c = _lb(dialog, item)
+    c["single"] = bool(enable)
+    if c["single"]:
+        c["sel"] = c["sel"][:1]
+    return True
+
+
+def EnableLBSorting(dialog, item, enableSorting):
+    _lb(dialog, item)["sorting"] = bool(enableSorting)
+
+
+def IsLBSortingEnabled(dialog, item):
+    return bool(_lb(dialog, item)["sorting"])
+
+
+def SetLBSortColumn(dialog, item, columnIndex, isAscending):
+    c = _lb(dialog, item)
+    _lb_sort(c, _lb_column(c, columnIndex), bool(isAscending))
+
+
+def GetLBSortColumn(dialog, item):
+    c = _lb(dialog, item)
+    return c["sort"][0] if c["sort"] else -1
+
+
+def GetLBColumnSortState(dialog, item, columnIndex):
+    """0 when the column isn't sorted, -1 when its items run 1 to n, 1 when they run n to 1."""
+    c = _lb(dialog, item)
+    i = _lb_column(c, columnIndex)
+    if not c["sort"] or c["sort"][0] != i:
+        return 0
+    return -1 if c["sort"][1] else 1
+
+
+def EnableLBColumnLines(dialog, item, enableColumnLines):
+    _lb(dialog, item)["colLines"] = bool(enableColumnLines)
+
+
+def AreLBColumnLinesEnabled(dialog, item):
+    return bool(_lb(dialog, item)["colLines"])
+
+
+def EnableLBRadioColumnLines(dialog, item, columnIndex, enableRadioColumnLines):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["radio"] = bool(enableRadioColumnLines)
+
+
+def AreLBRadioColumnLinesEnabled(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return bool(c["cols"][_lb_column(c, columnIndex)]["radio"])
+
+
+def SetLBColumnWidth(dialog, item, fromColumn, toColumn, width):
+    c = _lb(dialog, item)
+    lo, hi = sorted((int(fromColumn), int(toColumn)))
+    _lb_column(c, lo)
+    _lb_column(c, hi)
+    for i in range(lo, hi + 1):
+        c["cols"][i]["width"] = max(1, int(width))
+    return True
+
+
+def GetLBColumnWidth(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return (True, c["cols"][_lb_column(c, columnIndex)]["width"])
+
+
+def SetLBControlType(dialog, item, columnIndex, controlType):
+    """Rodeo draws 2 (radio) and 3 (multi state) as toggles; the other types are drawn as plain text."""
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["ctype"] = int(controlType)
+    return True
+
+
+def GetLBControlType(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return c["cols"][_lb_column(c, columnIndex)]["ctype"]
+
+
+def SetLBItemDisplayType(dialog, item, columnIndex, displayType):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["dtype"] = int(displayType)
+    return True
+
+
+def GetLBItemDisplayType(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return c["cols"][_lb_column(c, columnIndex)]["dtype"]
+
+
+def SetLBEditDisplayType(dialog, item, columnIndex, displayType):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["etype"] = int(displayType)
+    return True
+
+
+def GetLBEditDisplayType(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return c["cols"][_lb_column(c, columnIndex)]["etype"]
+
+
+def SetLBColumnHeaderJust(dialog, item, columnIndex, justification):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["hjust"] = int(justification)
+    return True
+
+
+def GetLBColumnHeaderJust(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return (True, c["cols"][_lb_column(c, columnIndex)]["hjust"])
+
+
+def SetLBColumnHeaderToolTip(dialog, item, columnIndex, toolTipPrimaryText, toolTipSubText):
+    c = _lb(dialog, item)
+    col = c["cols"][_lb_column(c, columnIndex)]
+    col["tip"] = str(toolTipPrimaryText)
+    col["subtip"] = str(toolTipSubText)
+    return True
+
+
+def GetLBColumnHeaderToolTip(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    col = c["cols"][_lb_column(c, columnIndex)]
+    return (True, col["tip"], col["subtip"])
+
+
+def SetLBItemTextJust(dialog, item, itemIndex, subItemIndex, justification):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["just"] = int(justification)
+    return True
+
+
+def GetLBItemTextJust(dialog, item, itemIndex, subItemIndex):
+    cell = _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)
+    return (True, cell["just"] if cell["just"] is not None else 1)
+
+
+def SetLBItemTextStyle(dialog, item, itemIndex, subItemIndex, textStyle):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["style"] = int(textStyle)
+    return True
+
+
+def GetLBItemTextStyle(dialog, item, itemIndex, subItemIndex):
+    return (True, _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["style"])
+
+
+def SetLBItemTextColor(dialog, item, itemIndex, subItemIndex, redIndex, greenIndex, blueIndex):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["tcolor"] = [int(redIndex), int(greenIndex), int(blueIndex)]
+    return True
+
+
+def SetLBItemTextColorN(dialog, item, itemIndex, subItemIndex, tint):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "tint", int(tint))
+    return True
+
+
+def GetLBItemTextColor(dialog, item, itemIndex, subItemIndex):
+    v = _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["tcolor"] or [0, 0, 0]
+    return (True, v[0], v[1], v[2])
+
+
+def SetLBItemFillForeColor(dialog, item, itemIndex, subItemIndex, redIndex, greenIndex, blueIndex):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["fill"] = [int(redIndex), int(greenIndex), int(blueIndex)]
+    return True
+
+
+def GetLBItemFillForeColor(dialog, item, itemIndex, subItemIndex):
+    v = _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["fill"] or [255, 255, 255]
+    return (True, v[0], v[1], v[2])
+
+
+def SetLBItemFillBackColor(dialog, item, itemIndex, subItemIndex, redIndex, greenIndex, blueIndex):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["fillb"] = [int(redIndex), int(greenIndex), int(blueIndex)]
+    return True
+
+
+def GetLBItemFillBackColor(dialog, item, itemIndex, subItemIndex):
+    v = _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["fillb"] or [255, 255, 255]
+    return (True, v[0], v[1], v[2])
+
+
+def SetLBItemPenForeColor(dialog, item, itemIndex, subItemIndex, redIndex, greenIndex, blueIndex):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "penFore", [int(redIndex), int(greenIndex), int(blueIndex)])
+    return True
+
+
+def GetLBItemPenForeColor(dialog, item, itemIndex, subItemIndex):
+    v = _lb_get(_lb(dialog, item), itemIndex, subItemIndex, "penFore", [0, 0, 0])
+    return (True, v[0], v[1], v[2])
+
+
+def SetLBItemPenBackColor(dialog, item, itemIndex, subItemIndex, redIndex, greenIndex, blueIndex):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "penBack", [int(redIndex), int(greenIndex), int(blueIndex)])
+    return True
+
+
+def GetLBItemPenBackColor(dialog, item, itemIndex, subItemIndex):
+    v = _lb_get(_lb(dialog, item), itemIndex, subItemIndex, "penBack", [255, 255, 255])
+    return (True, v[0], v[1], v[2])
+
+
+def SetLBItemDashStyle(dialog, item, itemIndex, subItemIndex, styleIndex, lineWeight):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "dash", [int(styleIndex), float(lineWeight)])
+    return True
+
+
+def GetLBItemDashStyle(dialog, item, itemIndex, subItemIndex):
+    v = _lb_get(_lb(dialog, item), itemIndex, subItemIndex, "dash", [0, 0.0])
+    return (True, v[0], v[1])
+
+
+def SetLBItemLineType(dialog, item, itemIndex, subItemIndex, lineType, lineWeight):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "line", [int(lineType), float(lineWeight)])
+    return True
+
+
+def GetLBItemLineType(dialog, item, itemIndex, subItemIndex):
+    v = _lb_get(_lb(dialog, item), itemIndex, subItemIndex, "line", [0, 0.0])
+    return (True, v[0], v[1])
+
+
+def SetLBItemMkrChoice(dialog, item, itemIndex, subItemIndex, style, angle, size, width, thicknessBasis, thickness):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "marker", [int(style), int(angle), float(size), float(width), int(thicknessBasis), float(thickness)])
+    return True
+
+
+def GetLBItemMkrChoice(dialog, item, itemIndex, subItemIndex):
+    v = _lb_get(_lb(dialog, item), itemIndex, subItemIndex, "marker", [0, 0, 0.0, 0.0, 0, 0.0])
+    return (True, v[0], v[1], v[2], v[3], v[4], v[5])
+
+
+def SetLBItemMkrByClass(dialog, item, itemIndex, subItemIndex, isByClass):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "markerByClass", bool(isByClass))
+    return True
+
+
+def GetLBItemMkrByClass(dialog, item, itemIndex, subItemIndex):
+    return (True, bool(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "markerByClass", False)))
+
+
+def ShowLBItemMkrByClass(dialog, item, itemIndex, subItemIndex, showByClass):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "showMarkerByClass", bool(showByClass))
+
+
+def ShowLBItemMkrEditLst(dialog, item, itemIndex, subItemIndex, showEditList):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "showMarkerEdit", bool(showEditList))
+
+
+def ShowLBItemByClassOpt(dialog, item, itemIndex, subItemIndex, isByClassShown):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "showByClass", bool(isByClassShown))
+
+
+def SetLBItemByClass(dialog, item, itemIndex, subItemIndex, isByClass):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "byClass", bool(isByClass))
+    return True
+
+
+def GetLBItemByClass(dialog, item, itemIndex, subItemIndex):
+    return bool(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "byClass", False))
+
+
+def SetLBItemPatternIndex(dialog, item, itemIndex, subItemIndex, patIndex):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "pattern", int(patIndex))
+    return True
+
+
+def GetLBItemPatternIndex(dialog, item, itemIndex, subItemIndex):
+    return (True, int(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "pattern", 0)))
+
+
+def SetLBItemGradientOrImageRefNumber(dialog, item, itemIndex, subItemIndex, refNumber):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "ref", int(refNumber))
+    return True
+
+
+def GetLBItemGradientOrImageRefNumber(dialog, item, itemIndex, subItemIndex):
+    return (True, int(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "ref", 0)))
+
+
+def SetLBItemHatchRefNum(dialog, item, itemIndex, subItemIndex, refNumber):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "hatch", int(refNumber))
+    return True
+
+
+def GetLBItemHatchRefNum(dialog, item, itemIndex, subItemIndex):
+    return (True, int(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "hatch", 0)))
+
+
+def SetLBItemTileRefNum(dialog, item, itemIndex, subItemIndex, refNumber):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "tile", int(refNumber))
+    return True
+
+
+def GetLBItemTileRefNum(dialog, item, itemIndex, subItemIndex):
+    return (True, int(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "tile", 0)))
+
+
+def SetLBMultImageIndexes(dialog, item, itemIndex, subItemIndex, imageIndex0, imageIndex1, imageIndex2):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "images", [int(imageIndex0), int(imageIndex1), int(imageIndex2)])
+    return True
+
+
+def GetLBMultImageIndexes(dialog, item, itemIndex, subItemIndex):
+    v = _lb_get(_lb(dialog, item), itemIndex, subItemIndex, "images", [0, 0, 0])
+    return (True, v[0], v[1], v[2])
+
+
+def SetLBColumnImage(dialog, item, columnIndex, imageIndex):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["image"] = int(imageIndex)
+    return True
+
+
+def SetLBColumnOwnerDrawnType(dialog, item, itemIndex, subItemIndex, ownerDrawnType):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "owner", int(ownerDrawnType))
+    return True
+
+
+def GetLBColumnOwnerDrawnType(dialog, item, itemIndex, subItemIndex):
+    return (True, int(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "owner", 0)))
+
+
+def SetLBItemInteracType(dialog, item, itemIndex, subItemIndex, interactionType):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "interaction", int(interactionType))
+    return True
+
+
+def SetLBItemReadOnly(dialog, item, itemIndex, subItemIndex, readOnly):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["attr"]["readOnly"] = bool(readOnly)
+
+
+def IsLBItemReadOnly(dialog, item, itemIndex, subItemIndex):
+    return bool(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "readOnly", False))
+
+
+def SetLBReadOnly(dialog, item, readOnly):
+    _lb(dialog, item)["readonly"] = bool(readOnly)
+
+
+def IsLBReadOnly(dialog, item):
+    return bool(_lb(dialog, item)["readonly"])
+
+
+def SetLBResOnlyCurDoc(dialog, item, itemIndex, subItemIndex, onlyCurrentDoc):
+    _lb_attr(_lb(dialog, item), itemIndex, subItemIndex, "resOnlyCurDoc", bool(onlyCurrentDoc))
+
+
+def IsLBResOnlyCurDoc(dialog, item, itemIndex, subItemIndex):
+    return bool(_lb_get(_lb(dialog, item), itemIndex, subItemIndex, "resOnlyCurDoc", False))
+
+
+def SetLBItemData(dialog, item, itemIndex, subItemIndex, userData):
+    _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["data"] = int(userData)
+
+
+def GetLBItemData(dialog, item, itemIndex, subItemIndex):
+    return _lb_cell(_lb(dialog, item), itemIndex, subItemIndex)["data"]
+
+
+def SetLBItemUsingColumnDataItem(dialog, item, itemIndex, subItemIndex, columnDataItemIndex):
+    """The cell takes the text and data of one of its column's data items."""
+    c = _lb(dialog, item)
+    cell = _lb_cell(c, itemIndex, subItemIndex)
+    data = c["cols"][_lb_column(c, subItemIndex)]["data"]
+    k = int(columnDataItemIndex)
+    if not 0 <= k < len(data):
+        raise ValueError("the column has no data item %r" % (columnDataItemIndex,))
+    cell["text"] = data[k]["text"]
+    cell["data"] = data[k]["data"]
+    return True
+
+
+def EnsureLBItemIsVisible(dialog, item, index):
+    """Rodeo's list doesn't scroll from a script: the row is checked and the list is left where it is."""
+    _lb_row(_lb(dialog, item), index)
+    return True
+
+
+def RefreshLB(dialog, item):
+    _lb(dialog, item)
+    return True
+
+
+def SetFocusOnLB(dialog, item):
+    _dialog(dialog)["focus"] = int(item)
+
+
+def GetLBEventInfo(dialog, item):
+    """The last event the list sent: its type (a kMessage constant), row and column; False when none came yet."""
+    e = _lb(dialog, item).get("event")
+    if not e:
+        return (False, 0, -1, -1)
+    return (True, e["type"], e["row"], e["col"])
+
+
+def InsertLBColumnDataItem(dialog, item, columnIndex, itemString, imageOn, imageOff, itemData):
+    c = _lb(dialog, item)
+    data = c["cols"][_lb_column(c, columnIndex)]["data"]
+    data.append({"text": str(itemString), "on": int(imageOn), "off": int(imageOff), "data": int(itemData)})
+    return len(data) - 1
+
+
+def GetNumLBColumnDataItems(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return len(c["cols"][_lb_column(c, columnIndex)]["data"])
+
+
+def FindLBColumnDataItem(dialog, item, columnIndex, itemString):
+    c = _lb(dialog, item)
+    data = c["cols"][_lb_column(c, columnIndex)]["data"]
+    for k, d in enumerate(data):
+        if d["text"] == str(itemString):
+            return (True, k)
+    return (False, -1)
+
+
+def FindLBColumnItem(dialog, item, columnIndex, itemString):
+    c = _lb(dialog, item)
+    i = _lb_column(c, columnIndex)
+    for k, r in enumerate(c["rows"]):
+        if r["cells"][i]["text"] == str(itemString):
+            return (True, k)
+    return (False, -1)
+
+
+def GetLBColumnDataItemInfo(dialog, item, columnIndex, columnDataItemIndex):
+    c = _lb(dialog, item)
+    data = c["cols"][_lb_column(c, columnIndex)]["data"]
+    k = int(columnDataItemIndex)
+    if not 0 <= k < len(data):
+        return (False, "", 0, 0, 0)
+    d = data[k]
+    return (True, d["text"], d["on"], d["off"], d["data"])
+
+
+def RemoveLBColumnDataItem(dialog, item, columnIndex, columnDataItemIndex):
+    c = _lb(dialog, item)
+    data = c["cols"][_lb_column(c, columnIndex)]["data"]
+    k = int(columnDataItemIndex)
+    if not 0 <= k < len(data):
+        return False
+    del data[k]
+    return True
+
+
+def RemoveAllLBColumnDataItems(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["data"] = []
+
+
+def EnableLBHierDisplay(dialog, item, enableHierDisplay):
+    _lb(dialog, item)["hier"] = bool(enableHierDisplay)
+
+
+def IsLBDisplayHier(dialog, item):
+    return bool(_lb(dialog, item)["hier"])
+
+
+def SetLBHierDispColumn(dialog, item, columnID):
+    c = _lb(dialog, item)
+    c["hiercol"] = _lb_column(c, columnID)
+
+
+def CollapseAllLBItems(dialog, item):
+    _lb(dialog, item)
+
+
+def ExpandAllLBItems(dialog, item):
+    _lb(dialog, item)
+
+
+def HierLBItemOpened(dialog, item, itemIndex, recursive):
+    """Rodeo's list has no containers to open: nothing is redisplayed."""
+    _lb_row(_lb(dialog, item), itemIndex)
+    return 0
+
+
+def HierLBItemClosed(dialog, item, itemIndex, recursive):
+    _lb_row(_lb(dialog, item), itemIndex)
+    return 0
+
+
+def HierLBItemIsClosed(dialog, item, itemIndex):
+    _lb_row(_lb(dialog, item), itemIndex)
+    return False
+
+
+def HierLBItemIsContain(dialog, item, itemIndex):
+    _lb_row(_lb(dialog, item), itemIndex)
+    return False
+
+
+def EnableLBClickAllDataChange(dialog, item, enable):
+    _lb(dialog, item)["clickAll"] = bool(enable)
+
+
+def EnableLBColumnTracking(dialog, item, columnIndex, enableColumnTracking):
+    c = _lb(dialog, item)
+    c["cols"][_lb_column(c, columnIndex)]["tracking"] = bool(enableColumnTracking)
+
+
+def IsLBColumnTrackingEnabled(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    return bool(c["cols"][_lb_column(c, columnIndex)]["tracking"])
+
+
+def EnableLBDragAndDrop(dialog, item, enable):
+    _lb(dialog, item)["dragdrop"] = bool(enable)
+
+
+def EnableLBDropOnIndices(dialog, item, startIndex, endIndex, enable):
+    _lb(dialog, item)["dropOn"] = [int(startIndex), int(endIndex), bool(enable)]
+
+
+def EnableLBExternalSort(dialog, item, enable):
+    _lb(dialog, item)["externalSort"] = bool(enable)
+
+
+def EnableLBUpdates(dialog, item, enableUpdates):
+    _lb(dialog, item)["updates"] = bool(enableUpdates)
+
+
+def SetLBDragDropColumn(dialog, item, columnIndex):
+    c = _lb(dialog, item)
+    c["dragCol"] = _lb_column(c, columnIndex)
+    return True
+
+
+def ShowLBHeader(dialog, item, show):
+    _lb(dialog, item)["hdr"] = bool(show)
+
+
+def SetLBOrigNameClLevel(dialog, item, originalName, level1Closed, level2Closed, level3Closed):
+    raise NotImplementedError("vs.SetLBOrigNameClLevel isn't available in Rodeo yet (it needs the class names of the Vectorworks document)")
+
+
+def GetLBOrigNameClLevel(dialog, item, originalName):
+    raise NotImplementedError("vs.GetLBOrigNameClLevel isn't available in Rodeo yet (it needs the class names of the Vectorworks document)")
+
+
+def AddLBOriginalName(dialog, item, originalName):
+    raise NotImplementedError("vs.AddLBOriginalName isn't available in Rodeo yet (it needs the class names of the Vectorworks document)")
+
+
+def GetLBItemOrigName(dialog, item, itemIndex):
+    raise NotImplementedError("vs.GetLBItemOrigName isn't available in Rodeo yet (it needs the class names of the Vectorworks document)")
+
+
+def GetLBHeaderTextWidth(className, allowForSortIcon):
+    raise NotImplementedError("vs.GetLBHeaderTextWidth isn't available in Rodeo yet (it needs the font's measures)")
+
+
+def AddLBImage(dialog, item, resourceType, resourceID):
+    raise NotImplementedError("vs.AddLBImage isn't available in Rodeo yet (images come from the Vectorworks resource files, which Rodeo doesn't read)")
+
+
+def AddListBrowserImage(dialog, controlID, imageSpecifier):
+    raise NotImplementedError("vs.AddListBrowserImage isn't available in Rodeo yet (images come from the Vectorworks resource files, which Rodeo doesn't read)")
+
+
+def SetLBImageIndexes(dialog, item, itemIndex, subItemIndex, imageSpecifier0, imageSpecifier1, imageSpecifier2):
+    raise NotImplementedError("vs.SetLBImageIndexes isn't available in Rodeo yet (images come from the Vectorworks resource files, which Rodeo doesn't read)")
+
+
+def SetListBoxTabStops(dialog, item, tabStops):
+    """Tab stops of a list box: kept on the item; the editor doesn't lay text out at them."""
+    _item(dialog, item)["tabs"] = list(tabStops) if isinstance(tabStops, (list, tuple)) else [tabStops]
+
+
+def AddListBoxTabStop(dialog, item, tabStop):
+    _item(dialog, item).setdefault("tabs", []).append(tabStop)
+
+
+def RemoveListBoxTabStop(dialog, item):
+    _item(dialog, item)["tabs"] = []
+
+
+def ShowByClassChoice(dialog, item):
+    raise NotImplementedError("vs.ShowByClassChoice isn't available in Rodeo yet (class choices need the document's classes)")
+
+
+def IsClassChoiceSelected(dialog, item):
+    raise NotImplementedError("vs.IsClassChoiceSelected isn't available in Rodeo yet (class choices need the document's classes)")
+
+
+def SelectClassChoice(dialog, item, select):
+    raise NotImplementedError("vs.SelectClassChoice isn't available in Rodeo yet (class choices need the document's classes)")
+
+
+def _lb_values(c, v):
+    """A list browser's values as the editor sends them: its selection, its check boxes, a sort the user asked for, and the event."""
+    n = len(c["rows"])
+    if "sel" in v:
+        c["sel"] = sorted(set(int(s) for s in v["sel"] if 0 <= int(s) < n))
+    for key, on in (v.get("checks") or {}).items():
+        r, k = [int(x) for x in key.split(",")]
+        if r < n and k < len(c["cols"]):
+            c["rows"][r]["cells"][k]["check"] = 1 if on else 0
+    want = v.get("sort")
+    # a sort the user asked for is done here, once: the rows then come back in that order
+    if c["sorting"] and want is not None and list(want) != list(c["sort"] or []):
+        col = int(want[0])
+        if 0 <= col < len(c["cols"]):
+            _lb_sort(c, col, bool(want[1]))
+    c["event"] = v.get("event")
+
+
+# Tree controls: items with a parent (0 at the top) and children in order; the editor gets them
+# depth first. Item ids are numbered from 1 as the script inserts them.
+
+def _tree(dialog, item):
+    c = _item(dialog, item)
+    if c["kind"] != "tree":
+        raise ValueError("item %r of dialog %s isn't a tree control" % (item, _dialog(dialog)["id"]))
+    return c
+
+
+def _tree_node(c, item_id):
+    n = c["nodes"].get(int(item_id))
+    if n is None:
+        raise ValueError("the tree control has no item %r" % (item_id,))
+    return n
+
+
+def _tree_spec(c):
+    out = []
+
+    def walk(ids):
+        for i in ids:
+            n = c["nodes"][i]
+            out.append([i, n["text"], n["parent"], bool(n["kids"])])
+            walk(n["kids"])
+
+    walk(c["roots"])
+    return out
+
+
+def _tree_values(c, v):
+    if "sel" in v:
+        c["sel"] = [int(s) for s in v["sel"] if int(s) in c["nodes"]][:1]
+    if "open" in v:
+        c["open"] = [int(i) for i in v["open"] if int(i) in c["nodes"]]
+    c["event"] = v.get("event")
+
+
+def _tree_drop(c, i):
+    for k in c["nodes"][i]["kids"]:
+        _tree_drop(c, k)
+    del c["nodes"][i]
+
+
+def CreateTreeControl(dialog, item, width, height):
+    _control(dialog, item, "tree", nodes={}, roots=[], sel=[], open=[], next=1, width=_width(width), lines=max(1, int(height)), event=None)
+
+
+def InsertTreeControlItem(dialog, item, label, parent, after):
+    """A new item under parent (-1 for the top level), after the sibling named by after (0 for first). Returns its id."""
+    c = _tree(dialog, item)
+    top = int(parent) <= 0
+    siblings = c["roots"] if top else _tree_node(c, parent)["kids"]
+    a = int(after)
+    if a <= 0:
+        pos = 0
+    elif a in siblings:
+        pos = siblings.index(a) + 1
+    else:
+        raise ValueError("tree item %r isn't under the same parent as the new item" % (after,))
+    i = c["next"]
+    c["next"] += 1
+    c["nodes"][i] = {"text": str(label), "parent": 0 if top else int(parent), "kids": [], "data": 0}
+    siblings.insert(pos, i)
+    return i
+
+
+def RemoveTreeControlItem(dialog, item, itemID):
+    c = _tree(dialog, item)
+    i = int(itemID)
+    n = _tree_node(c, i)
+    parent_kids = c["roots"] if n["parent"] == 0 else c["nodes"][n["parent"]]["kids"]
+    parent_kids.remove(i)
+    _tree_drop(c, i)
+    c["sel"] = [s for s in c["sel"] if s in c["nodes"]]
+    c["open"] = [s for s in c["open"] if s in c["nodes"]]
+    return True
+
+
+def SelectTreeControlItem(dialog, item, itemID):
+    c = _tree(dialog, item)
+    _tree_node(c, itemID)
+    c["sel"] = [int(itemID)]
+
+
+def GetTreeControlSelectedItem(dialog, item):
+    c = _tree(dialog, item)
+    return (True, c["sel"][0]) if c["sel"] else (False, 0)
+
+
+def GetTreeControlTextSelectedItem(dialog, item):
+    c = _tree(dialog, item)
+    return (True, c["nodes"][c["sel"][0]]["text"]) if c["sel"] else (False, "")
+
+
+def GetTreeControlItemText(dialog, item, itemID):
+    return (True, _tree_node(_tree(dialog, item), itemID)["text"])
+
+
+def GetTreeControlItemData(dialog, item, itemID):
+    return _tree_node(_tree(dialog, item), itemID)["data"]
+
+
+def SetTreeControlItemData(dialog, item, itemID, userData):
+    _tree_node(_tree(dialog, item), itemID)["data"] = int(userData)
+
+
+def ExpandTreeControlItem(dialog, item, itemID, expand):
+    c = _tree(dialog, item)
+    i = int(itemID)
+    _tree_node(c, i)
+    c["open"] = [s for s in c["open"] if s != i] + ([i] if expand else [])
+
+
+# Popups that list names: a pull-down search, an enhanced pull-down, thumbnails and the image popups
+# (zero-based for GetImagePopupObject, one-based for the selected item and the removals, as the
+# reference gives them).
+
+def CreatePullDownSearch(dialog, item, width):
+    _control(dialog, item, "popup", choices=[], sel=[], width=_width(width), ids=[])
+
+
+def InsertPulldownSearch(dialog, item, itemIDStr, itemDisplayName, itemTooltip, itemImageSpec, shouldUpdate):
+    c = _item(dialog, item)
+    AddChoice(dialog, item, itemDisplayName)
+    c.setdefault("ids", []).append(str(itemIDStr))
+    return True
+
+
+def CreateEnhancedPullDownMenu(dialog, item, width, showIcon):
+    _control(dialog, item, "popup", choices=[], sel=[], width=_width(width), enhanced=bool(showIcon))
+
+
+def InsertEnhancedPullDownMenuItem(dialog, item, name, iconID):
+    AddChoice(dialog, item, name)
+    return len(_item(dialog, item)["choices"]) - 1
+
+
+InsertEnhanPullDownMenuItem = InsertEnhancedPullDownMenuItem
+
+
+def RemoveEnhancedPullDownMenuItemRange(dialog, item, start, end):
+    for k in range(int(end), int(start) - 1, -1):
+        RemoveChoice(dialog, item, k)
+
+
+def ShowEnhancedPullDownMenuGroupIcon(dialog, item, show):
+    """Pure display: the editor's pop-up has no group icon to show."""
+    _item(dialog, item)
+
+
+def NotifyPullDownClicked(dialog, item):
+    """Pure display: a pop-up that is clicked opens by itself in the editor."""
+    _item(dialog, item)
+
+
+def CreateThumbnailPopup(dialog, item):
+    _control(dialog, item, "popup", choices=[], sel=[], width=None)
+
+
+def CreateCustThumbPopup(dialog, item, sizeType):
+    _control(dialog, item, "popup", choices=[], sel=[], width=None)
+
+
+def UpdateThumbnailPreview(dialog, item):
+    """Pure display: the editor's pop-up shows names, not previews."""
+    _item(dialog, item)
+
+
+def CreateResourcePopup(dialog, item, width):
+    _control(dialog, item, "popup", choices=[], sel=[], width=_width(width))
+
+
+def InsertImagePopupResource(dialog, item, listID, index):
+    raise NotImplementedError("vs.InsertImagePopupResource isn't available in Rodeo yet (resource lists come from the Vectorworks resource files, which Rodeo doesn't read)")
+
+
+def InsertImagePopupObjectItem(dialog, item, objectName):
+    AddChoice(dialog, item, objectName)
+    return len(_item(dialog, item)["choices"]) - 1
+
+
+def InsertImagePopupSeparator(dialog, item, label):
+    """A separator is kept as a choice of its own, marked; the editor shows it as an ordinary entry."""
+    AddChoice(dialog, item, label)
+    c = _item(dialog, item)
+    k = len(c["choices"]) - 1
+    c.setdefault("seps", []).append(k)
+    return k
+
+
+def GetImagePopupObject(dialog, item, itemIndex):
+    choices = _item(dialog, item).get("choices", [])
+    i = int(itemIndex)
+    return choices[i] if 0 <= i < len(choices) else ""
+
+
+def GetImagePopupObjectItemIndex(dialog, item, objectName):
+    """One-based, like the selected item (the reference gives both one-based); 0 when no such item."""
+    choices = _item(dialog, item).get("choices", [])
+    return choices.index(str(objectName)) + 1 if str(objectName) in choices else 0
+
+
+def GetImagePopupSelectedItem(dialog, item):
+    sel = _item(dialog, item).get("sel") or []
+    return sel[0] + 1 if sel else 0
+
+
+def SetImagePopupSelectedItem(dialog, item, itemIndex):
+    c = _item(dialog, item)
+    i = int(itemIndex) - 1
+    if not 0 <= i < len(c.get("choices", [])):
+        raise ValueError("the image popup has no item %r (its items are 1 to %d)" % (itemIndex, len(c.get("choices", []))))
+    c["sel"] = [i]
+
+
+def GetNumImagePopupItems(dialog, item):
+    return len(_item(dialog, item).get("choices", []))
+
+
+def RemoveImagePopupItem(dialog, item, itemIndex):
+    RemoveChoice(dialog, item, int(itemIndex) - 1)
+
+
+def RemoveAllImagePopupItems(dialog, item):
+    RemoveAllChoices(dialog, item)
+
+
+GetPopUpChoiceIndex = GetChoiceIndex
+
+
+def CreateLayerPDMenu(dialog, item, width):
+    CreateLayerPullDownMenu(dialog, item, width)
+
+
+def CreateDesignLayerPullDownMenu(dialog, item, width):
+    CreateLayerPullDownMenu(dialog, item, width)
+
+
+def CreateSheetLayerPullDownMenu(dialog, item, width):
+    names = [l["name"] for l in _S.layers if l.get("kind") == "sheet"]
+    _control(dialog, item, "popup", choices=names, sel=[], width=_width(width))
+
+
+def CreateDataVisPDMenu(dialog, item, width, showDefaultStaticItems):
+    raise NotImplementedError("vs.CreateDataVisPDMenu isn't available in Rodeo yet (data visualisation)")
+
+
+def CreatePullDownMenuGroupBox(dialog, item, width, label, hasFrame):
+    raise NotImplementedError("vs.CreatePullDownMenuGroupBox isn't available in Rodeo yet")
+
+
+def InsertPropClassOrLayerItem(dialog, item, label, imageSpec):
+    AddChoice(dialog, item, label)
+    return True
+
+
+def InsertProposedClassOrLayerItem(dialog, item, label, iconIndex):
+    AddChoice(dialog, item, label)
+    return True
+
+
+# Popups that would list the drawing's line styles, weights, markers and patterns: the snapshot
+# doesn't carry them yet, so these lists are empty. The chosen values are kept on the item.
+
+def _value_popup(dialog, item, width=None):
+    _control(dialog, item, "popup", choices=[], sel=[], width=width)
+
+
+def CreateLineStylePopup(dialog, item):
+    _value_popup(dialog, item)
+
+
+def CreateLineWeightPopup(dialog, item):
+    _value_popup(dialog, item)
+
+
+def CreateLineAttributePopup(dialog, item):
+    _value_popup(dialog, item)
+
+
+def CreateMarkerPopup(dialog, item):
+    _value_popup(dialog, item)
+
+
+def CreatePatternPopup(dialog, item):
+    _value_popup(dialog, item)
+
+
+def GetLineStyleChoice(dialog, item):
+    return int(_item(dialog, item).get("lineStyle", 0))
+
+
+def SetLineStyleChoice(dialog, item, lineStyle):
+    _item(dialog, item)["lineStyle"] = int(lineStyle)
+
+
+def GetLineWeightChoice(dialog, item):
+    return float(_item(dialog, item).get("lineWeight", 0.0))
+
+
+def SetLineWeightChoice(dialog, item, lineWeight):
+    _item(dialog, item)["lineWeight"] = float(lineWeight)
+
+
+def GetLineAttributeData(dialog, item):
+    c = _item(dialog, item)
+    return (int(c.get("lineStyle", 0)), float(c.get("lineWeight", 0.0)))
+
+
+def SetLineAttributeData(dialog, item, lineStyle, lineWeight):
+    c = _item(dialog, item)
+    c["lineStyle"] = int(lineStyle)
+    c["lineWeight"] = float(lineWeight)
+
+
+def GetLineTypeChoice(dialog, item):
+    return int(_item(dialog, item).get("lineType", 0))
+
+
+def SetLineTypeChoice(dialog, item, lineType):
+    _item(dialog, item)["lineType"] = int(lineType)
+
+
+def GetLineTypeAtIndex(dialog, item, index):
+    raise NotImplementedError("vs.GetLineTypeAtIndex isn't available in Rodeo yet (the drawing's line types aren't read)")
+
+
+def GetNumLineTypeItems(dialog, item):
+    _item(dialog, item)
+    return 0
+
+
+def GetLineTypeAttriData(dialog, item):
+    c = _item(dialog, item)
+    return (int(c.get("lineType", 0)), float(c.get("lineWeight", 0.0)))
+
+
+def SetLineTypeAttriData(dialog, item, lineType, lineWeight):
+    c = _item(dialog, item)
+    c["lineType"] = int(lineType)
+    c["lineWeight"] = float(lineWeight)
+
+
+def GetMarkerChoice(dialog, item):
+    m = _item(dialog, item).get("marker", [0, 0, 0, 0.0])
+    return (m[0], m[1], m[2], m[3])
+
+
+def SetMarkerChoice(dialog, item, index, style, angle, size):
+    _item(dialog, item)["marker"] = [int(index), int(style), int(angle), float(size)]
+
+
+def GetMarkerValue(dialog, item):
+    c = _item(dialog, item)
+    m = c.get("markerValue", [0, 0, 0.0, 0.0, 0, 0.0])
+    return tuple(m)
+
+
+def SetMarkerValue(dialog, item, style, angle, length, width, basis, thickness):
+    _item(dialog, item)["markerValue"] = [int(style), int(angle), float(length), float(width), int(basis), float(thickness)]
+
+
+def GetMarkerPopupSelectedItem(dialog, item):
+    m = _item(dialog, item).get("marker", [0, 0, 0, 0.0])
+    return (m[0], m[1], m[2], m[3])
+
+
+def GetPatternData(dialog, item):
+    # the reference gives the colours as INTEGERs, kept as they were set (Rodeo's reading: 0 until set)
+    c = _item(dialog, item)
+    p = c.get("pattern", [0, 0, 0])
+    return (int(p[0]), int(p[1]), int(p[2]))
+
+
+def SetPatternData(dialog, item, patternIndex, foreColor, backColor):
+    _item(dialog, item)["pattern"] = [int(patternIndex), int(foreColor), int(backColor)]
+
+
+# Statics, buttons, frames and the rest of the controls that only change how they look.
+
+def CreateCenteredStaticText(dialog, item, text, width=-1):
+    _control(dialog, item, "static", text=str(text), width=_width(width), just="center")
+
+
+def CreateRightStaticText(dialog, item, text, width=-1):
+    _control(dialog, item, "static", text=str(text), width=_width(width), just="right")
+
+
+def CreateStyledStatic(dialog, item, text, width=-1, style=0):
+    """Style 0 is regular, 1 a caption, 2 bold and 3 a reduced size, as the reference gives them."""
+    s = int(style)
+    _control(dialog, item, "static", text=str(text), width=_width(width), bold=s == 2, tsize={1: "caption", 3: "reduced"}.get(s))
+
+
+CreateStyledStaticText = CreateStyledStatic
+
+
+def SetStaticTextStyle(dialog, item, style):
+    """Bits: 1 bold, 2 italic, 4 underline; they combine."""
+    c = _item(dialog, item)
+    s = int(style)
+    c["bold"] = bool(s & 1)
+    c["italic"] = bool(s & 2)
+    c["underline"] = bool(s & 4)
+
+
+def SetStaticTextColor(dialog, item, red, green, blue):
+    _item(dialog, item)["color"] = [int(red), int(green), int(blue)]
+
+
+def SetStaticTextColorN(dialog, item, tint):
+    _item(dialog, item)["tint"] = int(tint)
+
+
+def SetItemClickable(dialog, item, clickable):
+    _item(dialog, item)["clickable"] = bool(clickable)
+
+
+def IsItemEnabled(dialog, item):
+    return bool(_item(dialog, item)["enabled"])
+
+
+def IsItemVisible(dialog, item):
+    return bool(_item(dialog, item)["visible"])
+
+
+def EnableTextEdit(dialog, item, editable):
+    _item(dialog, item)["readonly"] = not bool(editable)
+
+
+def CreateEditPassword(dialog, item, width):
+    _control(dialog, item, "edit", text="", width=_width(width), pwd=True)
+
+
+def CreateSearchEditBox(dialog, item, promptText, width):
+    _control(dialog, item, "edit", text="", width=_width(width), prompt=str(promptText))
+
+
+def CreateEditColorText(dialog, item, width, height):
+    """The text's colour and style are not drawn: a plain text box of the size given."""
+    _control(dialog, item, "edit", text="", width=_width(width), lines=max(1, int(height)))
+
+
+def SetEditColorTextStyl(dialog, item, style):
+    """Accepted and ignored: the editor draws the text box in its own style."""
+    _item(dialog, item)
+
+
+def CreateBorderlessBtn(dialog, item, label, iconResPath, isToggleButton):
+    """The icon isn't drawn; the button shows its label, and a toggle keeps its pressed state."""
+    _control(dialog, item, "button", text=str(label), toggle=bool(isToggleButton), value=False)
+
+
+def CreateBorderlessMenu(dialog, item, label, iconResPath):
+    """Drawn as a plain button: a menu opened from it isn't available in Rodeo yet."""
+    _control(dialog, item, "button", text=str(label), toggle=False, value=False)
+
+
+def CreateCheckBox2(dialog, item, text, iconResPath):
+    CreateCheckBox(dialog, item, text)
+
+
+def CreateRadioButton2(dialog, item, text, iconResPath):
+    CreateRadioButton(dialog, item, text)
+
+
+def CreateIconPushButton(dialog, item, iconID, width):
+    raise NotImplementedError("vs.CreateIconPushButton isn't available in Rodeo yet (it is obsolete: use vs.CreateImagePushButton)")
+
+
+def CreateImagePushButton(dialog, item, width, imageSpecifier):
+    """An image button is a button labelled with its tooltip, since the image isn't drawn."""
+    _control(dialog, item, "button", text="", toggle=False, value=False, width=_width(width), image=True)
+
+
+def UpdateImagePushButton(dialog, item, imageSpecifier):
+    _item(dialog, item)["image"] = True
+
+
+def GetIconPushButtonState(dialog, item):
+    return bool(_item(dialog, item).get("value"))
+
+
+def SetIconPushButtonState(dialog, item, pressed):
+    _item(dialog, item)["value"] = bool(pressed)
+
+
+def UpdateImageControl2(dialog, item, imageSpecifier):
+    _item(dialog, item)["image"] = str(imageSpecifier)
+
+
+def UpdateImageControl3(dialog, item, imageFullPath):
+    _item(dialog, item)["image"] = str(imageFullPath)
+
+
+def SetImageControlPath(dialog, item, path):
+    """The file isn't read: the frame stays empty."""
+    _item(dialog, item)["path"] = str(path)
+
+
+def SetImageControlHandle(dialog, item, hImage):
+    raise NotImplementedError("vs.SetImageControlHandle isn't available in Rodeo yet (image handles aren't read)")
+
+
+def CreateStandardIconControl(dialog, item, iconNumber):
+    _control(dialog, item, "frame", text="", pw=None, ph=None)
+
+
+def CreateCustomControl(dialog, item, width, height):
+    """A custom area of the given pixel size: an empty frame, as Rodeo doesn't run the script's drawing."""
+    _control(dialog, item, "frame", text="", pw=_px(width), ph=_px(height))
+
+
+def CreateSymbolDisplayControl(dialog, item, symbolName, height, width, margin, renderMode, view):
+    """The symbol isn't drawn: its name stands in the frame."""
+    _control(dialog, item, "frame", text=str(symbolName), pw=_px(width), ph=_px(height))
+
+
+def CreateSymDispCtrlN(dialog, item, symbolName, width, height, margin, view, renderMode, component, scaleByZoom):
+    _control(dialog, item, "frame", text=str(symbolName), pw=_px(width), ph=_px(height))
+
+
+def UpdateSymbolDisplayControl(dialog, item, symbolName, renderMode, view):
+    _item(dialog, item)["text"] = str(symbolName)
+
+
+def UpdateSymDispCtrlN(dialog, item, symbolName, view, renderMode, component, scaleByZoom):
+    _item(dialog, item)["text"] = str(symbolName)
+
+
+def CreateSwapControl(dialog, item):
+    _control(dialog, item, "tabs", panes=[], value=None, swap=True)
+
+
+CreateSwapPane = CreateTabPane
+
+
+def DisplaySwapPane(dialog, swapControl, groupNumber):
+    """groupNumber is 1-based: the n-th pane made with CreateSwapPane."""
+    t = _item(dialog, swapControl)
+    k = int(groupNumber) - 1
+    if not 0 <= k < len(t["panes"]):
+        raise ValueError("the swap control has no pane %r" % (groupNumber,))
+    t["value"] = t["panes"][k]
+
+
+def DisplayTabPane(dialog, tabControl, groupNumber):
+    t = _item(dialog, tabControl)
+    k = int(groupNumber) - 1
+    if not 0 <= k < len(t["panes"]):
+        raise ValueError("the tab control has no pane %r" % (groupNumber,))
+    t["value"] = t["panes"][k]
+
+
+def GetActivePane(dialog, tabControl):
+    v = _item(dialog, tabControl).get("value")
+    return int(v) if v is not None else 0
+
+
+def SetControlText(dialog, item, text):
+    SetItemText(dialog, item, text)
+
+
+def GetMultilineText(dialog, item):
+    return GetItemText(dialog, item)
+
+
+def GetSelectionRange(dialog, item):
+    raise NotImplementedError("vs.GetSelectionRange isn't available in Rodeo yet (the editor doesn't report the caret)")
+
+
+def SetSelectionRange(dialog, item, startPos, endPos):
+    """Accepted and ignored: the caret stays where the user has it."""
+    _item(dialog, item)
+
+
+def SelectEditText(dialog, item):
+    """Accepted and ignored: the text isn't selected from a script."""
+    _item(dialog, item)
+
+
+def DeselectEditText(dialog, item):
+    """Accepted and ignored: the text isn't selected from a script."""
+    _item(dialog, item)
+
+
+def RefreshItem(dialog, item):
+    """Pure display: the editor redraws each control whenever the script's state changes."""
+    _item(dialog, item)
+
+
+def SetComponentIndeterminate(dialog, item, state):
+    c = _item(dialog, item)
+    if c["kind"] == "check3":
+        c["value"] = 2 if state else 0
+    return True
+
+
+def SetComponentSize(dialog, item, width, height):
+    """Accepted and ignored: a control keeps the size its creation gave it in the editor."""
+    _item(dialog, item)
+
+
+def AdjustComponentPixelPos(dialog, item, horizontal, vertical):
+    """Accepted and ignored: controls are placed by the layout, not by pixel offsets."""
+    _item(dialog, item)
+
+
+def SetEdgeBinding(dialog, item, boundToLeft, boundToRight, boundToTop, boundToBottom):
+    """Accepted and ignored: the dialog doesn't resize."""
+    _item(dialog, item)
+
+
+def SetProportionalBinding(dialog, item, leftProportional, rightProportional, topProportional, bottomProportional):
+    """Accepted and ignored: the dialog doesn't resize."""
+    _item(dialog, item)
+
+
+def AlignItemEdge(dialog, item, whichEdge, alignID, alignMode):
+    """Accepted and ignored: the dialog doesn't resize."""
+    _item(dialog, item)
+
+
+def GetComponentRect(dialog, item):
+    raise NotImplementedError("vs.GetComponentRect isn't available in Rodeo yet (the editor's pixel positions aren't reported)")
+
+
+def GetComponentTextWidth(dialog, item):
+    raise NotImplementedError("vs.GetComponentTextWidth isn't available in Rodeo yet (the editor's text widths aren't reported)")
+
+
+def GetDlgCtrlWidthStdCh(text):
+    raise NotImplementedError("vs.GetDlgCtrlWidthStdCh isn't available in Rodeo yet (the editor's font measures aren't read)")
+
+
+def SetLayoutDialogSize(dialog, width, height):
+    """Accepted and ignored: the editor sizes the dialog to its controls."""
+    _dialog(dialog)
+
+
+def SetLayoutDialogPosition(dialog, left, top):
+    """Accepted and ignored: the editor centres the dialog."""
+    _dialog(dialog)
+
+
+def GetLayoutDialogSize(dialog):
+    raise NotImplementedError("vs.GetLayoutDialogSize isn't available in Rodeo yet (the editor's dialog size isn't reported)")
+
+
+def GetLayoutDialogPosition(dialog):
+    raise NotImplementedError("vs.GetLayoutDialogPosition isn't available in Rodeo yet (the editor's dialog position isn't reported)")
+
+
+def SetLayoutOption(dialog, option, value):
+    """Accepted and ignored: the layout options of Vectorworks have no counterpart in the editor."""
+    _dialog(dialog)
+
+
+def RunLayoutDialogN(dialog, handler=None, enableContextualHelp=False):
+    return RunLayoutDialog(dialog, handler)
+
+
+def RunNamedDialog(dialog, handler, univName):
+    raise NotImplementedError("vs.RunNamedDialog isn't available in Rodeo yet (dialogs built from resources aren't read)")
+
+
+def RunNamedDialogN(dialog, handler, univName, enableContextualHelp=False):
+    raise NotImplementedError("vs.RunNamedDialogN isn't available in Rodeo yet (dialogs built from resources aren't read)")
+
+
+def SetVSResourceFile(fileName):
+    raise NotImplementedError("vs.SetVSResourceFile isn't available in Rodeo yet (resource files aren't read)")
+
+
+def RegisterDialogForTimerEvents(dialog, milliseconds):
+    raise NotImplementedError("vs.RegisterDialogForTimerEvents isn't available in Rodeo yet (dialogs don't get timer events)")
+
+
+def DeregisterDialogFromTimerEvents(dialog):
+    raise NotImplementedError("vs.DeregisterDialogFromTimerEvents isn't available in Rodeo yet (dialogs don't get timer events)")
+
+
+def GetColorButton(dialog, item):
+    raise NotImplementedError("vs.GetColorButton isn't available in Rodeo yet (colour buttons with RGB values; use vs.CreateColorPopup)")
+
+
+def SetColorButton(dialog, item, red, green, blue):
+    raise NotImplementedError("vs.SetColorButton isn't available in Rodeo yet (colour buttons with RGB values; use vs.CreateColorPopup)")
 
 
 # ---- numbers, units and the window -----------------------------------------------------------
@@ -2336,7 +4040,8 @@ def ResetObject(h):
 _RECALCULATE = 3
 
 def _pkey(name):
-    return str(name).replace(" ", "_").lower()
+    # full-width letters and digits (a plug-in's parameter named ｃｌｓ3) fold to their ASCII forms first
+    return _unicodedata.normalize("NFKC", str(name)).replace(" ", "_").lower()
 
 
 def _typed(t, v):
@@ -3176,11 +4881,12 @@ def _set_elev(l, mm):
 
 # Rodeo keeps a design layer's elevation, not its thickness, which reads 0
 def GetLayerElevation(h):
-    return (float(_design(_layer(h)).get("elev") or 0), 0.0)
+    # the base elevation in the drawing's units (kept in millimetres); the thickness is 0 (Rodeo keeps only the base)
+    return (_un(float(_design(_layer(h)).get("elev") or 0)), 0.0)
 
 
 def SetLayerElevation(h, baseElev, thickness):
-    _set_elev(_layer(h), float(baseElev))
+    _set_elev(_layer(h), _mm(baseElev))
 
 
 def GetZVals():
@@ -3925,7 +5631,7 @@ def _symbol_index(name):
     for i, n in _S.symbols.items():
         if n == name:
             return i
-    raise ValueError("the drawing has no symbol named %r" % name)
+    raise ValueError("the drawing has no symbol named %r (this script expects it to be in the drawing)" % name)
 
 
 def Symbol(symbolName, *args):
@@ -3988,3 +5694,9 @@ def SymbolToGroup(h, convertAction=0):
     _S.last_new = None
 
 `;
+
+/** The core alone, for the check of how the parts fit it. */
+export const VS_CORE_SOURCE = VS_CORE;
+
+/** The whole module: the core above, then the parts in vs/ (each a family of calls), in order. */
+export const VS_SOURCE = [VS_CORE, ...VS_PARTS].join("\n");

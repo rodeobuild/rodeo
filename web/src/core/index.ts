@@ -33,6 +33,8 @@ export { shadowOffset } from "./shadow.ts";
 export { companionUnits, defaultSheetPage, LENGTH_UNITS } from "./settings.ts";
 export { fieldKind, MAX_FIELD_NAME, newFieldsProblem } from "./params.ts";
 export { setTurnSteps } from "./model3d.ts";
+export { marionetteNetworks, marionetteNodeAt, marionetteNodes, marionetteWires, type MarionetteControl, type MarionetteNetwork, type MarionetteNode, type MarionettePortRef, type MarionetteWire } from "./marionette.ts";
+export { documentScripts, type DocumentScript } from "./docScripts.ts";
 
 export function openVwx(bytes: Uint8Array, fileName = "untitled.vwx"): EditSession {
   return new Session(new Model(bytes, fileName));

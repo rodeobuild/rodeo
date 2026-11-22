@@ -2,18 +2,21 @@
 // drawing, an object placed or drawn again. Parameters start at their defaults, a dimension's from
 // its imperial or metric default by the drawing's units. A linear object's record also holds
 // LineLength, a rectangular one's BoxWidth and BoxHeight (P LineLength... in its script), as the
-// plug-ins that declare them show Vectorworks keeping them. An object's script also runs for the
-// events of its own Object Info layout: setting it up, greying and hiding its widgets for an object,
-// and a button clicked. Plug-in runs go one at a time.
+// plug-ins that declare them show Vectorworks keeping them. A path object's record holds its path
+// in a hidden text field (pathFields.ts). An object's script also runs for the events of its own
+// Object Info layout: setting it up, greying and hiding its widgets for an object, and a button
+// clicked. Plug-in runs go one at a time.
 
 import { fieldKind, type PluginFieldSpec, type Pt, type RecordValue } from "../../core/index.ts";
 import { setEditGroup, setSelection } from "../../app/commands.ts";
 import { store } from "../../app/state.ts";
 import { toast } from "../../app/toast.ts";
 import { parseLength } from "../../app/units.ts";
-import type { VwObjectShape, VwParam, VwPlugin } from "../../import/vwplugin.ts";
+import { controlPointsOf, type VwObjectShape, type VwParam, type VwPlugin } from "../../import/vwplugin.ts";
 import { showAlert } from "../plugins/ui.ts";
-import { runScript, type PluginRun, type PluginUi, type RunEvents, type RunOutcome } from "../python/runner.ts";
+import { runScript, type PluginInfo, type PluginRun, type PluginUi, type RunEvents, type RunOutcome } from "../python/runner.ts";
+import { PATH_FIELD, pathJson, pathText, recordFields, widgetIdsOf } from "./pathFields.ts";
+import { isEventEnabled, startToolSession } from "./toolRun.ts";
 
 /** A plug-in as installed, read. */
 export interface Installed {
@@ -30,6 +33,8 @@ const CLICK_SIZE = 1000;
 const TEXT = 4;
 const DIMENSION = 7;
 const SIZE_FIELDS: Readonly<Record<VwObjectShape, readonly string[]>> = { point: [], path: [], linear: ["LineLength"], rect: ["BoxWidth", "BoxHeight"] };
+/** a path object's path when none was drawn: a straight line of CLICK_SIZE from its insertion point */
+const DEFAULT_PATH = { closed: false, v: [[0, 0, "corner", 0], [CLICK_SIZE, 0, "corner", 0]] };
 
 function imperial(units: string | undefined): boolean {
   return /inch|feet|foot|yard|mile/i.test(units ?? "");
@@ -66,9 +71,10 @@ function defaultValue(p: VwParam, units: string | undefined): RecordValue {
 /**
  * The plug-in's fields with their defaults, the size fields of its shape first when it doesn't
  * declare them, and those set from a drag's `size`. A parameter of a type Rodeo doesn't read is
- * kept as text.
+ * kept as text. A path object also gets its hidden path field, `path` (JSON, see pathFields.ts) or
+ * a straight default one.
  */
-export function fieldSpecs(it: Installed, units: string | undefined, size: { readonly width: number; readonly height: number } | null): PluginFieldSpec[] {
+export function fieldSpecs(it: Installed, units: string | undefined, size: { readonly width: number; readonly height: number } | null, path?: string): PluginFieldSpec[] {
   const sizes = SIZE_FIELDS[it.shape];
   const sized = (name: string): number | undefined => {
     const i = sizes.findIndex((n) => n.toLowerCase() === name.toLowerCase());
@@ -80,7 +86,24 @@ export function fieldSpecs(it: Installed, units: string | undefined, size: { rea
     const known = fieldKind(p.type) !== null;
     out.push({ name: p.name, type: known ? p.type : TEXT, value: sized(p.name) ?? (known ? defaultValue(p, units) : p.default) });
   }
+  if (it.shape === "path") out.push({ name: PATH_FIELD, type: TEXT, value: path ?? JSON.stringify(DEFAULT_PATH) });
   return out;
+}
+
+/** What the plug-in's script may ask about its parameters (the vs module's plug-in calls): control points and popup choices. */
+export function pluginInfo(it: Installed): PluginInfo {
+  const choices: Record<string, { value: string; label: string }[]> = {};
+  const labels: Record<string, string> = {};
+  for (const p of it.plugin.params) {
+    labels[p.name] = p.label;
+    if (p.kind === "popup" || p.kind === "radio") choices[p.name] = [...p.choices];
+  }
+  return {
+    controlPoints: controlPointsOf(it.plugin.params).map((c) => ({ x: c.x.name, y: c.y.name })),
+    choices,
+    labels,
+    widgets: widgetIdsOf(it.plugin.name),
+  };
 }
 
 /** The events Vectorworks sends an object's script for its Object Info layout (vsoGetEventInfo's). */
@@ -110,14 +133,15 @@ function scriptFile(it: Installed): string {
   return `${it.plugin.name}.${it.plugin.language === "vectorscript" ? "vs" : "py"}`;
 }
 
-function problem(r: RunOutcome): string {
+export function problem(r: RunOutcome): string {
   return r.error ? `${r.error.message}${r.error.line ? ` (line ${r.error.line} of its script)` : ""}` : "";
 }
 
 /** Runs the plug-in's script (after those before it); its outcome, with any error unshown. */
-function outcome(it: Installed, extra: Partial<PluginRun>): Promise<RunOutcome> {
+export function outcome(it: Installed, extra: Partial<PluginRun>): Promise<RunOutcome> {
   const units = store.session?.doc.info.units;
-  const plugin: PluginRun = { name: it.plugin.name, fields: fieldSpecs(it, units, null), modules: it.modules, ...extra };
+  const path = extra.object && it.shape === "path" ? pathText(extra.object, it.plugin.name) : undefined;
+  const plugin: PluginRun = { name: it.plugin.name, fields: fieldSpecs(it, units, null, path), modules: it.modules, info: pluginInfo(it), ...extra };
   return serial(() => runScript(it.plugin.script, scriptFile(it), events(it.plugin.name), plugin));
 }
 
@@ -133,6 +157,8 @@ async function run(it: Installed, extra: Partial<PluginRun>): Promise<RunOutcome
 
 /** A menu command's or tool's script, run on the drawing. */
 export async function runCommand(it: Installed): Promise<void> {
+  // an event-enabled tool runs once per event, in its session (toolRun.ts), not once
+  if (isEventEnabled(it)) return startToolSession(it);
   await run(it, {});
 }
 
@@ -144,9 +170,26 @@ export async function placeObject(it: Installed, layer: string, at: Pt, angle: n
   if (r && r.object) setEditGroup(null, [r.object]);
 }
 
-/** Sets fields of an object of the plug-in and draws it again; Object Info shows the old values when that fails. */
+/**
+ * Places a new path object of the plug-in: `points` are its path in the drawing's millimetres, the
+ * first its insertion point, and `closed` when its last vertex joins its first. Selected afterwards.
+ */
+export async function placePathObject(it: Installed, layer: string, points: readonly Pt[], closed: boolean): Promise<void> {
+  const at = points[0];
+  if (!at) return;
+  const fields = fieldSpecs(it, store.session?.doc.info.units, null, pathJson(points, at, closed));
+  const r = await run(it, { fields, place: { layer, at, angle: 0, classIndex: store.activeClassIndex } });
+  if (r && r.object) setEditGroup(null, [r.object]);
+}
+
+/**
+ * Sets fields of an object of the plug-in and draws it again; Object Info shows the old values when
+ * that fails. The values the edit replaces go to the script too (vsoStateGetParamChng reports them).
+ */
 export async function editObject(it: Installed, id: string, values: Readonly<Record<string, RecordValue>>): Promise<void> {
-  if ((await run(it, { object: id, set: values })) === false) setSelection([...store.selection]);
+  const fields = recordFields(id, it.plugin.name);
+  const changed = Object.keys(values).map((name) => ({ name, old: String(fields.find((f) => f.name === name)?.value ?? "") }));
+  if ((await run(it, { object: id, set: values, info: { ...pluginInfo(it), changed } })) === false) setSelection([...store.selection]);
 }
 
 /** Draws an object of the plug-in again from its parameters (Reset All Plug-Ins): null when done, else why it failed, unshown. */

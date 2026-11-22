@@ -8,25 +8,35 @@
 // It also places the plug-ins a feature can draw from their parameters (installed Vectorworks
 // plug-ins, ext.ts PluginDriver), new ones with their default parameters: a point object as a copy
 // is placed, a linear one by dragging from its start to its end, a rectangular one by dragging
-// across it.
+// across it. A click on a straight wall puts a point or linear one on the wall's centre line, turned
+// along the wall (it is not set into the wall: it doesn't cut it or move with it). A path one is drawn
+// by clicks at its corners: a double-click or Enter ends it, Esc leaves it; a drag alone makes a
+// straight one of two corners.
 
 import type { ObjectInfo, PluginKind, Pt } from "../../core/index.ts";
 import { attempt, setEditGroup } from "../commands.ts";
 import { pluginDriver, pluginDrivers, takePreferredDriver, type PluginDriver } from "../ext.ts";
 import { dist, snapAngle } from "../geom.ts";
+import { pickObject } from "../hittest.ts";
 import { ACCENT } from "../renderer.ts";
+import { isDerivedId } from "../scene.ts";
 import { store } from "../state.ts";
 import { toolPrefs } from "../toolPrefs.ts";
 import { BaseTool, strokeScreen, withPreview, type Painter, type PointerInfo, type ToolEnv } from "../tools.ts";
+import { toast } from "../toast.ts";
 
 /** a press that moves less than this many CSS px is a click, not a drag that turns */
 const DRAG_PX = 4;
+/** a corner clicked this close to the last one is the same corner, CSS px */
+const CLICK_PX = 4;
 /** Shift turns the copy in steps of this, degrees */
 const ANGLE_STEP_DEG = 15;
 /** arm length of the insertion-point cross, CSS px */
 const CROSS_PX = 6;
 /** a choice's id for a plug-in a feature draws: this and its name */
 const DRIVER = "driver:";
+/** the kind of a wall (Vectorworks' wall object, as the drawing's object types have it) */
+const WALL = 68;
 
 /** The plug-ins a feature draws that this tool offers: those with no tool of their own. */
 const insertable = (): PluginDriver[] => pluginDrivers().filter((d) => !d.builtIn);
@@ -45,6 +55,8 @@ export class PluginInsertTool extends BaseTool {
   private start: { pos: Pt; screen: Pt } | null = null;
   /** the pointer while a drag turns the copy */
   private drag: PointerInfo | null = null;
+  /** the corners of a path object being drawn, once its first is clicked */
+  private path: Pt[] | null = null;
 
   constructor(env: ToolEnv) {
     super(env);
@@ -86,6 +98,10 @@ export class PluginInsertTool extends BaseTool {
     const c = this.current();
     if (!c) return "This drawing has no plug-in object to copy";
     const d = c.driver;
+    if (d?.shape === "path") {
+      if (this.path) return `Click the next corner of a ${d.name} · Double-click or Enter ends it · Esc cancels`;
+      return `Click each corner of a ${d.name}, or drag for a straight one · Preferences picks the plug-in`;
+    }
     if (d?.shape === "linear") return this.start ? `Release at the end of the ${d.name} · Shift ${ANGLE_STEP_DEG}°` : `Drag from the start of a ${d.name} to its end · Preferences picks the plug-in`;
     if (d?.shape === "rect") return this.start ? `Release at the opposite corner` : `Drag across a ${d.name}'s rectangle · Preferences picks the plug-in`;
     if (this.start) return `Release where it faces · Shift ${ANGLE_STEP_DEG}°`;
@@ -112,7 +128,18 @@ export class PluginInsertTool extends BaseTool {
     if (!start || !c || !layerId) return;
     const dragged = Math.hypot(p.screen.x - start.screen.x, p.screen.y - start.screen.y) >= DRAG_PX;
     const angle = dragged ? this.angleTo(start.pos, p) : undefined;
+    if (c.driver?.shape === "path") {
+      this.clickPath(c.driver, layerId, start.pos, p, dragged);
+      return;
+    }
     if (c.driver) {
+      // a click on a straight wall sets a point or linear plug-in on its centre line, turned along it
+      const wall = !dragged && c.driver.shape !== "rect" ? this.wallAt(start.screen) : null;
+      if (wall) {
+        const line = this.centreLine(wall, start.pos);
+        c.driver.place(layerId, line.at, line.angle, null);
+        return;
+      }
       this.placeNew(c.driver, layerId, start.pos, dragged ? this.endOf(start.pos, p) : null);
       return;
     }
@@ -122,13 +149,29 @@ export class PluginInsertTool extends BaseTool {
     if (r) setEditGroup(null, [r.value]);
   }
 
+  key(e: KeyboardEvent): boolean {
+    if (!this.path || e.key !== "Enter") return false;
+    const c = this.current();
+    if (c?.driver?.shape === "path") this.finishPath(c.driver);
+    return true;
+  }
+
   cancel(): void {
     this.start = null;
     this.drag = null;
+    this.path = null;
   }
 
   overlay(g: Painter): void {
     const c = this.current();
+    if (c?.driver?.shape === "path") {
+      // the corners so far, and the line from the last one to the pointer
+      const path = this.path ?? [];
+      const at = this.at;
+      if (path.length && at) withPreview(g, () => strokeScreen(g, [...path, at], false));
+      if (at) this.cross(g, at);
+      return;
+    }
     const at = this.start?.pos ?? this.at;
     if (!c || !at) return;
     const end = this.drag && this.start ? this.endOf(this.start.pos, this.drag) : null;
@@ -176,6 +219,57 @@ export class PluginInsertTool extends BaseTool {
     if (kinds[0]) return { kind: kinds[0] };
     const first = insertable()[0];
     return first ? { driver: first } : null;
+  }
+
+  /**
+   * A press on a path object's drawing: a corner is added where it is released (a click), a press
+   * dragged from nothing draws a straight path of two corners, and a double-click ends the path.
+   */
+  private clickPath(d: PluginDriver, layerId: string, from: Pt, p: PointerInfo, dragged: boolean): void {
+    if (!this.path && dragged) {
+      d.placePath?.(layerId, [from, this.endOf(from, p)], false);
+      return;
+    }
+    const at = this.endOf(from, p);
+    const path = (this.path ??= []);
+    const last = path.at(-1);
+    if (!last || dist(last, at) * this.env.view.scale > CLICK_PX) path.push(at);
+    if (p.detail >= 2) this.finishPath(d);
+  }
+
+  /** Places the path object drawn so far (two corners at least) and ends the path. */
+  private finishPath(d: PluginDriver): void {
+    const path = this.path ?? [];
+    const layerId = store.activeLayerId;
+    this.path = null;
+    if (path.length < 2 || !layerId) {
+      if (path.length < 2) toast(`A ${d.name} needs at least two corners.`, "info");
+      return;
+    }
+    d.placePath?.(layerId, path, false);
+  }
+
+  /** The wall of the active layer (or of the group being edited) whose plan drawing is under `screen`, or null. */
+  private wallAt(screen: Pt): string | null {
+    const layerId = store.activeLayerId;
+    if (!layerId) return null;
+    const hit = pickObject(this.env.scene, this.env.view, screen, [layerId], (o) => {
+      const unit = isDerivedId(o.id) ? null : this.env.scene.unitOf(o, store.editGroupId);
+      return unit !== null && store.session?.doc.object(unit)?.type === WALL;
+    });
+    if (!hit || isDerivedId(hit.id)) return null;
+    return this.env.scene.unitOf(hit, store.editGroupId);
+  }
+
+  /** The point on wall `id`'s centre line nearest `from`, and the wall's direction in degrees; a straight wall only. */
+  private centreLine(id: string, from: Pt): { at: Pt; angle: number } {
+    const w = store.session?.doc.wall(id);
+    if (!w) return { at: from, angle: 0 };
+    const len = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
+    if (!(len > 0)) return { at: from, angle: 0 };
+    const u = { x: (w.end.x - w.start.x) / len, y: (w.end.y - w.start.y) / len };
+    const t = Math.min(len, Math.max(0, (from.x - w.start.x) * u.x + (from.y - w.start.y) * u.y));
+    return { at: { x: w.start.x + u.x * t, y: w.start.y + u.y * t }, angle: (Math.atan2(u.y, u.x) * 180) / Math.PI };
   }
 
   /** Where a drag from `from` ends: the pointer, along 15° steps with Shift. */

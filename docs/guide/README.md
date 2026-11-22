@@ -15,7 +15,7 @@ How to use Rodeo, the drawing and 3D modelling app at [rodeo.build](https://rode
 - [Drawing, text and attributes](drawing.md): lines, shapes and curves, text and notes, attributes, fills and hatches, line types and markers.
 - [Dimensions and measuring](dimensions.md): dimensions, GD&T and welding symbols, and measuring with the tape measure and protractor.
 - [Selecting and editing](editing.md): selecting, moving and reshaping, copy and paste, duplicating, groups, arranging and aligning, trimming and clipping, composing and converting, and right-click commands.
-- [Symbols and plug-in objects](symbols-plugins.md): symbols, the Resource Manager, plug-in objects, data records and textures on objects.
+- [Symbols and plug-in objects](symbols-plugins.md): symbols, the Resource Manager, plug-in objects, Vectorworks plug-ins (.vsm, .vst, .vso), data records and textures on objects.
 
 ## 3D
 
@@ -38,7 +38,7 @@ How to use Rodeo, the drawing and 3D modelling app at [rodeo.build](https://rode
 
 ## Automating
 
-- [Scripts](scripting.md): running Python and Vectorscript scripts, exporting a drawing as a script, and the format library and command line.
+- [Scripts](scripting.md): running Python and Vectorscript scripts, their files, preferences and dialogs, reading Marionette networks, exporting a drawing as a script, and the format library and command line.
 
 ## Reading this guide
 
