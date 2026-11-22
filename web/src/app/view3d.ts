@@ -632,18 +632,24 @@ export class View3D {
   setModel(meshes: Mesh3D[], resources: ResourceInfo[]): void {
     if (this.disposed) return;
     this.clearModel();
-    // the light objects' shadows are fitted to the model: they come again with its lights
-    this.lampIds = "";
-    this.resourceByIndex = new Map(resources.map((r): [number, ResourceInfo] => [r.index, r]));
-    this.build(meshes);
-    this.applyDashes();
-    this.applyClip();
-    this.updateClipping();
-    if (!this.framed && meshes.length > 0) this.setView("iso");
-    this.applyVisibility();
-    this.loadTextures();
-    this.applyMode();
-    this.selectionStale = true;
+    try {
+      // the light objects' shadows are fitted to the model: they come again with its lights
+      this.lampIds = "";
+      this.resourceByIndex = new Map(resources.map((r): [number, ResourceInfo] => [r.index, r]));
+      this.build(meshes);
+      this.applyDashes();
+      this.applyClip();
+      this.updateClipping();
+      if (!this.framed && meshes.length > 0) this.setView("iso");
+      this.applyVisibility();
+      this.loadTextures();
+      this.applyMode();
+      this.selectionStale = true;
+    } catch (err) {
+      // a model that failed part way is not kept: its geometry is freed and the view stays empty
+      this.clearModel();
+      throw err;
+    }
   }
 
   /** Hides the objects on layers that are not in `ids`. */

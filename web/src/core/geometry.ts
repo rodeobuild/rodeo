@@ -108,6 +108,11 @@ export function onViewportSheet(g: Rec): boolean {
   return groupTags(g).some((t) => ON_SHEET_TAGS.has(t));
 }
 
+/** True for an aux record (76) that tags a viewport's group as one whose points are on the sheet. */
+export function isOnSheetTagData(d: Uint8Array): boolean {
+  return d.length >= 0x54 && ON_SHEET_TAGS.has(String.fromCharCode(...d.subarray(0x50, 0x54)));
+}
+
 /** True for the group holding a viewport's crop object. */
 export function isViewportCrop(g: Rec): boolean {
   return groupTags(g).includes(CROP_TAG);

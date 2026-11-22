@@ -29,7 +29,7 @@ export { isNarrowFont } from "./fonts.ts";
 export { PLAN_VIEW } from "./layerView.ts";
 export { markerPaths, type MarkerPath } from "./markers.ts";
 export { shadowOffset } from "./shadow.ts";
-export { companionUnits, LENGTH_UNITS } from "./settings.ts";
+export { companionUnits, defaultSheetPage, LENGTH_UNITS } from "./settings.ts";
 export { fieldKind, MAX_FIELD_NAME, newFieldsProblem } from "./params.ts";
 export { setTurnSteps } from "./model3d.ts";
 

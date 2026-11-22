@@ -69,6 +69,10 @@ PDF and SVG exports of a sheet include its plan drawings, cropped to their viewp
 
 Click a viewport's drawing to select the viewport and drag to move it, drawing, annotations and all.
 
+Duplicate, Duplicate Array, Move by Points with copy, and copy and paste make a viewport of its own, with its drawing, annotations and crop. Pasted into another drawing, it needs the layers and classes it shows there; without them the paste is refused.
+
+Scale Objects and Flip leave viewports as they are: a viewport's size follows its scale and crop, so change its scale in Object Info. Rotate does not turn viewports yet.
+
 Object Info edits a viewport's:
 
 - scale (the drawing and its annotations rescale about the box's centre)

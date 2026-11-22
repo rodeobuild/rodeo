@@ -24,6 +24,7 @@ import { createSymbolDialog, duplicateArrayDialog } from "./arrayDialog.ts";
 import { installAutosave } from "./autosave.ts";
 import { type RecentEntry, loadRecent, openRecentEntry, recentRows, rememberRecent } from "./recent.ts";
 import { note, reportFailure } from "./reports.ts";
+import { isOutOfMemoryError } from "./rejection.ts";
 import { askPdfOptions, printPdf } from "./exportDialog.ts";
 import { importDroppedDwg, importDroppedDxf, importDwgFile, importDxfFile, type ImportOptions, openDwgBytes } from "./dxfImport.ts";
 import { installCrosshair } from "./crosshair.ts";
@@ -420,6 +421,8 @@ export class App {
   private renderMode3d: RenderMode = "shaded";
   /** the 3D view's model no longer matches the document */
   private stale3d = true;
+  /** the last 3D build ran out of memory: edits don't try it again, only asking for 3D or opening another drawing does */
+  private memory3dFull = false;
   /** the model was built while the 3D view was hidden (for a floating pane): its first showing frames it */
   private unframed3d = false;
   /** whether the 3D view has shown the open drawing, so saving keeps the view it was left in */
@@ -2042,6 +2045,7 @@ export class App {
 
   private async show3d(): Promise<void> {
     if (!store.session) return;
+    this.memory3dFull = false;
     const done = showLoading("Building the 3D model…");
     try {
       await nextPaint();
@@ -2423,11 +2427,22 @@ export class App {
   /** Gives the 3D view the current document's model when it is out of date. */
   private update3d(): void {
     const session = store.session;
-    if (!this.view3d || !session || !this.stale3d) return;
+    if (!this.view3d || !session || !this.stale3d || this.memory3dFull) return;
     // hidden objects aren't in it (View > Hide Selected Objects)
     const hidden = hiddenObjects();
     const model = session.doc.model3d();
-    this.view3d.setModel(hidden.size ? model.filter((m) => !hidden.has(m.objectId)) : model, session.doc.resources());
+    const meshes = hidden.size ? model.filter((m) => !hidden.has(m.objectId)) : model;
+    try {
+      this.view3d.setModel(meshes, session.doc.resources());
+    } catch (err) {
+      if (!isOutOfMemoryError(err)) throw err;
+      // the browser ran out of memory building it: 2D keeps working and the 3D view stays empty
+      this.memory3dFull = true;
+      const faces = meshes.reduce((n, m) => n + Math.floor(m.triangles.length / 9), 0);
+      reportFailure("3d-memory", err, { faces });
+      toast("This drawing's 3D is too big for this device's memory. 2D still works; open it on a computer for 3D.", "info");
+      return;
+    }
     this.view3d.setLights(session.doc.lights3d());
     // the dash style's dashes, as this drawing has them
     this.view3d.setDashes(this.dashes3d());
@@ -2653,6 +2668,7 @@ export class App {
     this.controller.cancel();
     reconcile();
     this.stale3d = true;
+    this.memory3dFull = false;
     this.shown3d = this.live3d;
     if (this.live3d) {
       this.update3d();
@@ -2791,6 +2807,7 @@ export class App {
     this.snap.invalidate();
     reconcile();
     this.stale3d = true;
+    this.memory3dFull = false;
     this.shown3d = false;
     this.paneCams.clear();
     this.planViews.clear();

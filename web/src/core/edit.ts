@@ -79,6 +79,7 @@ import {
   VIEWPORT_SHIFT,
   bboxOfPoints,
   decodeShape,
+  isOnSheetTagData,
   onViewportSheet,
   staleRectBounds,
   textFaceAt,
@@ -115,6 +116,7 @@ import {
   layerNameAt,
   layerTexts,
   layerPageAt,
+  pageOf,
   CAMERA_PLUGIN,
   MATERIAL_AT,
   MATERIAL_TYPES,
@@ -126,6 +128,7 @@ import {
   viewportRotation,
 } from "./model.ts";
 import { FONT_LIST, isNarrowFont, readFontList, withFont } from "./fonts.ts";
+import { viewportDataViz } from "./dataviz.ts";
 import { LINE_MARKERS, MARKED_TYPES, NEW_MARKERS, readMarkers, writeMarkers } from "./markers.ts";
 import { writeLayerView } from "./layerView.ts";
 import { writeNameTable } from "./names.ts";
@@ -146,7 +149,7 @@ import { RESOURCE_TYPES, TEXT_STYLE_TYPE, newGradient, newTextStyle, previewSize
 import { DROP_SHADOW, NEW_SHADOW, SHADOW_BYTES, readDropShadow, writeDropShadow } from "./shadow.ts";
 import { isStory, isStoryList, newStory, readStory, writeStory } from "./stories.ts";
 import { applyRuns, transformRuns, type Splice } from "./splice.ts";
-import { unitsPatch } from "./settings.ts";
+import { defaultSheetPage, unitsPatch } from "./settings.ts";
 import { HELIODON, HELIODON_INPUTS, heliodonFields, heliodonLight, readHeliodonSun } from "./sun.ts";
 import type {
   Affine,
@@ -433,9 +436,12 @@ function withFaces(r: Rec): Rec[] {
 const CARRIED: ReadonlySet<number> = new Set([...MOVABLE, GENERIC_SOLID, MESH_FACE]);
 /**
  * What Duplicate copies, and the clipboard within one drawing: shapes, and walls, slabs, plug-in
- * objects and lights. Another drawing takes MOVABLE objects with CARRIED ones in their frames only.
+ * objects, lights and viewports. Another drawing takes MOVABLE objects and viewports with CARRIED
+ * ones in their frames only.
  */
-const COPIED: ReadonlySet<number> = new Set([...MOVABLE, ...TURNABLE, LIGHT]);
+const COPIED: ReadonlySet<number> = new Set([...MOVABLE, ...TURNABLE, LIGHT, VIEWPORT]);
+/** What the clipboard takes into another drawing as an object outside any 3D object's frame. */
+const TRANSFERRED: ReadonlySet<number> = new Set([...MOVABLE, VIEWPORT]);
 /** What a symbol holds: shapes, plug-in objects and lights (walls and slabs not yet). */
 const SYMBOL_PARTS: ReadonlySet<number> = new Set([...MOVABLE, PLUGIN, LIGHT]);
 
@@ -612,6 +618,24 @@ function isWallInsert(r: Rec): boolean {
 function copyable(r: Rec): boolean {
   for (const o of movedWalk(r)) if (!COPIED.has(o.type)) return false;
   return true;
+}
+
+/**
+ * The records a viewport in `rec` holds on its sheet (its annotations and crop, and what they hold),
+ * with the viewport's scale: they sit at sheet position times the scale, apart from its shift, so a
+ * move or a copy offsets them by the offset times the scale.
+ */
+function sheetHeld(rec: Rec): Map<Rec, number> {
+  const out = new Map<Rec, number>();
+  for (const vp of objectWalk(rec)) {
+    const s = vp.type === VIEWPORT ? viewportScale(vp.data) : null;
+    if (s === null) continue;
+    for (const g of objectChildren(vp)) {
+      if (!onViewportSheet(g)) continue;
+      for (const r of movedWalk(g)) out.set(r, s);
+    }
+  }
+  return out;
 }
 
 /** the sharpest corner walls are mitred at: past it the cut would run far beyond the corner */
@@ -1512,6 +1536,15 @@ export class Session implements EditSession {
       setF64(d, layerElevationAt(d), 0);
     }
     setF64(d, LAYER_SCALE, scale && scale > 0 ? scale : kind === "sheet" ? 1 : f64(tpl.data, LAYER_SCALE));
+    if (want === 2 && (tpl.data[layerKindAt(tpl.data)] !== 2 || !pageOf(tpl.data).page)) {
+      // a new sheet has its page from the start, as a Vectorworks sheet does; one copied from a sheet with a page keeps that page
+      const at = layerPageAt(d);
+      if (at + 16 <= d.length) {
+        const page = defaultSheetPage(this.doc.info.units);
+        setF64(d, at, page.width / 25.4);
+        setF64(d, at + 8, page.height / 25.4);
+      }
+    }
     recs[0] = d;
     const p = this.plan();
     p.insert(subtreeEnd(layers[layers.length - 1]) + 1, recs);
@@ -4846,18 +4879,29 @@ export class Session implements EditSession {
       for (const o of moved) {
         if (!COPIED.has(o.type)) throw new Error(`duplicating ${typeLabel(o.type)} objects isn't supported yet`);
       }
+      const objects = new Set(objectWalk(r));
+      // a viewport's annotations and crop go with it, offset on the sheet as a move offsets them;
+      // the records that only tag or describe them are copied as they are
+      const sheet = sheetHeld(r);
+      for (const o of sheet.keys()) {
+        if (objects.has(o) && o.type !== AUX_RECORD && !TRANSLATABLE.has(o.type)) throw new Error(`duplicating ${typeLabel(o.type)} objects isn't supported yet`);
+      }
       const t = templateOf(r);
       const copies = this.instantiate(t, r.owner);
       // translate the copies of object records (same pre-order as templateOf); what a 3D object
       // holds in its own frame is copied as it is
-      const objects = new Set(objectWalk(r));
       let i = 0;
       for (const src of r.walk()) {
+        const s = sheet.get(src);
         if (objects.has(src)) {
           if (moved.has(src)) translateRecord(copies[i], src.type, dx, dy);
+          else if (s !== undefined) translateRecord(copies[i], src.type, dx * s, dy * s);
           setU16(copies[i], 0x1a, 0); // object names are unique: copies are unnamed
         } else if (src.type === FILL_MAPPING && src.parent && moved.has(src.parent)) {
           transformFillMapping(copies[i], translation(dx, dy));
+        } else if (src.type === FILL_MAPPING && src.parent && sheet.has(src.parent)) {
+          const k = sheet.get(src.parent)!;
+          transformFillMapping(copies[i], translation(dx * k, dy * k));
         } else if (src.type === BODY && src.parent && moved.has(src.parent) && BODY_IN_PARENT.has(src.parent.type)) {
           moveBodyPoints(copies[i], translation(dx, dy));
         } else if (src.type === RECORD && src.parent && moved.has(src.parent)) {
@@ -6450,11 +6494,28 @@ export class Session implements EditSession {
     const items = readClipboard(data, this.drawing);
     const here = data.drawing === this.drawing;
     const sheet = into?.type === 31 && into.data[layerKindAt(into.data)] === 2;
+    // the target's name index for each layer and class a pasted viewport's list shows, in list order
+    const listed = new Map<PasteItem, number[]>();
     for (const g of items) {
       const type = g.data[0x19];
       if (!g.object || g.held) continue;
       if (into?.type === 16 && !SYMBOL_PARTS.has(type)) throw new Error(`${typeLabel(type)} objects can't go into a symbol yet`);
       if (sheet && (type === WALL || type === SLAB || type === LIGHT)) throw new Error(`${typeLabel(type)} objects go on design layers, not sheets`);
+      if (type === VIEWPORT && !sheet) throw new Error("viewports go on sheet layers");
+      if (type !== VIEWPORT || here || g.listedLayers === undefined || g.listedClasses === undefined) continue;
+      // a viewport from another drawing shows the layers and classes this one has, by name, or the paste is refused
+      if (g.visualisations?.length) throw new Error("a viewport with visualisations can't be pasted into another drawing yet");
+      const layers = g.listedLayers.map((name) => {
+        const layer = this.doc.layerRecs.find((l) => this.doc.layerName(l) === name);
+        if (!layer) throw new Error(`the viewport shows layer "${name}", which this drawing doesn't have`);
+        return layer.nameIndex;
+      });
+      const classes = g.listedClasses.map((name) => {
+        const cls = this.doc.classIndexByName(name);
+        if (cls === null) throw new Error(`the viewport uses class "${name}", which this drawing doesn't have`);
+        return cls;
+      });
+      listed.set(g, [...layers, ...classes]);
     }
     const none = this.noneClass();
     const styles = new Map(this.doc.lineTypes().map((t) => [t.name, t.style]));
@@ -6463,6 +6524,18 @@ export class Session implements EditSession {
       const name = this.doc.names.get(index);
       if (name) symbols.set(name, index);
     }
+    // a viewport's annotations and crop sit on its sheet at its scale, apart from its shift: a paste offsets them as a move does
+    const sheetScale = (k: number): number | null => {
+      let c = k;
+      while (items[c].parent >= 0) {
+        const up = items[items[c].parent];
+        if (up.object && !up.held && up.data[0x19] === VIEWPORT && items[c].data[0x19] === 11 && items.some((a) => a.parent === c && a.data[0x19] === AUX_RECORD && isOnSheetTagData(a.data))) {
+          return viewportScale(up.data);
+        }
+        c = items[c].parent;
+      }
+      return null;
+    };
     // plug-ins' parameter formats among them
     const formats = new Map(this.doc.recs.flatMap((r) => (r.type === RECORD_FORMAT && r.nameIndex ? [[this.doc.names.get(r.nameIndex) ?? "", r.nameIndex] as const] : [])));
     const refs = this.refTables();
@@ -6493,8 +6566,11 @@ export class Session implements EditSession {
         if (before !== undefined) setNext(copies[position.get(before)!], false);
       }
       group.forEach((g, i) => {
+        const sheet = sheetScale(kept[i]);
         if (copies[i][0x19] === FILL_MAPPING && g.parent >= 0 && items[g.parent].object && !items[g.parent].held) {
           transformFillMapping(copies[i], translation(dx, dy));
+        } else if (copies[i][0x19] === FILL_MAPPING && sheet !== null) {
+          transformFillMapping(copies[i], translation(dx * sheet, dy * sheet));
         }
         if (copies[i][0x19] === BODY && g.parent >= 0 && !items[g.parent].held && BODY_IN_PARENT.has(items[g.parent].data[0x19])) {
           moveBodyPoints(copies[i], translation(dx, dy));
@@ -6514,6 +6590,8 @@ export class Session implements EditSession {
         const d = copies[i];
         this.remapRefs(p, d, g, refs);
         if (!g.held) translateRecord(d, d[0x19], dx, dy);
+        else if (sheet !== null) translateRecord(d, d[0x19], dx * sheet, dy * sheet);
+        listed.get(g)?.forEach((name, k) => setViewportListName(d, k, name));
         setU16(d, 0x1a, 0);
         // in the drawing it came from a class still there, or none (a wall's bodies), stays; elsewhere it goes by name
         const cls = u32(d, 0x20);
@@ -6561,10 +6639,23 @@ export class Session implements EditSession {
    * What an object names by index that another drawing numbers its own way: its colours, fill
    * resource, material (one of `materials`), font and text style.
    */
-  private namedRefs(r: Rec, materials: ReadonlySet<number>): { colors?: string[]; fill?: string; material?: string; font?: string; textStyle?: string } {
+  private namedRefs(r: Rec, materials: ReadonlySet<number>): { colors?: string[]; fill?: string; material?: string; font?: string; textStyle?: string; listedLayers?: string[]; listedClasses?: string[]; visualisations?: string[] } {
     const d = r.data;
     if (d.length < ATTR_END) return {};
-    const out: { colors?: string[]; fill?: string; material?: string; font?: string; textStyle?: string } = { colors: COLOR_SLOTS.map((o) => this.doc.color(u16(d, o))) };
+    const out: { colors?: string[]; fill?: string; material?: string; font?: string; textStyle?: string; listedLayers?: string[]; listedClasses?: string[]; visualisations?: string[] } = { colors: COLOR_SLOTS.map((o) => this.doc.color(u16(d, o))) };
+    if (r.type === VIEWPORT) {
+      // a viewport's list names layers and classes by name index, which another drawing numbers its own way
+      const lists = viewportLists(d);
+      if (lists) {
+        out.listedLayers = lists.layers.map((e) => {
+          const layer = this.doc.layerRecs.find((l) => l.nameIndex === e.name);
+          return layer ? this.doc.layerName(layer) : "";
+        });
+        out.listedClasses = lists.classes.map((e) => this.doc.className(e.name));
+      }
+      const guids = viewportDataViz(r);
+      if (guids.length) out.visualisations = guids;
+    }
     const fill = i16(d, FILL_PATTERN);
     const fillName = fill < 0 ? this.doc.names.get(-fill) : undefined;
     if (fillName) out.fill = fillName;
@@ -8155,6 +8246,9 @@ interface PasteItem {
   colors?: readonly string[];
   format?: string;
   textures?: readonly string[];
+  listedLayers?: readonly string[];
+  listedClasses?: readonly string[];
+  visualisations?: readonly string[];
 }
 
 /** An object's fill foreground and background and pen foreground and background colour indices (attrs.ts) */
@@ -8220,6 +8314,12 @@ function cameraRecordThrough(d: Uint8Array, fmt: FormatDef, m: Affine): Uint8Arr
   return d;
 }
 
+/** Points entry k of a viewport's list (its layers, then its classes) at name index `name`. */
+function setViewportListName(d: Uint8Array, k: number, name: number): void {
+  const list = viewportListAt(d);
+  if (list && k < list.layers + list.classes) setU16(d, viewportEntryAt(list.at, k) + VIEWPORT_ENTRY_NAME, name);
+}
+
 /**
  * Decode and check clipboard JSON before any of it reaches the document: it
  * may come from the system clipboard, so every record must be well formed and
@@ -8249,11 +8349,12 @@ function readClipboard(data: ClipboardData, drawing: string): PasteItem[] {
     const held = !!up && (up.held || (up.object && !childrenMoveWith(up.data[0x19])));
     if (object ? !(held || COPIED.has(type)) || d.length < ATTR_END : !here && MOVABLE.has(type)) throw new Error("clipboard data is damaged");
     if (r.parent === -1 && !object) throw new Error("clipboard data is damaged");
-    if (object && !here && !(held ? CARRIED : MOVABLE).has(type)) throw new Error(`${typeLabel(type)} objects can't be pasted into another drawing yet`);
+    if (object && !here && !(held ? CARRIED : TRANSFERRED).has(type)) throw new Error(`${typeLabel(type)} objects can't be pasted into another drawing yet`);
     const text = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
     const listed: unknown = r.colors;
     const colors = Array.isArray(listed) && listed.length === COLOR_SLOTS.length && listed.every((c): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c)) ? listed : undefined;
     const textures: unknown = r.textures;
+    const names = (v: unknown): readonly string[] | undefined => (Array.isArray(v) && v.every((x) => typeof x === "string") ? v : undefined);
     items.push({
       data: d,
       parent: r.parent,
@@ -8269,6 +8370,9 @@ function readClipboard(data: ClipboardData, drawing: string): PasteItem[] {
       colors,
       format: text(r.format),
       textures: Array.isArray(textures) && textures.every((t) => typeof t === "string") && isTextureDict(recOfData(d)) ? textures : undefined,
+      listedLayers: names(r.listedLayers),
+      listedClasses: names(r.listedClasses),
+      visualisations: names(r.visualisations),
     });
   }
   return items;

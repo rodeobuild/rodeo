@@ -417,6 +417,20 @@ export class DataBar {
     return true;
   }
 
+  /**
+   * Starts the first field with a typed character, as Tab then the key would, whatever Data Bar
+   * Options say about instant activation. False when the bar has no field to take it.
+   */
+  startField(text: string): boolean {
+    if (!this.focusField(false)) return false;
+    const input = document.activeElement;
+    if (!(input instanceof HTMLInputElement)) return false;
+    input.value = text;
+    input.setSelectionRange(text.length, text.length);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
   /** The keys of the tool's fields now, in order (none when no tool asks for values). */
   fieldKeys(): string[] {
     return this.stage ? this.stage.fields.map((f) => f.key) : [];

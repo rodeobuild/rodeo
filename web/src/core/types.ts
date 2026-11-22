@@ -89,6 +89,14 @@ export interface ClipboardData {
      * height above its layer
      */
     readonly elevation?: number;
+    /**
+     * a viewport's: the layer and class names its list shows, in the list's order (layers, then
+     * classes); a paste into another drawing takes them by name
+     */
+    readonly listedLayers?: readonly string[];
+    readonly listedClasses?: readonly string[];
+    /** a viewport's visualisations (GUIDs), which only paste back into the drawing they came from */
+    readonly visualisations?: readonly string[];
   }[];
   /** bounds of the copied objects */
   readonly bbox: BBox | null;
@@ -291,6 +299,8 @@ export interface LayerInfo {
   view?: LayerView;
   /** a sheet layer's page (Page Setup), mm, centred on its origin */
   page?: PageSize;
+  /** a sheet layer whose record has room to hold a page */
+  canHoldPage?: boolean;
 }
 
 /** A page's size, mm. */

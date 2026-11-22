@@ -228,7 +228,7 @@ export function layerPageAt(d: Uint8Array): number {
   return LAYER_PAGE_BASE + layerShift(d);
 }
 
-function pageOf(d: Uint8Array): { page?: { width: number; height: number } } {
+export function pageOf(d: Uint8Array): { page?: { width: number; height: number } } {
   const at = layerPageAt(d);
   if (at + 16 > d.length) return {};
   const w = f64(d, at);
@@ -1075,6 +1075,8 @@ export class Model implements VwxDocument {
         objectCount: idx.byLayer.get(id)?.length ?? 0,
         ...rest,
         ...(rest.view ? { view: { ...rest.view } } : rest.page ? { page: { ...rest.page } } : {}),
+        // a sheet's record has room for its page (Page Setup can store one there)
+        ...(read.kind === "sheet" ? { canHoldPage: layerPageAt(r.data) + 16 <= r.data.length } : {}),
       };
     });
   }

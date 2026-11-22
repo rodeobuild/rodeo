@@ -912,6 +912,8 @@ c × (new − old), and the type-31 annotation layer child's scale follows when
 it matched. Unlisted design layers are hidden in the viewport; openvwx adds a
 layer or class override as a new 8-byte entry (flags 1) and bumps the count.
 
+A copy of a viewport (Duplicate, a copy by Move by Points, a paste) keeps its list, box, rotation and cached groups, and its on-sheet groups (`onna`, `porc`, `vlei`) move by the offset times the scale, as a move moves them. A paste into another drawing writes the layer and class names its list shows as that drawing's name indices, and is refused when the drawing lacks one; a viewport holding visualisations (the cSCV list) is not pasted into another drawing yet, since their GUIDs name that drawing's records.
+
 A new plan viewport (`createViewport`) copies a plan viewport of the drawing's,
 less the objects in its annotation and crop groups, and writes the box, an
 identity rotation, the shift (box centre × scale − the design point there), the

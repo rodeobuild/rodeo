@@ -30,6 +30,8 @@ import type { View } from "./view.ts";
 const WALL_TYPE = 68;
 const PLUGIN_TYPE = 86;
 const SYMBOL_TYPE = 15;
+/** a viewport: its size follows its scale and crop, and it is not mirrored */
+const VIEWPORT_TYPE = 122;
 
 /** Runs a session call; on failure shows a toast and returns null. */
 export function attempt<T>(label: string, fn: (s: EditSession) => T): { readonly value: T } | null {
@@ -454,13 +456,40 @@ export function unrotate3D(): void {
   if (r && r.value.length === 0) toast("None of the selected objects is a turned extrude, sweep, multiple extrude, solid or 3D symbol.", "info");
 }
 
-/** Applies `about(centre)` to the selection, where the centre is the middle of the selection's bounds. */
-function transformSelection(scene: Scene, label: string, about: (centre: Pt) => Affine): void {
-  const ids = [...store.selection];
+/**
+ * Applies `about(centre)` to the selection (or to `ids`), where the centre is the middle of the
+ * selection's bounds. True when the transform went through.
+ */
+function transformSelection(scene: Scene, label: string, about: (centre: Pt) => Affine, ids = [...store.selection]): boolean {
   const box = selectionBounds(scene);
-  if (ids.length === 0 || !box) return;
+  if (ids.length === 0 || !box) return false;
   const centre = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
-  attempt(label, (s) => s.transformObjects(ids, about(centre)));
+  return attempt(label, (s) => s.transformObjects(ids, about(centre))) !== null;
+}
+
+/** The ids in `ids` that are viewports, and the rest. */
+export function splitViewports(ids: readonly string[]): { rest: string[]; viewports: string[] } {
+  const rest: string[] = [];
+  const viewports: string[] = [];
+  for (const id of ids) {
+    if (store.session?.doc.object(id)?.type === VIEWPORT_TYPE) viewports.push(id);
+    else rest.push(id);
+  }
+  return { rest, viewports };
+}
+
+/**
+ * The info toast for viewports that a scale or a mirror left as they are. `others` says whether the
+ * rest of the selection was transformed too.
+ */
+export function viewportsLeft(kind: "scale" | "mirror", n: number, others: boolean): void {
+  if (kind === "scale") {
+    if (!others) toast("A viewport's size follows its scale and crop, so Scale Objects leaves it as it is. Change its scale in the Object Info palette.", "info");
+    else toast(n === 1 ? "Scaled the other objects. 1 viewport was left as it is: its size follows its scale and crop." : `Scaled the other objects. ${n} viewports were left as they are: their size follows their scale and crop.`, "info");
+    return;
+  }
+  if (!others) toast("Viewports are not mirrored: a viewport shows its drawing at its own scale, so it is left as it is.", "info");
+  else toast(n === 1 ? "Mirrored the other objects. 1 viewport was left as it is, since viewports are not mirrored." : `Mirrored the other objects. ${n} viewports were left as they are, since viewports are not mirrored.`, "info");
 }
 
 /** sin and cos of an angle, exact at multiples of 90 degrees so right-angle turns stay exact. */
@@ -501,26 +530,25 @@ export function rotateEachBy(scene: Scene, deg: number): void {
   );
 }
 
-/** Mirrors the selection about the vertical (or horizontal) line through the centre of its bounds. */
+/** Mirrors the selection about the vertical (or horizontal) line through the centre of its bounds. Viewports are left as they are. */
 export function flipSelection(scene: Scene, axis: "horizontal" | "vertical"): void {
-  transformSelection(scene, "Flip", (p) =>
-    axis === "horizontal"
-      ? { a: -1, b: 0, c: 0, d: 1, e: 2 * p.x, f: 0 }
-      : { a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * p.y },
-  );
+  const about = (p: Pt): Affine =>
+    axis === "horizontal" ? { a: -1, b: 0, c: 0, d: 1, e: 2 * p.x, f: 0 } : { a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * p.y };
+  const { rest, viewports } = splitViewports([...store.selection]);
+  if (!viewports.length) transformSelection(scene, "Flip", about);
+  else if (!rest.length) viewportsLeft("mirror", viewports.length, false);
+  else if (transformSelection(scene, "Flip", about, rest)) viewportsLeft("mirror", viewports.length, true);
 }
 
 /** Scales the selection by `factor` about the centre of its bounds. */
 export function scaleBy(scene: Scene, factor: number): void {
   if (!(factor > 0) || factor === 1) return;
-  transformSelection(scene, "Scale", (p) => ({
-    a: factor,
-    b: 0,
-    c: 0,
-    d: factor,
-    e: p.x * (1 - factor),
-    f: p.y * (1 - factor),
-  }));
+  const about = (p: Pt): Affine => ({ a: factor, b: 0, c: 0, d: factor, e: p.x * (1 - factor), f: p.y * (1 - factor) });
+  // a viewport's size follows its scale and crop: the others scale and it stays as it is
+  const { rest, viewports } = splitViewports([...store.selection]);
+  if (!viewports.length) transformSelection(scene, "Scale", about);
+  else if (!rest.length) viewportsLeft("scale", viewports.length, false);
+  else if (transformSelection(scene, "Scale", about, rest)) viewportsLeft("scale", viewports.length, true);
 }
 
 /** Which edge or centre of the selection's bounds the objects line up with. */

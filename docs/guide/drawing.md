@@ -75,7 +75,15 @@ In the **Freehand** tool (<kbd>U</kbd>), No Smoothing keeps the simplified corne
 
 ### Move by Points
 
-**Move by Points** (<kbd>⇧M</kbd>: from one point to another) moves the selection; Option or Copy mode moves a copy. In Copy Multiple mode (3) each further click places another copy of the originals, measured from the same first point, until Escape or Enter.
+**Move by Points** (<kbd>⇧M</kbd>: from one point to another) moves the selection. Choose the mode with 1–5 before the first click:
+
+- **Move** (1) moves the selection; Option moves a copy instead.
+- **Move and Duplicate** (2) moves a copy and keeps the originals. Its **Copies** field in the data bar makes that many, at 1×, 2× and so on the distance from the first point to the second.
+- **Copy Multiple** (3) places another copy of the originals with each further click, measured from the same first point, until Escape or Enter.
+- **Distribute** (4) spreads its **Copies** duplicates evenly between the two points, the last one on the second point. The originals stay.
+- **Reference Point** (5): the second click is a reference point, and the first point lands at it plus the offset in the data bar's **ΔX** and **ΔY** (0 at first).
+
+After the first click the data bar shows ΔX and ΔY, live as the pointer moves. Press Tab to type a value: a typed value holds while the pointer moves, and the rest follow it. Typing a number straight away starts the first field. Enter moves by the values in the bar. Shift keeps the distance to 45-degree steps. The data bar's Copies and offset values are kept while the tool stays selected.
 
 ### Offset
 

@@ -72,6 +72,16 @@ const UNIT_SETS: readonly UnitSet[] = [
 /** The length units Units offers, by name. */
 export const LENGTH_UNITS: readonly string[] = UNIT_SETS.map((u) => u.name);
 
+const FEET_INCH_UNITS: readonly string[] = ["Inches", "Feet", "Feet & Inches", "Yards", "Miles"];
+
+/**
+ * The page a sheet layer gets when it has none: ISO A3 landscape in a metric drawing, Tabloid
+ * (17 × 11 in) in one counted in inches, feet or yards. Sizes in mm.
+ */
+export function defaultSheetPage(units: string | undefined): { width: number; height: number } {
+  return units !== undefined && FEET_INCH_UNITS.includes(units) ? { width: 17 * 25.4, height: 11 * 25.4 } : { width: 420, height: 297 };
+}
+
 /** The area and volume unit names that go with a length unit (as Units writes them). */
 export function companionUnits(name: string): { area: string; volume: string } | null {
   const u = UNIT_SETS.find((s) => s.name === name);

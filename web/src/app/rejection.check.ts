@@ -1,6 +1,6 @@
 // Checks describeRejection under Node. Run from web/: npx tsx src/app/rejection.check.ts
 import assert from "node:assert/strict";
-import { describeRejection, isLostDeviceRejection } from "./rejection.ts";
+import { describeRejection, isLostDeviceRejection, isOutOfMemoryError } from "./rejection.ts";
 
 let failures = 0;
 function check(ok: boolean, what: string): void {
@@ -36,6 +36,14 @@ check(isLostDeviceRejection("Failed to execute 'mapAsync' on 'GPUBuffer': [Devic
 check(isLostDeviceRejection("Device is lost"), "a lost device, plain wording");
 check(!isLostDeviceRejection("Failed to execute 'mapAsync' on 'GPUBuffer': buffer is destroyed"), "another GPU buffer error is still reported");
 check(!isLostDeviceRejection("the device list is lost"), "unrelated text about a device is still reported");
+
+check(isOutOfMemoryError(new RangeError("Array buffer allocation failed")), "Chrome's allocation failure");
+check(isOutOfMemoryError(new RangeError("Invalid typed array length: 4294967296")), "a typed array too long");
+check(isOutOfMemoryError(new RangeError("Invalid array buffer length")), "an array buffer too long");
+check(isOutOfMemoryError(new RangeError("Out of memory: Failed to allocate")), "Safari's out of memory");
+check(!isOutOfMemoryError(new RangeError("Maximum call stack size exceeded")), "a stack overflow is not memory");
+check(!isOutOfMemoryError(new TypeError("Array buffer allocation failed")), "only a RangeError counts");
+check(!isOutOfMemoryError("Array buffer allocation failed"), "a string is not an error");
 
 assert.ok(failures === 0, `${failures} failed`);
 console.log(failures ? `${failures} FAILED` : "all ok");

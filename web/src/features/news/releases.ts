@@ -22,7 +22,28 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
-    "2026-11-20T12:03:00Z",
+    "2026-11-22T12:02:00Z",
+    "sheets-viewports",
+    "Page Setup on new sheets, and viewports that copy",
+    `Fixes from this week's reports.
+- Page Setup works on sheet layers made in Rodeo. A new sheet layer starts with a page: ISO A3 landscape in a metric drawing, Tabloid in an imperial one.
+- Viewports can be duplicated, copied and pasted, and copied with Move by Points and Duplicate Array. A viewport pasted into another drawing needs the layers and classes it shows to be there.
+- Scale Objects and Flip leave viewports as they are and change the rest of the selection: a viewport's size follows its scale and crop.
+- A phone or tablet that runs out of memory building a big drawing's 3D now says so, and 2D keeps working.`,
+    "sheet",
+  ),
+  release(
+    "2026-11-22T12:01:00Z",
+    "move-by-points-typed",
+    "Move by Points takes typed distances",
+    `Move by Points works the way it does in Vectorworks.
+- After the first click the data bar shows ΔX and ΔY. Type a number, or press Tab, to enter an exact distance, then press Enter.
+- Typing a number after the first click no longer switches the mode or the tool.
+- Five modes, on keys 1 to 5: Move, Move and Duplicate (with a number of copies), Copy Multiple, Distribute (copies spread evenly between the two points) and Reference Point (the clicked point lands on a reference point plus an offset).`,
+    "snap",
+  ),
+  release(
+    "2026-11-22T12:00:00Z",
     "vectorworks-2016-2017",
     "Vectorworks 2016 and 2017 drawings open",
     `Files in the Vectorworks 2016 and 2017 formats open, where Rodeo refused them and asked for a copy saved from 2018 or newer, or opened them empty.

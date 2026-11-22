@@ -5,7 +5,7 @@
 // keeps the selection and the tool.
 
 import type { Affine, Pt } from "../../core/index.ts";
-import { attempt, setSelection } from "../commands.ts";
+import { attempt, setSelection, splitViewports, viewportsLeft } from "../commands.ts";
 import { constrainAngle, dist } from "../geom.ts";
 import { store } from "../state.ts";
 import {
@@ -87,19 +87,26 @@ export class MirrorTool extends BaseTool {
     const u = { x: (end.x - this.first.x) / len, y: (end.y - this.first.y) / len };
     const m = mirrorAcross(this.first, u);
     const ids = [...store.selection];
+    // viewports are copied but not mirrored: they show their drawing at their own scale
+    const { rest, viewports } = splitViewports(ids);
     if ((this.mode === "copy") !== this.altHeld) {
       // one undo step: the copy and its mirroring
       const copies = attempt("Mirror copy", (s) =>
         s.batch(() => {
-          const made = s.duplicateObjects(ids, 0, 0);
-          s.transformObjects(made, m);
-          return made;
+          const made = rest.length ? s.duplicateObjects(rest, 0, 0) : [];
+          if (made.length) s.transformObjects(made, m);
+          return [...made, ...(viewports.length ? s.duplicateObjects(viewports, 0, 0) : [])];
         }),
       );
-      if (copies) setSelection(copies.value);
-    } else {
+      if (copies) {
+        setSelection(copies.value);
+        if (viewports.length) viewportsLeft("mirror", viewports.length, rest.length > 0);
+      }
+    } else if (!viewports.length) {
       attempt("Mirror", (s) => s.transformObjects(ids, m));
-    }
+    } else if (rest.length) {
+      if (attempt("Mirror", (s) => s.transformObjects(rest, m))) viewportsLeft("mirror", viewports.length, true);
+    } else viewportsLeft("mirror", viewports.length, false);
     this.reset();
   }
 

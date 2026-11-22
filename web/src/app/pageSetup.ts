@@ -3,7 +3,7 @@
 // gray outline under it. Sizes are typed in the document's units; a preset fills them in, turned
 // to the orientation chosen.
 
-import type { LayerInfo, PageSize } from "../core/index.ts";
+import { defaultSheetPage, type LayerInfo, type PageSize } from "../core/index.ts";
 import { attempt } from "./commands.ts";
 import { h } from "./dom.ts";
 import { showDialog } from "./menubar.ts";
@@ -35,8 +35,14 @@ const ALL_SHEETS = "all";
 /** sizes this close (mm) count as a preset's */
 const SAME_MM = 0.05;
 
+/** The sheet layers Page Setup can set: those whose record has room for a page. */
 function sheets(): LayerInfo[] {
-  return store.session?.doc.layers().filter((l) => l.kind === "sheet" && l.page) ?? [];
+  return store.session?.doc.layers().filter((l) => l.kind === "sheet" && l.canHoldPage) ?? [];
+}
+
+/** A sheet's page, or the default for the drawing's units when it has none yet. */
+function pageOrDefault(l: LayerInfo, units: string | undefined): PageSize {
+  return l.page ?? defaultSheetPage(units);
 }
 
 export function canSetUpPage(): boolean {
@@ -81,23 +87,31 @@ export async function pageSetup(): Promise<void> {
   const width = length("Width");
   const height = length("Height");
 
+  // the size last put in the boxes; a box still showing its text keeps the exact size, not the text
+  // rounded to the units' display (a feet and inches drawing shows 1/16 in)
+  let shown: PageSize | null = null;
+  const sideOf = (box: HTMLInputElement, exact: number | undefined): number | null => {
+    if (exact !== undefined && box.value === formatLength(exact, units)) return exact;
+    return parseLength(box.value, units);
+  };
   const read = (): PageSize | null => {
-    const w = parseLength(width.value, units);
-    const hh = parseLength(height.value, units);
+    const w = sideOf(width, shown?.width);
+    const hh = sideOf(height, shown?.height);
     return w !== null && hh !== null ? { width: w, height: hh } : null;
   };
   const show = (page: PageSize): void => {
+    shown = page;
     width.value = formatLength(page.width, units);
     height.value = formatLength(page.height, units);
     const preset = presetOf(page);
     size.value = preset === null ? CUSTOM : String(preset);
     orientation.value = page.height > page.width ? "portrait" : "landscape";
   };
-  show(start.page!);
+  show(pageOrDefault(start, units));
 
   target.addEventListener("change", () => {
     const l = list.find((x) => x.id === target.value);
-    if (l?.page) show(l.page);
+    if (l) show(pageOrDefault(l, units));
   });
   size.addEventListener("change", () => {
     const p = PRESETS[Number(size.value)];
@@ -135,9 +149,9 @@ export async function pageSetup(): Promise<void> {
       h("p", { cls: "muted", text: "The page is centred on the sheet's origin. Prints and PDF exports take it as the sheet of paper." }),
     ],
     check: () => {
-      const w = parseLength(width.value, units);
+      const w = sideOf(width, shown?.width);
       if (w === null || !(w > 0)) return { error: "Width: enter a length above 0.", focus: width };
-      const hh = parseLength(height.value, units);
+      const hh = sideOf(height, shown?.height);
       if (hh === null || !(hh > 0)) return { error: "Height: enter a length above 0.", focus: height };
       const ids = target.value === ALL_SHEETS ? list.map((l) => l.id) : [target.value];
       return { value: { ids, page: { width: w, height: hh } } };

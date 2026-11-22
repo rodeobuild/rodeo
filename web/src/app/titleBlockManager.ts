@@ -101,7 +101,7 @@ export async function titleBlockManager(): Promise<void> {
   if (!doc) return;
   const blocks = findTitleBlocks(doc);
   if (blocks.length === 0) {
-    toast("This drawing has no title block (a Title Block Border) to manage.", "info");
+    toast("This drawing has no Vectorworks title block to manage. A border drawn with Dims/Notes › Title Block Border is plain lines and text: edit its text on the sheet.", "info");
     return;
   }
   const project = editorsFor(doc, blocks, PROJECT_DATA);

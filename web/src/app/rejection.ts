@@ -40,3 +40,13 @@ export function describeRejection(reason: unknown): string {
 export function isLostDeviceRejection(message: string): boolean {
   return message.includes("[Device] is lost") || message.includes("Device is lost");
 }
+
+/**
+ * An allocation the browser refused for lack of memory: a typed array or buffer too big to make
+ * ("Array buffer allocation failed" in Chrome, "Invalid typed array length" and "Invalid array
+ * buffer length" in other engines), or Safari's "Out of memory". Not an editor bug.
+ */
+export function isOutOfMemoryError(err: unknown): boolean {
+  if (!(err instanceof RangeError)) return false;
+  return /array buffer allocation failed|invalid (?:typed )?array (?:buffer )?length|out of memory/i.test(err.message);
+}

@@ -18,6 +18,7 @@ PDF export is vector, one page per layer at its scale, or fitted to A4–A0, Let
 Print with **File › Print** (<kbd>⌘P</kbd>).
 
 **File › Page Setup…** sets a sheet layer's page: an ARCH, ISO or US size or a custom one, for one sheet or all. The page is drawn as an outline centred on the sheet's origin.
+A new sheet layer starts with a page too: ISO A3 landscape in a metric drawing, Tabloid (17 × 11 in) in feet and inches.
 
 ### Publish…
 

@@ -428,3 +428,30 @@ export function filletLines(l1: LineSeg, click1: Pt, l2: LineSeg, click2: Pt, ra
     line2,
   };
 }
+
+/**
+ * Move and Duplicate: the vector of each copy, 1× to n× the vector from the first point to the
+ * second. The originals stay where they are.
+ */
+export function duplicateOffsets(dx: number, dy: number, n: number): Pt[] {
+  return Array.from({ length: n }, (_, i) => ({ x: dx * (i + 1), y: dy * (i + 1) }));
+}
+
+/**
+ * Distribute: n copies spread evenly along the vector between the two points, the k-th at k/n of
+ * it, so the last lands on the second point (exactly, not to rounding).
+ */
+export function distributeOffsets(dx: number, dy: number, n: number): Pt[] {
+  return Array.from({ length: n }, (_, i) => {
+    const t = i + 1 === n ? 1 : (i + 1) / n;
+    return { x: dx * t, y: dy * t };
+  });
+}
+
+/**
+ * Reference Point: the vector that puts `from`, a point on the selection, at `reference` plus
+ * `offset`.
+ */
+export function referenceMove(from: Pt, reference: Pt, offset: Pt): Pt {
+  return { x: reference.x + offset.x - from.x, y: reference.y + offset.y - from.y };
+}
