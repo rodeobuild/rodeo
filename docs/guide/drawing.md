@@ -219,6 +219,8 @@ The **Attribute Mapping** tool lays the selected object's hatch, tile or gradien
 
 Shift keeps the first axis to 15° steps and the second square to it. The fill follows the drag and is one undo step; <kbd>Esc</kbd> abandons it. An object without a fill mapping gets one, copied from another in the file.
 
+In the 3D view the same tool moves, turns and scales a texture on the face clicked: see [Attribute Mapping in 3D](symbols-plugins.md#attribute-mapping-in-3d).
+
 ### New Hatch from Locally Mapped Hatch
 
 Right-click an object whose hatch has been laid with Attribute Mapping for **New Hatch from Locally Mapped Hatch**. It makes a new hatch, named in a dialog, with the laying in its lines. The object takes the new hatch (its mapping set back) and others can use it.

@@ -66,6 +66,23 @@ export const RELEASES: readonly Release[] = [
     "records",
   ),
   release(
+    "2026-11-23T00:00:00Z",
+    "texture-mapping",
+    "Texture mapping, and textures you can make and edit",
+    `Textures are laid the way each object says, and can be moved on a face by hand.
+- Objects set to their class's texture now show it. Rodeo had "class texture" and "none" the wrong way round, so many cabinets, walls and fittings were plain.
+- Object Info's Render tab names each part (Overall, an extrude's Top, Bottom and Sides, a wall's sides and components) and sets its Map Type: Auto-Align Plane, Plane, Surface UV, Perimeter, Cylinder or Sphere, with flip, repeat and radius.
+- An extrude's top, bottom or sides can take a texture of its own.
+- In the 3D view the Attribute Mapping tool picks a textured face: drag to slide the texture, and drag its handles to turn and scale it.
+- An image set to show once on a panel (a sign, an appliance front) shows once, where it was a small repeating tile.
+- A plant's trunk and leaves each show their own texture.
+- Resources makes a texture from a colour or an image, and edits one: its size, colour and each shader's settings.
+- Realistic, Path Traced, Render Image and the SketchUp and USD exports place textures the same way.
+- Path Traced no longer shows texture images upside down where the browser has WebGPU.
+- Where exactly a repeat starts can differ from Vectorworks, which doesn't publish how each map type is worked out. Decals, and picking one face of a solid, aren't done yet.`,
+    "paint",
+  ),
+  release(
     "2026-11-23T12:00:00Z",
     "vectorworks-2018-2019",
     "Vectorworks 2018 and 2019 drawings open",

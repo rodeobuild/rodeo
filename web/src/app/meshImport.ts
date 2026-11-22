@@ -528,6 +528,12 @@ const TEXTURE_PREVIEWS = [
   { width: 64, height: 64 },
 ];
 
+/** An image (PNG or JPEG bytes) as addImageTexture takes it, `mm` wide; null when the browser can't open it. */
+export async function imageTextureSpec(image: Uint8Array, mime: "image/png" | "image/jpeg", mm: number): Promise<ImageTextureSpec | null> {
+  const [spec] = await textureSpecs([{ name: "", image, mime, size: 1 }], mm);
+  return spec;
+}
+
 /** Each image as addImageTexture takes it, its width in millimetres, recoloured where it is colorized; null for one the browser can't open. */
 async function textureSpecs(textures: readonly MeshTexture[], mm: number): Promise<(ImageTextureSpec | null)[]> {
   return Promise.all(

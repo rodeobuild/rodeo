@@ -52,7 +52,7 @@
 // +0x5a, u32 end at +0x5c, then (u16 key, u32 offset) entries from +0x60,
 // offsets counted from +0x60; each value is u16 type (8 i32, 1 byte, 6 f64),
 // u32 count (one per texture part), then the values. In "ttwr", key 3 is the
-// texture's name index (-1 none, 0 the class's texture), key 5 the mapping
+// texture's name index (0 none, -1 the class's texture), key 5 the mapping
 // and keys 6/7 its offset, scale, rotation and matrix. "By class" takes the
 // texture whose name index is the i32 at +0x9e of the class record (0 none).
 // An object without its own texture takes the one of the object it belongs to.
@@ -69,6 +69,13 @@
 // prop is mapped 6, and a panel of it with no texture of its own shows its
 // image once across and up the panel, in that same frame (not one tile of the
 // texture's size, an inch for most props).
+// Each texture part (texmap.ts) has its own texture and mapping. An extrude's,
+// sweep's or multiple extrude's top, bottom and sides (parts 4, 5, 6) take their
+// own where the record holds them, and every part's coordinates come from mapUvs
+// (texcoords.ts) on the faces' own frame; a mesh's faces take the texture of the
+// part their UV map's key 3 names. Solids, walls and slabs use their whole
+// object's part. A texture with no image shows its plain colour, and a Plain
+// transparency its opacity (walkResources).
 //
 // Colours: untextured faces show their fill as Top/Plan paints it, with the
 // class's attributes where the object takes them by class: a solid or bitmap
@@ -109,7 +116,9 @@ import { axisOf, isLightingDevice, readDeviceLight } from "./lightingDevice.ts";
 import { guidOf, layerElevationOf, layerKindAt, objectChildren, type Model } from "./model.ts";
 import { type Box, facesArea, onXtFaces, queueXt, xtFaces } from "./parasolid.ts";
 import type { Rec } from "./records.ts";
-import type { Attributes, Light3D, LightChange, Mesh3D, ModelTree, ModelTreeGroup, ModelTreeNode, ModelTreePiece, ResourceInfo, SymbolPlacement, Vec3 } from "./types.ts";
+import { capOf, mapUvs } from "./texcoords.ts";
+import { OVERALL, readTextureParts, TEXTURE_BY_CLASS, TEXTURE_NONE, textureDict } from "./texmap.ts";
+import type { Attributes, Light3D, LightChange, Mesh3D, ModelTree, ModelTreeGroup, ModelTreeNode, ModelTreePiece, ResourceInfo, SymbolPlacement, TexturePart, Vec3 } from "./types.ts";
 
 const BODY = 114;
 /** a slab: a roof face, a fascia or a ceiling; a roof face's components are slabs too */
@@ -133,10 +142,6 @@ const TDMD_BASE = 0x60;
 const TD_I32 = 8;
 const TD_F64 = 6;
 const TEXTURE_KEY = 3;
-/** "ttwr" key 1: each texture part's id (3 for the whole object) */
-const PART_KEY = 1;
-/** the whole object's texture part, as Vectorworks numbers it */
-const OBJECT_PART = 3;
 /** "ttwr" keys: each part's mapping, its offset, scale and rotation (6 f64), its axes and origin (12 f64) */
 const MAPPING_KEY = 5;
 const PLACE_KEY = 6;
@@ -144,10 +149,10 @@ const AXES_KEY = 7;
 const PLANE_MAPPING = 0;
 const UV_MAPPING = 5;
 const FIT_MAPPING = 6;
-/** an image laid on each face from the object's own box, one image width across (boxedUvs) */
-const BOX_MAPPING = 7;
 /** "TeMe" key holding u, v per vertex */
 const UV_KEY = 2;
+/** "TeMe" key holding each face's front and back texture part ids (two i32 per face) */
+const FACE_PART_KEY = 3;
 /** Owners whose body is placed by their own matrix. */
 const MATRIX_OWNERS = new Set([24, 34, 38, 84]);
 const OWNER_MATRIX = 0xcc;
@@ -262,6 +267,12 @@ interface BodyGeometry {
   edges: Float64Array;
   /** u, v at each corner (6 per triangle), in fractions of the texture's image, when the object maps its texture itself */
   uvs?: Float64Array;
+  /** the texture these faces show, already resolved (a name index, or -1 for none); without it emit works it out from the object */
+  texture?: number;
+  /** the texture part these faces are textured as (TexturePart.part), when not the whole object's */
+  texturePart?: number;
+  /** the texture does not repeat across (u) or up (v): present only when one of them is true (see Mesh3D.textureClamp) */
+  textureClamp?: { readonly u: boolean; readonly v: boolean };
   /** the polygons the triangles were cut from, when asked for (a mesh's faces): corners, and with uvs (u, v) at each */
   faces?: { corners: number[]; uvs?: number[] }[];
 }
@@ -931,28 +942,43 @@ const MESH_VERT_SIZE = 28;
 const FACE_COUNT = 0xcc;
 const FACE_CORNERS = 0xce;
 
+/** A mesh face's texture and the part it is textured as (the whole object's part is TexturePart OVERALL). */
+interface FaceTexture {
+  texture: number;
+  part: number;
+}
+
 /**
  * A mesh's faces as triangles, one geometry per run of faces drawn alike (keyed by the first face of
  * each look); with `uvs` (u, v per vertex), each corner's texture coordinates too; with `keepFaces`,
- * the faces themselves as well.
+ * the faces themselves as well. `faceTextures` gives each face (by its position among all the mesh's
+ * faces) its texture part, which a face with a texture of its own overrides.
  */
-function meshGeometry(doc: Model, r: Rec, inherited: number, uvs: Float64Array | null, keepFaces = false): Map<Rec, BodyGeometry> {
+function meshGeometry(doc: Model, r: Rec, inherited: number, uvs: Float64Array | null, keepFaces = false, faceTextures?: readonly (FaceTexture | undefined)[], clamp?: { readonly u: boolean; readonly v: boolean }): Map<Rec, BodyGeometry> {
   const out = new Map<Rec, BodyGeometry>();
   const d = r.data;
   if (d.length < MESH_VERTS) return out;
   const n = u32(d, MESH_COUNT);
   if (MESH_VERTS + MESH_VERT_SIZE * n > d.length) return out;
   const mapped = uvs !== null && uvs.length === 2 * n;
-  const looks = new Map<string, { owner: Rec; tris: number[]; uvs: number[]; faces: { corners: number[]; uvs?: number[] }[] }>();
+  const looks = new Map<string, { owner: Rec; texture: number; part: number | undefined; tris: number[]; uvs: number[]; faces: { corners: number[]; uvs?: number[] }[] }>();
+  let faceNo = -1;
   for (const f of r.children) {
-    if (f.type !== MESH_FACE || f.data.length < FACE_CORNERS) continue;
+    if (f.type !== MESH_FACE) continue;
+    faceNo++;
+    if (f.data.length < FACE_CORNERS) continue;
     const k = u16(f.data, FACE_COUNT);
     if (k < 3 || FACE_CORNERS + 4 * k > f.data.length) continue;
     const a = readAttrs(f.data);
-    const key = `${a?.fillPattern ?? 0}/${a?.fillBack ?? 0}/${a?.fillOpacity ?? 100}/${textureOf(doc, f, inherited)}`;
+    // a face with a texture of its own shows it; one without takes its texture part's
+    const own = ownTexture(f);
+    const given = own === null || own === TEXTURE_NONE ? faceTextures?.[faceNo] : undefined;
+    const texture = given ? given.texture : textureOf(doc, f, inherited);
+    const part = given && given.part !== OVERALL ? given.part : undefined;
+    const key = `${a?.fillPattern ?? 0}/${a?.fillBack ?? 0}/${a?.fillOpacity ?? 100}/${texture}/${part ?? ""}`;
     let look = looks.get(key);
     if (!look) {
-      look = { owner: f, tris: [], uvs: [], faces: [] };
+      look = { owner: f, texture, part, tris: [], uvs: [], faces: [] };
       looks.set(key, look);
     }
     const corner = (i: number): number => {
@@ -984,9 +1010,17 @@ function meshGeometry(doc: Model, r: Rec, inherited: number, uvs: Float64Array |
       }
     }
   }
-  for (const { owner, tris, uvs: lookUvs, faces } of looks.values()) {
+  for (const { owner, texture, part, tris, uvs: lookUvs, faces } of looks.values()) {
     if (!tris.length) continue;
-    out.set(owner, { triangles: Float64Array.from(tris), edges: new Float64Array(0), ...(mapped ? { uvs: Float64Array.from(lookUvs) } : {}), ...(keepFaces ? { faces } : {}) });
+    out.set(owner, {
+      triangles: Float64Array.from(tris),
+      edges: new Float64Array(0),
+      ...(mapped ? { uvs: Float64Array.from(lookUvs) } : {}),
+      ...(mapped && clamp ? { textureClamp: clamp } : {}),
+      ...(keepFaces ? { faces } : {}),
+      ...(faceTextures ? { texture } : {}),
+      ...(part !== undefined ? { texturePart: part } : {}),
+    });
   }
   return out;
 }
@@ -1615,8 +1649,12 @@ function tdmdF64s(d: Uint8Array, key: number): number[] {
   return v?.type === TD_F64 ? Array.from({ length: v.count }, (_, i) => f64(d, v.at + 8 * i)) : [];
 }
 
-/** A mesh's UV map: the texture it maps by UV (its part with mapping 5) and u, v per vertex; null when it has none. */
-function meshUvMap(r: Rec): { texture: number; uvs: Float64Array } | null {
+/**
+ * A mesh's UV map: the texture it maps by UV (its part with mapping 5) and u, v per vertex; null when
+ * it has none. `faceParts` is each face's front texture part id from the map's key 3, in the mesh's
+ * face order, or null when the key doesn't hold two ids per face.
+ */
+function meshUvMap(r: Rec): { texture: number; uvs: Float64Array; faceParts: number[] | null; clamp?: { readonly u: boolean; readonly v: boolean } } | null {
   const ttwr = tdmdRec(r, "ttwr");
   const teme = tdmdRec(r, "eMeT");
   if (!ttwr || !teme) return null;
@@ -1626,7 +1664,13 @@ function meshUvMap(r: Rec): { texture: number; uvs: Float64Array } | null {
   if (part < 0 || !v || v.type !== TD_F64 || v.count % 2 !== 0) return null;
   const uvs = new Float64Array(v.count);
   for (let i = 0; i < v.count; i++) uvs[i] = f64(teme, v.at + 8 * i);
-  return { texture: textures[part], uvs };
+  const faces = r.children.filter((c) => c.type === MESH_FACE).length;
+  const ids = tdmdInts(teme, FACE_PART_KEY);
+  const faceParts = ids.length === 2 * faces && faces > 0 ? Array.from({ length: faces }, (_, i) => ids[2 * i]) : null;
+  // the UV map's own part gives the repeat flags for the mesh's uvs
+  const dict = textureDict(r);
+  const own = dict ? readTextureParts(dict.data, r.type).find((p) => p.mapping === UV_MAPPING && p.texture > 0) : undefined;
+  return { texture: textures[part], uvs, faceParts, clamp: own ? clampOf(own) : undefined };
 }
 
 /**
@@ -1742,27 +1786,236 @@ export function boxMappedUvs(tris: Float64Array, place: PartPlacement, imageSize
   return out;
 }
 
+/** The lower corner (least x, y and z) of a triangle soup, the origin the surface mappings measure from. */
+function lowerCornerOf(tris: Float64Array): [number, number, number] {
+  const lo: [number, number, number] = [Infinity, Infinity, Infinity];
+  for (let i = 0; i + 2 < tris.length; i += 3) {
+    lo[0] = Math.min(lo[0], tris[i]);
+    lo[1] = Math.min(lo[1], tris[i + 1]);
+    lo[2] = Math.min(lo[2], tris[i + 2]);
+  }
+  return lo;
+}
+
+/** The upper corner (greatest x, y and z) of a triangle soup: the far corner the surface mappings measure from. */
+function upperCornerOf(tris: Float64Array): [number, number, number] {
+  const hi: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < tris.length; i += 3) {
+    hi[0] = Math.max(hi[0], tris[i]);
+    hi[1] = Math.max(hi[1], tris[i + 1]);
+    hi[2] = Math.max(hi[2], tris[i + 2]);
+  }
+  return hi;
+}
+
 /**
- * Texture coordinates for an extrude's triangles (in its own frame) when its whole-object part is
- * box-mapped: the demos' extrudes with a logo (mapping 7) show the image one width across and its
- * aspect up from the lower-left corner of the object's own box (see boxMappedUvs). Null for every
- * other mapping, which other paths place, and when the image size isn't known.
+ * The texture coordinates a texture part gives its triangles (in the object's own frame, measured
+ * from `boxMin` and `boxMax`, the object's lower and upper corners), with the image of `texture`; null when the consumer's default applies: the texture
+ * has no image of known size, the mapping is the file's own UV map, the default or a shader, the
+ * part was never set (unless it is surface UV), or it is an auto-align plane placed in the world.
  */
-function boxedUvs(ctx: Ctx, r: Rec, tris: Float64Array): Float64Array | null {
-  const ttwr = tdmdRec(r, "ttwr");
-  if (!ttwr || tris.length < 9) return null;
-  const res = ctx.textures.get(textureOf(ctx.doc, r, -1));
+/**
+ * The clamp a part's repeat flags give its faces: Rodeo reads a part with repeat off as showing the
+ * image once, its edge pixels running on beyond it. Undefined when it repeats both ways.
+ */
+function clampOf(part: TexturePart): { readonly u: boolean; readonly v: boolean } | undefined {
+  return part.repeatH && part.repeatV ? undefined : { u: !part.repeatH, v: !part.repeatV };
+}
+
+/** `textureClamp` for a body whose uvs the part gave, as an object spread: nothing where it repeats both ways. */
+function clampFields(part: TexturePart | undefined): { textureClamp?: { readonly u: boolean; readonly v: boolean } } {
+  const clamp = part ? clampOf(part) : undefined;
+  return clamp ? { textureClamp: clamp } : {};
+}
+
+/** A record's whole-object texture part, or undefined when it has none. */
+function overallPart(r: Rec): TexturePart | undefined {
+  const dict = textureDict(r);
+  return dict ? readTextureParts(dict.data, r.type).find((p) => p.part === OVERALL) : undefined;
+}
+
+/** Extends the mapping box of the record being measured (Ctx.boxOf) with the corners of `tris`. */
+function noteBox(ctx: Ctx, c: Rec, tris: Float64Array): void {
+  const box = ctx.boxOf;
+  if (!box || box.rec !== c) return;
+  for (let i = 0; i + 2 < tris.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      box.min[k] = Math.min(box.min[k], tris[i + k]);
+      box.max[k] = Math.max(box.max[k], tris[i + k]);
+    }
+  }
+}
+
+function partUvs(ctx: Ctx, part: TexturePart, texture: number, tris: Float64Array, boxMin: readonly number[], boxMax: readonly number[], outline = false): Float64Array | null {
+  if (!tris.length) return null;
+  const res = ctx.textures.get(texture);
   if (!res?.imageSize || !res.imagePixels) return null;
-  const part = tdmdInts(ttwr, PART_KEY).indexOf(OBJECT_PART);
-  const mapping = tdmdInts(ttwr, MAPPING_KEY)[part];
-  // only the mapping seen placed this way; the others keep the world-projected box the 3D view gives
-  if (part < 0 || mapping !== BOX_MAPPING) return null;
-  const place = tdmdF64s(ttwr, PLACE_KEY).slice(6 * part, 6 * part + 5);
-  if (place.length < 5) return null;
-  const [offsetU, offsetV, scaleU, scaleV, rotation] = place;
-  const aspect = res.imagePixels.height / res.imagePixels.width;
-  if (!(res.imageSize * scaleU > 0) || !(res.imageSize * scaleV * aspect > 0)) return null;
-  return boxMappedUvs(tris, { offsetU, offsetV, scaleU, scaleV, rotation }, res.imageSize, aspect);
+  if (part.mapType === "imported" || part.mapType === "default" || part.mapType === "shader") return null;
+  if (!part.initialized && part.mapType !== "surfaceUV") return null;
+  if (part.mapType === "autoPlane" && part.worldOrigin) return null;
+  return mapUvs(tris, {
+    mapType: part.mapType,
+    offsetU: part.offsetU,
+    offsetV: part.offsetV,
+    scale: part.scale,
+    rotation: (part.rotation * Math.PI) / 180,
+    radius: part.radius,
+    flip: part.flip,
+    longestEdge: part.longestEdge,
+    worldZ: part.worldZ,
+    axes: part.axes,
+    origin: part.origin,
+    imageSize: res.imageSize,
+    aspect: res.imagePixels.height / res.imagePixels.width,
+    boxMin: [boxMin[0], boxMin[1], boxMin[2]],
+    boxMax: [boxMax[0], boxMax[1], boxMax[2]],
+    outline,
+  });
+}
+
+/**
+ * The texture a part other than the whole object's shows: its own when it has one; the owner's
+ * class's when it is "by class" and the class has one; else the whole object's (`overall`).
+ */
+function resolvePart(ctx: Ctx, owner: Rec, part: TexturePart, overall: number): number {
+  if (part.texture > TEXTURE_NONE) return part.texture;
+  if (part.texture === TEXTURE_BY_CLASS) {
+    const t = classTextureOf(ctx.doc, owner);
+    if (t > 0) return t;
+  }
+  return overall;
+}
+
+/**
+ * Each of a mesh's faces' texture and part, from its UV map's front part id per face (`ids`, in the
+ * mesh's face order); undefined when the mesh's texture record doesn't hold one of those parts, so
+ * the whole mesh keeps its UV map's texture.
+ */
+function meshFaceTextures(ctx: Ctx, c: Rec, ids: readonly number[], overall: number): (FaceTexture | undefined)[] | undefined {
+  const dict = textureDict(c);
+  if (!dict) return undefined;
+  const byId = new Map(readTextureParts(dict.data, MESH).map((p) => [p.part, p] as const));
+  if (!ids.every((id) => byId.has(id))) return undefined;
+  const made = new Map<number, FaceTexture>();
+  return ids.map((id) => {
+    let f = made.get(id);
+    if (!f) {
+      f = { texture: resolvePart(ctx, c, byId.get(id)!, overall), part: id };
+      made.set(id, f);
+    }
+    return f;
+  });
+}
+
+/**
+ * The texture part (4 top, 5 bottom, 6 sides) a triangle of an object whose z runs from `zlo` to `zhi`
+ * is textured as. A level triangle at the top or the bottom of the object is that cap, whichever way
+ * its corners run: an extrude's bottom cap is emitted facing up (its corners run as the top's do).
+ * A level face at another height takes capOf's sign.
+ */
+function partOfCap(tris: Float64Array, t: number, zlo: number, zhi: number): number {
+  const cap = capOf(tris, t);
+  if (cap === 0) return 6;
+  const eps = 1e-6 * Math.max(1, zhi - zlo);
+  const z = [tris[9 * t + 2], tris[9 * t + 5], tris[9 * t + 8]];
+  if (z.every((v) => Math.abs(v - zhi) <= eps)) return 4;
+  if (z.every((v) => Math.abs(v - zlo) <= eps)) return 5;
+  return cap === 1 ? 4 : 5;
+}
+
+/**
+ * An extrude's, multiple extrude's or sweep's faces, split by the texture parts its record holds:
+ * its top, bottom and sides (parts 4, 5 and 6) where it holds them, and the rest with the whole
+ * object's part. Each split piece carries its texture (the override parts only, the whole object's
+ * being left to emit), its part id and its own texture coordinates; the edges go with the first
+ * piece. Returns the geometry alone when the record holds no whole-object part.
+ */
+function texturedPieces(ctx: Ctx, c: Rec, g: BodyGeometry): BodyGeometry[] {
+  noteBox(ctx, c, g.triangles);
+  const dict = textureDict(c);
+  const parts = dict ? readTextureParts(dict.data, c.type) : [];
+  const overall = parts.find((p) => p.part === OVERALL);
+  if (!overall) return [g];
+  const look = ctx.look ?? c;
+  const overallTexture = textureOf(ctx.doc, look, ctx.texture);
+  const lo = lowerCornerOf(g.triangles);
+  const hi = upperCornerOf(g.triangles);
+  const held = new Map(parts.filter((p) => p.part === 4 || p.part === 5 || p.part === 6).map((p) => [p.part, p]));
+  if (!held.size) {
+    const fromPart = g.uvs ? null : partUvs(ctx, overall, overallTexture, g.triangles, lo, hi, c.type === EXTRUDE || c.type === MULTI_EXTRUDE);
+    const uvs = g.uvs ?? fromPart;
+    return [uvs ? { ...g, uvs, ...(fromPart ? clampFields(overall) : {}) } : g];
+  }
+  // a face is a top, a bottom or a side, and takes its part when the record holds it
+  const n = g.triangles.length / 9;
+  let zlo = Infinity;
+  let zhi = -Infinity;
+  for (let i = 2; i < g.triangles.length; i += 3) {
+    zlo = Math.min(zlo, g.triangles[i]);
+    zhi = Math.max(zhi, g.triangles[i]);
+  }
+  const groups = new Map<number, number[]>();
+  for (let t = 0; t < n; t++) {
+    const want = partOfCap(g.triangles, t, zlo, zhi);
+    const id = held.has(want) ? want : OVERALL;
+    let list = groups.get(id);
+    if (!list) groups.set(id, (list = []));
+    list.push(t);
+  }
+  const pieces: BodyGeometry[] = [];
+  for (const id of [OVERALL, 4, 5, 6]) {
+    const list = groups.get(id);
+    if (!list) continue;
+    const triangles = new Float64Array(list.length * 9);
+    const uvsIn = g.uvs && g.uvs.length === n * 6 ? new Float64Array(list.length * 6) : null;
+    list.forEach((t, k) => {
+      triangles.set(g.triangles.subarray(9 * t, 9 * t + 9), 9 * k);
+      uvsIn?.set(g.uvs!.subarray(6 * t, 6 * t + 6), 6 * k);
+    });
+    const part = id === OVERALL ? overall : held.get(id);
+    if (!part) continue;
+    const texture = id === OVERALL ? undefined : resolvePart(ctx, look, part, overallTexture);
+    const uvs = uvsIn ?? partUvs(ctx, part, texture ?? overallTexture, triangles, lo, hi, c.type === EXTRUDE || c.type === MULTI_EXTRUDE);
+    pieces.push({
+      triangles,
+      edges: new Float64Array(0),
+      ...(texture !== undefined ? { texture, texturePart: id } : {}),
+      ...(uvs ? { uvs } : {}),
+      ...(uvs && !uvsIn ? clampFields(part) : {}),
+    });
+  }
+  if (pieces.length) pieces[0].edges = g.edges;
+  return pieces;
+}
+
+/**
+ * A body of another object (a solid, a wall or slab, a plug-in's): its whole object's texture part
+ * from the record it is drawn with, with that part's texture coordinates; the body unchanged where
+ * the part gives none.
+ */
+function overallUvs(ctx: Ctx, c: Rec, g: BodyGeometry): BodyGeometry {
+  noteBox(ctx, c, g.triangles);
+  const look = ctx.look ?? c;
+  const dict = textureDict(look);
+  if (!dict) return g;
+  const overall = readTextureParts(dict.data, look.type).find((p) => p.part === OVERALL);
+  if (!overall) return g;
+  const uvs = partUvs(ctx, overall, textureOf(ctx.doc, look, ctx.texture), g.triangles, lowerCornerOf(g.triangles), upperCornerOf(g.triangles));
+  return uvs ? { ...g, uvs, ...clampFields(overall) } : g;
+}
+
+/**
+ * A 3D polygon's texture coordinates from its own texture record's whole-object part, when that part
+ * is not mapped by plane (planeUvs and fitUvs place those); null otherwise.
+ */
+function polyPartUvs(ctx: Ctx, c: Rec, tris: Float64Array): Float64Array | null {
+  noteBox(ctx, c, tris);
+  const look = ctx.look ?? c;
+  const dict = textureDict(look);
+  if (!dict) return null;
+  const overall = readTextureParts(dict.data, look.type).find((p) => p.part === OVERALL);
+  if (!overall || overall.mapType === "plane") return null;
+  return partUvs(ctx, overall, textureOf(ctx.doc, look, ctx.texture), tris, lowerCornerOf(tris), upperCornerOf(tris));
 }
 
 /** A 3D polygon's own frame: its first vertex, x along its first edge, y against its normal, z up its face; null when it has none. */
@@ -1788,19 +2041,24 @@ function polyFrame(r: Rec): { o: Vec3; x: Vec3; y: Vec3; z: Vec3 } | null {
   return { o, x: e, y: [-nn[0], -nn[1], -nn[2]], z: cross(nn, e) };
 }
 
-/** The object's own texture: a name index, 0 for "by class", -1 for none, null when it has no texture record. */
+/** The object's own texture: a name index, TEXTURE_BY_CLASS for the class's, TEXTURE_NONE for none; null when it has no texture record. */
 function ownTexture(r: Rec): number | null {
   return tdmdInt(r, "ttwr", TEXTURE_KEY);
 }
 
 
+/** The texture of the class an object is in (0 when it has none). */
+function classTextureOf(doc: Model, r: Rec): number {
+  const cls = doc.classRecs.get(r.classIndex);
+  return cls && cls.data.length >= CLASS_TEXTURE + 4 ? i32(cls.data, CLASS_TEXTURE) : 0;
+}
+
 /** The texture an object shows: its own, its class's when set "by class", else `inherited`. */
 function textureOf(doc: Model, r: Rec, inherited: number): number {
   const own = ownTexture(r);
-  if (own !== null && own > 0) return own;
-  if (own === 0) {
-    const cls = doc.classRecs.get(r.classIndex);
-    const t = cls && cls.data.length >= CLASS_TEXTURE + 4 ? i32(cls.data, CLASS_TEXTURE) : 0;
+  if (own !== null && own > TEXTURE_NONE) return own;
+  if (own === TEXTURE_BY_CLASS) {
+    const t = classTextureOf(doc, r);
     if (t > 0) return t;
   }
   return inherited;
@@ -1824,12 +2082,20 @@ export function componentTexture(doc: Model, slab: Rec, body: Rec, textures: Rea
 
 // ---- walking the drawing -------------------------------------------------------------
 
+/** What a texture without an image shows: its plain colour, and its opacity (1 = opaque). */
+interface Shade {
+  color?: string;
+  opacity?: number;
+}
+
 interface Ctx {
   doc: Model;
   /** hatch, tile and gradient resources by name index, for the colour of resource fills */
   fills: ReadonlyMap<number, ResourceInfo>;
   /** textures with an image, by name index, for the objects that map them themselves */
   textures: ReadonlyMap<number, ResourceInfo>;
+  /** the plain colour and transparency of textures, by name index (see walkResources) */
+  shades: ReadonlyMap<number, Shade>;
   layerId: string;
   out: Mesh3D[];
   depth: number;
@@ -1856,6 +2122,11 @@ interface Ctx {
    * its operands are drawn in, as its body would be
    */
   look?: Rec;
+  /**
+   * set by mappingBox: the lower and upper corners of the triangles the mapping functions are handed
+   * for `rec`, in the frame they are measured in (before the object's own matrix)
+   */
+  boxOf?: { rec: Rec; min: number[]; max: number[] };
 }
 
 /** Where buildModelTree collects what the walk finds (see ModelTree). */
@@ -1932,7 +2203,7 @@ function forRepeat(ctx: Ctx, g: BodyGeometry, owner: Rec): BodyGeometry {
   const n = g.triangles.length / 9;
   if (ctx.raw || ctx.repeat <= 1 || n <= REPEAT_FLOOR || n * ctx.repeat <= REPEAT_BUDGET) return g;
   const keep = Math.max(REPEAT_FLOOR, Math.floor(REPEAT_BUDGET / ctx.repeat));
-  const key = `${n} ${g.triangles[0]} ${g.triangles[1]} ${g.triangles[2]} ${keep}`;
+  const key = `${n} ${g.triangles[0]} ${g.triangles[1]} ${g.triangles[2]} ${keep} ${g.texture ?? ""} ${g.texturePart ?? ""}`;
   let cache = simplerCache.get(owner.data);
   const hit = cache?.get(key);
   if (hit) return hit;
@@ -1949,7 +2220,15 @@ function forRepeat(ctx: Ctx, g: BodyGeometry, owner: Rec): BodyGeometry {
   );
   const triangles = new Float64Array(s.triangles.length * 3);
   s.triangles.forEach((v, i) => triangles.set(s.points.slice(3 * v, 3 * v + 3), 3 * i));
-  const simpler: BodyGeometry = { triangles, edges: creases(s.points, s.triangles) };
+  // a part of a split object has its edges only where the first piece does: those are not redrawn per piece
+  const edges = g.texturePart !== undefined && !g.edges.length ? new Float64Array(0) : creases(s.points, s.triangles);
+  const simpler: BodyGeometry = {
+    triangles,
+    edges,
+    ...(g.texture !== undefined ? { texture: g.texture } : {}),
+    ...(g.texturePart !== undefined ? { texturePart: g.texturePart } : {}),
+    ...(g.textureClamp ? { textureClamp: g.textureClamp } : {}),
+  };
   if (uvs) simpler.uvs = Float64Array.from(s.triangles.flatMap((v) => [s.carried[2 * v], s.carried[2 * v + 1]]));
   if (!cache) simplerCache.set(owner.data, (cache = new Map()));
   cache.set(key, simpler);
@@ -2004,7 +2283,8 @@ function emit(ctx: Ctx, given: BodyGeometry, m: Xf, owner: Rec, topId: string): 
   }
   const look = ctx.look ?? owner;
   const a = ctx.doc.attrsOf(look);
-  const texture = textureOf(ctx.doc, look, ctx.texture);
+  const texture = g.texture ?? textureOf(ctx.doc, look, ctx.texture);
+  const shade = ctx.shades.get(texture);
   // a texture cut out by a mask (a plant's leaves, an image prop) shows no outline
   const cutout = ctx.textures.get(texture)?.mask !== undefined;
   const triangles = new Float32Array(g.triangles.length);
@@ -2020,25 +2300,36 @@ function emit(ctx: Ctx, given: BodyGeometry, m: Xf, owner: Rec, topId: string): 
     classIndex: look.classIndex,
     triangles,
     edges,
-    color: fillColour(ctx, a),
-    opacity: a ? Math.max(0, Math.min(1, a.fillOpacity / 100)) : 1,
+    color: shade?.color ?? fillColour(ctx, a),
+    opacity: opacityOf(a, shade),
     texture,
+    ...(g.texturePart !== undefined ? { texturePart: g.texturePart } : {}),
     ...(ctx.part ? { partId: ctx.part } : {}),
     ...(ctx.instance ? { instance: ctx.instance } : {}),
     ...(uvs ? { uvs } : {}),
+    ...(g.textureClamp ? { textureClamp: g.textureClamp } : {}),
     ...(ctx.recessed ? { recessed: true } : {}),
   });
+}
+
+/** A face's opacity: its fill's, lowered to its texture's where the texture is more transparent. */
+function opacityOf(a: Attributes | null, shade: Shade | undefined): number {
+  const fill = a ? Math.max(0, Math.min(1, a.fillOpacity / 100)) : 1;
+  return shade?.opacity !== undefined ? Math.min(fill, shade.opacity) : fill;
 }
 
 /** What emit gives buildModelTree: the faces placed by m at full precision, an open 3D polygon's points or a locus's place; null for edges alone. */
 function treePiece(ctx: Ctx, g: BodyGeometry, m: Xf, owner: Rec, mirrored: boolean): ModelTreePiece | null {
   const look = ctx.look ?? owner;
   const a = ctx.doc.attrsOf(look);
+  const texture = g.texture ?? textureOf(ctx.doc, look, ctx.texture);
+  const shade = ctx.shades.get(texture);
   const piece: ModelTreePiece = {
     classIndex: look.classIndex,
-    color: fillColour(ctx, a),
-    opacity: a ? Math.max(0, Math.min(1, a.fillOpacity / 100)) : 1,
-    texture: textureOf(ctx.doc, look, ctx.texture),
+    color: shade?.color ?? fillColour(ctx, a),
+    opacity: opacityOf(a, shade),
+    texture,
+    ...(g.texturePart !== undefined ? { texturePart: g.texturePart } : {}),
     triangles: new Float64Array(g.triangles.length),
   };
   const placed = (src: ArrayLike<number>): number[] => {
@@ -2064,6 +2355,7 @@ function treePiece(ctx: Ctx, g: BodyGeometry, m: Xf, owner: Rec, mirrored: boole
     piece.uvs = Float64Array.from(g.uvs);
     if (mirrored) rewind(piece.uvs, 2);
   }
+  if (g.textureClamp) piece.textureClamp = g.textureClamp;
   if (g.faces) {
     // a mirroring placement runs each face's corners the other way, so it still looks out
     const back = (v: readonly number[], n: number): number[] => {
@@ -2168,7 +2460,7 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
     const lathe = c.type === SWEEP ? sweepGeometry(c) : null;
     if (lathe) {
       const own = readXf(c.data, OWNER_MATRIX, OWNER_OFFSET);
-      emit(ctx, lathe, own ? compose(at, own) : at, c, top);
+      for (const piece of texturedPieces(ctx, c, lathe)) emit(ctx, piece, own ? compose(at, own) : at, c, top);
       continue;
     }
     const bodies = c.children.filter((k) => k.type === BODY);
@@ -2181,12 +2473,12 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
       for (const b of bodies) {
         const g = bodyGeometry(b, c.type === SWEEP ? null : ctx.doc);
         if (!g) continue;
-        const uvs = c.type === EXTRUDE ? boxedUvs(ctx, c, g.triangles) : null;
         // a roof face's body shows the texture of its component slab with the same index, unless the face has its own
         const outer = ctx.texture;
         const layer = c.type === SLAB ? componentTexture(ctx.doc, c, b, ctx.textures) : -1;
         if (layer > 0) ctx.texture = layer;
-        emit(ctx, uvs ? { ...g, uvs } : g, mm, c, top);
+        const pieces = c.type === EXTRUDE || c.type === MULTI_EXTRUDE ? texturedPieces(ctx, c, g) : [overallUvs(ctx, c, g)];
+        for (const piece of pieces) emit(ctx, piece, mm, c, top);
         ctx.texture = outer;
       }
       // a body is the owner's whole result; only groups also hold further objects
@@ -2214,8 +2506,7 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
     if (c.type === EXTRUDE || c.type === MULTI_EXTRUDE) {
       const g = c.type === EXTRUDE ? extrudeGeometry(c) : multiExtrudeGeometry(c);
       const own = readXf(c.data, OWNER_MATRIX, OWNER_OFFSET);
-      const uvs = g && c.type === EXTRUDE ? boxedUvs(ctx, c, g.triangles) : null;
-      if (g) emit(ctx, uvs ? { ...g, uvs } : g, own ? compose(m, own) : m, c, top);
+      if (g) for (const piece of texturedPieces(ctx, c, g)) emit(ctx, piece, own ? compose(m, own) : m, c, top);
       continue;
     }
     if (c.type === LOCUS3D) {
@@ -2225,15 +2516,23 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
     }
     if (c.type === POLY3D) {
       const g = poly3dGeometry(c);
-      const uvs = g ? planeUvs(ctx, c, g.triangles) ?? (fitsParent(ctx.doc, parent, c) ? fitUvs(c, g.triangles) : null) : null;
-      if (g) emit(ctx, uvs ? { ...g, uvs } : g, m, c, top);
+      // a plane mapping leaves polyPartUvs uncalled, so the box is taken here too
+      if (g) noteBox(ctx, c, g.triangles);
+      // a plane mapping and a part's own uvs follow the record's repeat flags; a fitted one spreads the image once
+      const plane = g ? planeUvs(ctx, c, g.triangles) : null;
+      const fitted = g && !plane && fitsParent(ctx.doc, parent, c) ? fitUvs(c, g.triangles) : null;
+      const part = g && !plane && !fitted ? polyPartUvs(ctx, c, g.triangles) : null;
+      const uvs = plane ?? fitted ?? part;
+      const clamp = plane ? clampFields(overallPart(c)) : part ? clampFields(overallPart(ctx.look ?? c)) : {};
+      if (g) emit(ctx, uvs ? { ...g, uvs, ...clamp } : g, m, c, top);
       continue;
     }
     if (c.type === MESH) {
       const outer = ctx.texture;
       const map = meshUvMap(c);
       ctx.texture = map ? map.texture : textureOf(ctx.doc, c, outer);
-      for (const [face, g] of meshGeometry(ctx.doc, c, ctx.texture, map?.uvs ?? null, !!ctx.tree)) emit(ctx, g, m, face, top);
+      const faceTextures = map?.faceParts ? meshFaceTextures(ctx, c, map.faceParts, textureOf(ctx.doc, c, outer)) : undefined;
+      for (const [face, g] of meshGeometry(ctx.doc, c, ctx.texture, map?.uvs ?? null, !!ctx.tree, faceTextures, map?.clamp)) emit(ctx, g, m, face, top);
       ctx.texture = outer;
       continue;
     }
@@ -2280,13 +2579,26 @@ function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void 
 }
 
 /**
+ * The box of an object's faces in the frame its texture mapping is measured in: the frame of the
+ * triangles the mapping functions are handed for it (before its own matrix); null when it shows no
+ * faces. Its mapping's default origin and radius are set from it.
+ */
+export function mappingBox(doc: Model, r: Rec): { min: [number, number, number]; max: [number, number, number] } | null {
+  const boxOf = { rec: r, min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  const ctx: Ctx = { doc, fills: new Map(), textures: new Map(), shades: new Map(), layerId: "", out: [], depth: 0, texture: -1, recessed: false, raw: [], repeat: 1, boxOf };
+  walkChildren(ctx, { type: -1, children: [r] } as unknown as Rec, IDENTITY, "");
+  if (!boxOf.min.every(Number.isFinite) || !boxOf.max.every(Number.isFinite)) return null;
+  return { min: [boxOf.min[0], boxOf.min[1], boxOf.min[2]], max: [boxOf.max[0], boxOf.max[1], boxOf.max[2]] };
+}
+
+/**
  * The faces one object shows in 3D as triangles (9 numbers each), in the frame of the layer or
  * group holding it, with the record each run of them takes its attributes
  * from: a body's owner, a mesh face, the object itself.
  */
 export function objectTriangles(doc: Model, r: Rec): { owner: Rec; triangles: Float64Array }[] {
   const raw: { owner: Rec; triangles: Float64Array }[] = [];
-  const ctx: Ctx = { doc, fills: new Map(), textures: new Map(), layerId: "", out: [], depth: 0, texture: -1, recessed: false, raw, repeat: 1 };
+  const ctx: Ctx = { doc, fills: new Map(), textures: new Map(), shades: new Map(), layerId: "", out: [], depth: 0, texture: -1, recessed: false, raw, repeat: 1 };
   // as the one child of a holder, so the object's own type is dispatched on
   walkChildren(ctx, { type: -1, children: [r] } as unknown as Rec, IDENTITY, "");
   return raw;
@@ -2484,16 +2796,28 @@ function deviceLights(doc: Model, device: Rec, parent: Xf, frame: Xf, lights: re
   });
 }
 
-/** The resources the walk colours and maps by: hatch, tile and gradient fills, and textures with an image. */
-function walkResources(doc: Model): Pick<Ctx, "fills" | "textures"> {
+/**
+ * The resources the walk colours and maps by: hatch, tile and gradient fills, textures with an image,
+ * and each texture's plain colour (when it has no image) and transparency: a Plain transparency's
+ * opacity is its percent over 100.
+ */
+function walkResources(doc: Model): Pick<Ctx, "fills" | "textures" | "shades"> {
   const fills = new Map<number, ResourceInfo>();
   const textures = new Map<number, ResourceInfo>();
+  const shades = new Map<number, Shade>();
   for (const r of doc.resources()) {
     if (r.hatch || r.tile || r.gradient) fills.set(r.index, r);
-    if (r.kind === "texture" && r.image) textures.set(r.index, r);
+    if (r.kind !== "texture") continue;
+    if (r.image) textures.set(r.index, r);
+    const s = r.shaders;
+    const color = s?.color?.kind === "Plain" && !r.image && s.color.rgb ? s.color.rgb : undefined;
+    const t = s?.transparency;
+    const opacity = t?.kind === "Plain" && typeof t.percent === "number" ? t.percent / 100 : undefined;
+    if (color !== undefined || opacity !== undefined) shades.set(r.index, { color, opacity });
   }
-  return { fills, textures };
+  return { fills, textures, shades };
 }
+
 
 export function buildModel3d(doc: Model): Mesh3D[] {
   const out: Mesh3D[] = [];

@@ -131,6 +131,9 @@ const byTexture = usdScene(doc, meshes, { organization: "texture", combine: fals
 check(byTexture.text.includes('def Xform "Blue_Tile"') && !byTexture.text.includes("vw:record"), "by texture: an Xform per material, no records unless asked");
 const combined = usdScene(doc, meshes, { organization: "texture", combine: true, records: false, textures: true });
 check((combined.text.match(/def Mesh /g) ?? []).length === 3 && !combined.text.includes("vw:uuid"), "combined: one mesh per material, the objects' data left out");
+// a mesh its texture does not repeat across: the material clamps s and repeats t
+const clamped = usdScene(doc, [{ ...meshes[2], textureClamp: { u: true, v: false } }], { organization: "layer", combine: false, records: false, textures: true });
+check(clamped.text.includes('token inputs:wrapS = "clamp"') && clamped.text.includes('token inputs:wrapT = "repeat"') && !byLayer.text.includes("clamp"), "a clamped mesh's texture wraps clamp across and repeats up; unclamped meshes repeat both ways");
 const plain = usdScene(doc, meshes, { organization: "layer", combine: false, records: false, textures: false });
 check(plain.files.length === 0 && !plain.text.includes("UsdUVTexture") && !plain.text.includes("primvars:st"), "without textures, colours only");
 

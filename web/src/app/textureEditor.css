@@ -1,0 +1,176 @@
+/* Resources > New Texture and Edit Texture: one solid dialog that scrolls inside itself, with a
+   section per shader. Colours come from the tokens in styles.css, so both themes follow. */
+
+.menu-dialog.tx-dialog {
+  width: min(480px, 100%);
+  max-height: min(760px, calc(100vh - 32px));
+}
+
+.tx-dialog .menu-dialog-field {
+  min-width: 0;
+}
+
+.tx-dialog .menu-dialog-label {
+  overflow-wrap: anywhere;
+}
+
+.tx-dialog .menu-dialog-input {
+  width: 120px;
+  flex: 0 0 auto;
+}
+
+.tx-dialog .menu-dialog-input.re-name {
+  width: 220px;
+}
+
+.tx-field input[type="checkbox"] {
+  margin: 0 0 0 auto;
+}
+
+.tx-kind-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.tx-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.tx-colour {
+  width: 44px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--fill);
+  cursor: default;
+}
+
+.tx-image {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tx-image-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tx-file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tx-thumb {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.tx-unit {
+  flex: 0 0 auto;
+  min-width: 24px;
+}
+
+.tx-note,
+.tx-uses {
+  margin: 2px 0 8px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.tx-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--border);
+}
+
+.tx-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tx-title {
+  flex: 0 0 auto;
+}
+
+.tx-kind {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-2);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.tx-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.tx-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.tx-body[hidden],
+.tx-none[hidden] {
+  display: none;
+}
+
+.tx-none {
+  display: flex;
+  flex-direction: column;
+}
+
+.tx-preview-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.tx-preview,
+.tx-preview-canvas {
+  display: block;
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  object-fit: contain;
+}
+
+.tx-preview {
+  position: relative;
+  background: #ffffff;
+}
+
+.tx-preview-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tx-preview-img[hidden] {
+  display: none;
+}

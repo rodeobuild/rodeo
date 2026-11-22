@@ -6,7 +6,7 @@
 // Shift keeps the first axis to 15° steps and the second square to the first. A gradient's ramp
 // runs from the origin to the first end (a radial one's radius), so it has no second axis. The
 // fill follows the drag and commits when it ends; Esc abandons it. Clicking off the handles
-// selects the object there.
+// selects the object there. In the 3D view the tool works on textures instead (attrmap3d.ts).
 
 import type { BBox, FillMapping, ObjectInfo, Pt, TileFill } from "../../core/index.ts";
 import { attempt, setActiveLayer, setSelection } from "../commands.ts";
@@ -15,7 +15,8 @@ import { ACCENT, HANDLE_PX } from "../renderer.ts";
 import { isDerivedId } from "../scene.ts";
 import { fillsShape } from "../shapes.ts";
 import { store } from "../state.ts";
-import { BaseTool, withPreview, type FillPreview, type Painter, type PointerInfo } from "../tools.ts";
+import { BaseTool, withPreview, type FillPreview, type Painter, type PointerInfo, type ToolEnv } from "../tools.ts";
+import { installAttrmap3d } from "./attrmap3d.ts";
 
 type Fill = "hatch" | "tile" | "gradient";
 type Handle = "origin" | "u" | "v";
@@ -100,6 +101,11 @@ export class AttributeMappingTool extends BaseTool {
   readonly cursor = "crosshair";
 
   private drag: Drag | null = null;
+
+  constructor(env: ToolEnv) {
+    super(env);
+    installAttrmap3d();
+  }
 
   hint(): string {
     const t = this.target();

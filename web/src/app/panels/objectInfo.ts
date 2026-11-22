@@ -7,7 +7,7 @@
 // numbers), several objects (shared class and layer, move by X and Y offsets). Its Data
 // tab lists the records attached to the object, and its Render tab the
 // object's texture parts: the texture on each (none, the class's or one of the
-// drawing's) and its offset, scale and rotation. Attributes shows the
+// drawing's), how it is mapped and its offset, scale and rotation. Attributes shows the
 // selection's pen and fill, its line markers and drop shadow, or, with nothing
 // selected, the attributes new objects are drawn with.
 import type {
@@ -34,6 +34,7 @@ import type {
   Shape,
   TextStyle,
   TexturePartChange,
+  TextureMapType,
   VertexKind,
   Vec3,
   SlabInfo,
@@ -42,7 +43,7 @@ import type {
   VwxDocument,
   WallInfo,
 } from "../../core/index.ts";
-import { TEXT_STYLE_BY_CLASS } from "../../core/index.ts";
+import { TEXT_STYLE_BY_CLASS, TEXTURE_BY_CLASS, TEXTURE_NONE } from "../../core/index.ts";
 import { isLightingDevice } from "../../core/lightingDevice.ts";
 import { attempt, moveObjects, setActiveClass, setSelection } from "../commands.ts";
 import { dimensionValue, measureShape } from "../dimension.ts";
@@ -602,10 +603,29 @@ function lightSection(id: string, l: Light3D): HTMLElement {
   return section("Light", on, grid(...fields), h("div", { cls: "row-end" }, toView, toLight), ...about);
 }
 
+/** Map types the Map Type select lists, by the name it shows. */
+const MAP_TYPES: readonly Choice[] = [
+  { value: "autoPlane", label: "Auto-Align Plane" },
+  { value: "plane", label: "Plane" },
+  { value: "sphere", label: "Sphere" },
+  { value: "cylinder", label: "Cylinder" },
+  { value: "perimeter", label: "Perimeter" },
+  { value: "surfaceUV", label: "Surface UV" },
+];
+/** Stored mapping kinds the Map Type select lists only as the one the part has (choosing another sets a listed one). */
+const STORED_MAP_TYPES: Partial<Record<TextureMapType, string>> = { imported: "Imported", default: "Default", shader: "Shader" };
+const STORED_NOTES: Partial<Record<TextureMapType, string>> = {
+  imported: "Mapped by the object's own UV map. Choose a map type to change it.",
+  default: "Mapped by the object's default mapping. Choose a map type to change it.",
+  shader: "Mapped by a shader. Choose a map type to change it.",
+};
+
 /**
- * The Render tab: each texture part of the object (the whole object, and by number the further
- * parts walls, slabs, solids and some plug-ins hold) with the texture on it and its offset, scale
- * and rotation. An object without parts yet takes a texture on the whole of it.
+ * The Render tab: each texture part of the object, named as Vectorworks names it (Overall, and the
+ * further parts walls, slabs, solids and some plug-ins hold; an extrude's Top, Bottom and Sides), with
+ * the texture on it, how it is mapped and the settings that mapping takes. An object without parts
+ * yet takes a texture on the whole of it, and an extrude, sweep or multiple extrude can take one on
+ * its top, bottom or sides of its own.
  */
 function renderPanel(doc: VwxDocument, o: ObjectInfo, head: HTMLElement): HTMLElement {
   const out = h("div", { cls: "info" }, head);
@@ -621,27 +641,47 @@ function renderPanel(doc: VwxDocument, o: ObjectInfo, head: HTMLElement): HTMLEl
   const ofClass = doc.classes().find((c) => c.index === o.classIndex)?.texture ?? 0;
   const classLabel = ofClass > 0 ? `Class texture (${textures.find((t) => t.index === ofClass)?.name ?? `#${ofClass}`})` : "Class texture (none)";
   const options = (current: number): Choice[] => [
-    { value: "-1", label: "None" },
-    { value: "0", label: classLabel },
+    { value: String(TEXTURE_NONE), label: "None" },
+    { value: String(TEXTURE_BY_CLASS), label: classLabel },
     ...textures.map((t) => ({ value: String(t.index), label: t.name })),
     ...(current > 0 && !textures.some((t) => t.index === current) ? [{ value: String(current), label: `Texture #${current}` }] : []),
   ];
   const set = (part: number, label: string, change: TexturePartChange): boolean => tryEdit(label, (s) => s.setObjectTexture(o.id, part, change));
   if (!parts.length) {
-    out.append(section("Overall", grid(wide(field("Texture", committedSelect(options(-1), "-1", (v) => set(OVERALL_PART, "Texture", { texture: Number(v) })))))));
+    out.append(section("Overall", grid(wide(field("Texture", committedSelect(options(TEXTURE_NONE), String(TEXTURE_NONE), (v) => set(OVERALL_PART, "Texture", { texture: Number(v) })))))));
     return out;
   }
   for (const p of parts) {
+    const stored = STORED_MAP_TYPES[p.mapType];
+    const mapOptions: Choice[] = [...(stored ? [{ value: p.mapType, label: stored }] : []), ...MAP_TYPES];
+    const flag = (text: string, on: boolean, label: string, key: "flip" | "repeatH" | "repeatV" | "longestEdge" | "worldZ" | "worldOrigin"): HTMLElement =>
+      h("label", { cls: "class-style-item" }, checkBox(on, (v) => set(p.part, label, { [key]: v } as TexturePartChange)), text);
+    const notes: HTMLElement[] = [];
+    const storedNote = STORED_NOTES[p.mapType];
+    if (storedNote) notes.push(note(storedNote));
+    if (!p.initialized) notes.push(note("Mapped by default until a setting here changes it"));
     const part = section(
-      p.part === OVERALL_PART ? "Overall" : `Part ${p.part}`,
+      p.name,
       grid(
         wide(field("Texture", committedSelect(options(p.texture), String(p.texture), (v) => set(p.part, "Texture", { texture: Number(v) })))),
-        field("Offset U", committedLength(p.offsetU, (v) => set(p.part, "Texture offset", { offsetU: v }))),
+        wide(field("Map Type", committedSelect(mapOptions, p.mapType, (v) => v === p.mapType || set(p.part, "Texture map type", { mapType: v as TexturePartChange["mapType"] })))),
+        field("Offset H", committedLength(p.offsetU, (v) => set(p.part, "Texture offset", { offsetU: v }))),
         field("Offset V", committedLength(p.offsetV, (v) => set(p.part, "Texture offset", { offsetV: v }))),
-        field("Scale U", committedNumber(p.scaleU, (v) => v !== 0 && set(p.part, "Texture scale", { scaleU: v }))),
-        field("Scale V", committedNumber(p.scaleV, (v) => v !== 0 && set(p.part, "Texture scale", { scaleV: v }))),
+        field("Scale", committedNumber(p.scale, (v) => v !== 0 && set(p.part, "Texture scale", { scale: v }))),
         field("Rotation", committedNumber(p.rotation, (v) => set(p.part, "Texture rotation", { rotation: v }))),
+        ...(p.mapType === "sphere" || p.mapType === "cylinder" ? [field("Radius", committedLength(p.radius, (v) => set(p.part, "Texture radius", { radius: v })))] : []),
       ),
+      ...notes,
+      flag("Flip Horizontal", p.flip, "Texture flip", "flip"),
+      flag("Repeat Horizontally", p.repeatH, "Texture repeat", "repeatH"),
+      flag("Repeat Vertically", p.repeatV, "Texture repeat", "repeatV"),
+      ...(p.mapType === "autoPlane"
+        ? [
+            flag("Align to Longest Edge", p.longestEdge, "Texture alignment", "longestEdge"),
+            flag("Use World Z", p.worldZ, "Texture alignment", "worldZ"),
+            flag("Use World Origin", p.worldOrigin, "Texture alignment", "worldOrigin"),
+          ]
+        : []),
     );
     // as Vectorworks' texture list: the part's texture commands, then folding every part
     part.querySelector<HTMLElement>(":scope > h3")?.addEventListener("contextmenu", (e) => {
@@ -654,6 +694,24 @@ function renderPanel(doc: VwxDocument, o: ObjectInfo, head: HTMLElement): HTMLEl
       );
     });
     out.append(part);
+  }
+  const choices = doc.texturePartChoices(o.id);
+  if (choices.length) {
+    // its own section, its caption as the heading (it wraps) and the buttons on the line below
+    out.append(
+      section(
+        "Texture a part on its own",
+        h(
+          "div",
+          { cls: "row-end" },
+          ...choices.map((c) => {
+            const button = h("button", { cls: "btn small", text: c.name, attrs: { type: "button" } });
+            button.addEventListener("click", () => tryEdit("Texture Part", (s) => s.addTexturePart(o.id, c.part)));
+            return button;
+          }),
+        ),
+      ),
+    );
   }
   return out;
 }

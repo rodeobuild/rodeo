@@ -65,8 +65,18 @@ function preset(id: PresetId, values: Partial<Omit<MaterialPreset, "id">>): Mate
 /** Words that make a name a metal (so "brushed" with one of them is brushed metal, not concrete). */
 const METAL_WORD = /steel|alumin|metal|zinc|copper|brass|\biron|bronze|titanium/;
 
-/** The preset `face` is guessed to be from its texture's name, its colour and its opacity. */
+/**
+ * The preset `face` is guessed to be from its texture's shaders and name, its colour and its opacity.
+ * A glass transparency, a mirror or a glowing reflectivity decides first: those shaders say what the
+ * texture is. Then the name's word lists, most specific first. Then a cut-out picture is foliage, and
+ * a texture with no name rule takes its reflectivity (plastic, anisotropic as brushed metal) or a plain
+ * transparency under 95 % (glass); anything else is glass when the colour is see-through, else matte.
+ */
 export function guessPreset(face: Pick<ModelFace, "resource" | "color" | "opacity" | "alphaMap">): PresetId {
+  const shaders = face.resource?.shaders;
+  if (shaders?.transparency?.kind === "Glass") return "glass";
+  if (shaders?.reflectivity?.kind === "Mirror") return "chrome";
+  if (shaders?.reflectivity?.kind === "Glow" || shaders?.reflectivity?.kind === "Backlit") return "emissive";
   // most specific first: the first word list the name holds decides
   const name = (face.resource?.name ?? "").toLowerCase();
   if (/frosted|obscure|etched|sandblast.*glass|glass.*sandblast/.test(name)) return "frosted-glass";
@@ -85,8 +95,12 @@ export function guessPreset(face: Pick<ModelFace, "resource" | "color" | "opacit
   if (/\b(grass|lawn|leaf|leaves|foliage|tree|plant|hedge|shrub|bush)/.test(name)) return "foliage";
   if (/plastic|acrylic|vinyl|laminate/.test(name)) return "plastic";
   if (/light panel|led panel|lightbox|emissive|glow/.test(name)) return "emissive";
-  // a cut-out picture (plants) is foliage; otherwise the colour's opacity decides
+  // a cut-out picture (plants) is foliage
   if (face.alphaMap) return "foliage";
+  if (shaders?.reflectivity?.kind === "Plastic") return "plastic";
+  if (shaders?.reflectivity?.kind === "Anisotropic") return "brushed-metal";
+  if (shaders?.transparency?.kind === "Plain" && (shaders.transparency.percent ?? 100) < 95) return "glass";
+  // otherwise the colour's opacity decides
   return face.opacity < 0.95 ? "glass" : "matte";
 }
 

@@ -494,7 +494,7 @@ and drops an entry nothing else uses. Names are unique across the table.
 | 109 | text style | always 110 bytes: +0x52 u16 font (its place in the font list, as a text's), +0x58 f64 size in inches (points ÷ 72), +0x62 u8 vertical and +0x63 u8 horizontal alignment (a text's values, §4.1); +0x56, +0x57, +0x60, +0x61 and +0x64 unknown (+0x56, +0x57 and +0x64 are 1 in all 10 demo styles; +0x60 and +0x61 are 0xff in 8 and 0, 1 in the other 2); two 119 previews as children (256 and 64 px PNGs of "ABCD", "abcd" and "0123" in the style's font, centred, black on clear). Texts name it by its name index (§4.1), classes at their +0xb8 (§5). openvwx edits the four known fields in place, draws the previews anew, and makes a new one by copying a style's records, or in a drawing with none, from a hatch's or gradient's header and previews with the unknown bytes as most demo styles have them | confirmed (the 499 texts in the 2026 demo that name one of its 4 styles all have that style's font and alignment) |
 | 120 | gradient fill | +0x52 u16 stop count; +0x54 24-byte stops: f64 position (0..1), f64 midpoint (where the blend to the next stop is half way, as a fraction of the gap), u16 R, G, B (0..255), u16 opacity (0..100). Each object lays it out with its type-121 child | confirmed (the cover sheet's fades to clear match the published sheet) |
 | 121 | fill mapping (child of a filled object) | 136 bytes: three points stored `(y, x)` at +0x50, +0x60, +0x70 in the object's coordinates; +0x86 u16 gradient shape: 1 linear (from the first point to the second), 2 radial (centred on the first, radius to the second). For tiles and hatches the second and third points are the ends of the pattern's two axes; their length does not set a hatch's size (the 2023 walls' axes are 25.4 or 1219.2 mm long, and print the same), but it does a tile's: one repeat cell, the one centred on the tile's origin, spans the parallelogram from the first point along both axes, the first taking the tile's more nearly horizontal repeat. A few stale ones lie far off their object. openvwx gives an object without one a copy of another, first among its aux records, where the file's own sit | likely (gradients drawn this way match; hatches are laid from the origin along the axes; every batt in the section caches spans exactly 0 to 1 of its second axis, whose length keeps the cell's 59.5:152.4 ratio, and prints one loop across its depth) |
-| 97 | texture (RenderWorks) | +0x5a f64 image size in inches; image via its 48 → 93 → 119 children (PNG/JPEG); the 119 preview stands in when there is no image. The 48's format names the shader: "NNAMaxon Image Color" holds the image shown, "NNAMaxon Image Mask Transparency" a mask that cuts it out (black clear, white solid; image props and Laubwerk plants, 67 of a private sample's 279 textures), and comes before it. Lives in the class list (57), at its top level or in a folder (92). Its children are previews (119), tagged type-76 records and its shaders' settings as 48 records of data record formats (§7.3); none holds the texture's own name index, and classes name it by that index. openvwx imports one from another file by copying its records, pointing each 48 at the drawing's format of the same name, or a copy of the other file's when the drawing has none. A texture Vectorworks makes from one image (16 in the four JohnMosbyHwy demos) is 97 → 119 (256 px preview), 119 (64 px), 48 "NNAMaxon Image Color" (i32s 1, 41, 1, 4, 1, then the image's average R, G, B, then a boolean true), 93 → 119 (the image), 48 "NNAPreview Object Options" (8, 2, 1, 1, then a dimension: twice the image size) and 48 "NNAShadow Options" (8, 1, 1, true, true); its 93 holds f64s 0, 0, height/2, 0, height/2, width − 1 (pixels) and the size in inches from +0x50, then bytes 1, 1 (other textures' 93s hold other numbers there: meaning not known). openvwx makes new ones so (SketchUp import), with the shader formats as the demos define them (field names kept only where every file has the same, stale bytes left out) in a TMFH list it starts at the top of the class list when the drawing has none; read back by openvwx, not yet opened in Vectorworks | likely |
+| 97 | texture (RenderWorks) | +0x5a f64 image size in inches; image via its 48 → 93 → 119 children (PNG/JPEG); the 119 preview stands in when there is no image. The 48's format names the shader: "NNAMaxon Image Color" holds the image shown, "NNAMaxon Image Mask Transparency" a mask that cuts it out (black clear, white solid; image props and Laubwerk plants, 67 of a private sample's 279 textures), and comes before it. Lives in the class list (57), at its top level or in a folder (92). Its children are previews (119), tagged type-76 records and its shaders' settings as 48 records of data record formats (§7.3); none holds the texture's own name index, and classes name it by that index. openvwx imports one from another file by copying its records, pointing each 48 at the drawing's format of the same name, or a copy of the other file's when the drawing has none. A texture Vectorworks makes from one image (16 in the four JohnMosbyHwy demos) is 97 → 119 (256 px preview), 119 (64 px), 48 "NNAMaxon Image Color" (i32s 1, 41, 1, 4, 1, then the image's average R, G, B, then a boolean true) → 93 → 119 (the image: the holder is a child of its shader's record, whose +0x10 is then non-zero, in all 382 holders of the corpus), 48 "NNAPreview Object Options" (8, 2, 1, 1, then a dimension: twice the image size) and 48 "NNAShadow Options" (8, 1, 1, true, true); its 93 holds f64s 0, 0, height/2, 0, height/2, width − 1 (pixels) and the size in inches from +0x50, then bytes 1, 1 (other textures' 93s hold other numbers there: meaning not known). openvwx makes new ones so (SketchUp import), with the shader formats as the demos define them (field names kept only where every file has the same, stale bytes left out) in a TMFH list it starts at the top of the class list when the drawing has none; read back by openvwx, not yet opened in Vectorworks. Every shader's record starts with three i32s, Family, Prototype and Version, as Vectorworks' scripting reference names them (`CreateShaderRecord`): family 1 colour (40 Plain, 41 Image, 42 Fresnel, 43 Noise, 44 Tiles, 45 Bricks, 46 Pavement), 2 reflectivity (30 Image, 31 Mirror, 32 Fresnel, 33 Noise, 34 Tiles, 35 Plastic, 36 Bricks, 37 Pavement, 38 Glow, 39 Backlit, 40 Anisotropic; 41 in one record of a format named Cloth), 3 transparency (10 Plain, 11 Color, 12 Image, 13 Glass, 14 Noise, 15 Tiles, 16 Bricks, 17 Pavement, 18 Rectangular Mask, 19 Image Mask), 4 bump (41 Image, 42 Noise, 43 Tiles, 44 Bricks, 45 Pavement), 7 sketch, 8 the preview (2) and shadow (1) options, which come last. A texture without reflectivity, transparency or bump has no record of that family (217, 367 and 392 of the corpus's 477 textures). Across the ten files that hold textures every family and prototype has one field layout, except Noise bump (its field 16 a number in two files, a dimension in three); the fields' names are in the language of the Vectorworks that saved the file, so fields are read by position. Plain colour ("NNAMaxon Plain Color"): R, G, B as i32s (0–255 in most records; some hold 16-bit values, read as such when any is above 255), then a brightness (number, 1 unchanged). Image colour: the filter's R, G, B at fields 5–7. Plain transparency: an opacity fraction at field 3. A texture's other children (type-76 records tagged TDMD and SGAT, type 124) aren't read. openvwx edits a texture's size (and its image holders' +0x80 where that held the same size), a Plain or Image colour, any shader field by its own type, removes a reflectivity, transparency or bump shader's record, adds a Plain transparency as a copy of the drawing's own format's defaults, makes a plain-colour texture (a Plain Color record with the two options records, its format written from that one layout where the drawing has none), replaces a texture's previews and deletes an unused texture; none of it opened in Vectorworks | likely |
 | 114 | 3D body (extrude, sweep, solid, wall/slab cache) | +0x5a u16 section count; +0x60 u32 offsets; section 0 points `(x, y, z)` (in the owner's own frame for extrudes and sweeps, in its parent's for multiple extrudes and solid additions, §3D), 13 curves, 14 lines (edges), 19 Parasolid XT (not decoded). Faces are rebuilt from the edges (see §7) | likely |
 | 122 | viewport (on a sheet; none sits on a design layer in any sample, where design-layer viewports are plug-ins, below) | §7 | confirmed |
 | 31 | layer | see §5 | confirmed |
@@ -1637,28 +1637,100 @@ Untested in Vectorworks.
 `(u16 key, u32 offset)` entries from +0x60 (offsets from +0x60); each value
 is u16 type (8 = i32, 1 = byte, 6 = f64), u32 count, values. Kind `ttwr`
 is an object's RenderWorks texture, one value per texture part under each
-key: 1 the part's id (3 the whole object; walls hold 3, 7, 8 and 14–17,
-slabs 3 and 14–16, solids 3, 7, 8 and 14–18, plug-ins 3, 10 and 20), 2 i32 0,
-3 the texture's name index (−1 none, 0 by class: the class record's +0x9e),
-4 a byte (often 0xcd, memory never written), 5 the mapping (i32: 0, 3 or 7
-in the demos), 6 six f64 per part (offset across and up in mm, scale across
-and up, rotation in radians, and a length: 1000 by default), 7 twelve f64
-per part (three axes and an origin), 8 one i32 0. A dictionary can hold no
-parts (key 8 alone: 470 extrudes in the 2023 demo); some lack key 8. The
-directory has a spare zero entry after the last and the values end 6 zero
-bytes before the record's end, at the u32 at +0x5c; rebuilt from the values
-read, 9,168 of the 9,224 dictionaries of keys 1–8 in the 2023 demo come out
-byte for byte (the others place their first value elsewhere). openvwx edits
-a part's texture, offset, scale and rotation in place, and writes a new
-dictionary with the whole object's part for a 3D object that has none or an
-empty one, mapped as most objects of its type in the drawing are.
+key, the parts in the same order under every key:
+
+| Key | Type | Meaning | |
+|---|---|---|---|
+| 1 | i32 | the part's id (table below) | confirmed |
+| 2 | i32 | the texture layer: 0 the part's base texture. The scripting reference gives decals layers above 0; every one of the 227,583 parts in the corpus holds 0, so how a decal is stored isn't known | likely |
+| 3 | i32 | the texture: a texture's name index, 0 none, −1 the class's (the class record's +0x9e). −3, −4 and −5 occur on 6 parts: not known | confirmed |
+| 4 | byte | flags (below) | likely |
+| 5 | i32 | the mapping kind (below) | confirmed |
+| 6 | 6 × f64 | offset across and up (mm), the scale, the scale again (the two are equal in every part), the rotation (radians), a radius (mm) | confirmed |
+| 7 | 12 × f64 | three axis rows and an offset: the object's space to the texture's | likely |
+| 8 | i32s | one 0 in most; some dictionaries lack it. 20 plug-in objects of the Dover Dam demos hold `0, 3000` or `0, 3000, 3001` and then a second (and third) group of parts under keys 9–15 (17–23), laid out as keys 1–7 are: what the groups are isn't known, and openvwx leaves them as they are | |
+
+Which value means none and which the class's was settled two ways: the
+scripting reference says 0 is None and −1 Class Texture, and in the corpus an
+object holding −1 sits in a class that has a texture thousands of times
+(3,664 of the 2023 Dover Dam demo's 4,248 such extrudes), while one holding 0
+almost never does. A part showing none of its own shows what holds it shows: a
+part other than the whole object the whole object's texture, an object its
+container's.
+
+The names and numbers below are Vectorworks' own, from the header
+`RenderOptionsValues.h` of its public SDK (github.com/VectorworksDeveloper/SDKExamples)
+and its public scripting reference (github.com/Vectorworks/developer-scripting:
+`SetTextureRefN`, `SetTexMapIntN`, `SetTexMapRealN`, `SetTexMapBoolN`); how
+the file holds them, and which objects hold which, is from the corpus.
+
+Part ids: 3 the whole object (Overall); 4 Top, 5 Bottom, 6 Sides of an extrude
+or sweep; 7 Left, 8 Right, 9 Start Cap, 10 End Cap, 11 Top, 12 Bottom, 13 Holes
+of a wall; 14 Top, 15 Bottom, 16 Sides of a slab or roof face; 17 Top, 18
+Bottom, 19 Sides, 20 Gable Walls, 21 Fascia, 22 Attic, 23 Soffit, 24 Dutch
+Walls, 25 Dormer Walls of a roof; 26 Frame Cap, 27 Panel Face of a curtain
+wall; 100 and up a plug-in's own parts, which it names (1000 on 28 plug-in
+objects; some plug-ins use 10 and 20). Two uses the header doesn't give: a
+mesh's parts from 4 up are its materials, each face naming its part in the
+`TeMe` map's key 3; and in a wall, and in the component solids (84) inside it,
+the parts from 14 up are the wall's components in order (a wall with N
+component solids holds N of them, in every wall of the corpus). Walls, slabs
+and their component solids hold all their parts whether or not each was
+textured apart; an extrude, sweep or solid holds part 3 and a part 4, 5 or 6
+only for a face textured on its own (624 extrudes hold one such part).
+
+Flags (key 4), bit 0 the lowest, in the order of the scripting reference's
+selectors: 0 the mapping was set (clear on a part still mapped by default), 1
+flipped, 2 repeats across, 3 repeats up, 4 aligned to the face's longest edge,
+5 world Z, 6 auto-aligned to each face, 7 measured from the world's origin
+(the header's `fUseWorldOrigin`, new in 2022, which has no selector; its bit
+is a reading of the one bit left). Bits 2 and 3 are set in all but 7 parts.
+Common bytes: 0x0c (never set), 0x0d, 0x4d, 0xcd, 0x5d.
+
+Mapping kinds (key 5): 0 Plane, 1 Sphere, 2 Cylinder, 3 Algorithmic (Perimeter
+on an extrude or sweep, Roof on a roof), 4 Shader (in no file), 5 Imported (a
+mesh's own UV map, below), 6 Default by object type (image props), 7 Surface
+UV. Object Info's Auto-Align Plane is kind 0 with flag bit 6.
+
+The radius is a sphere's or cylinder's; on other mappings it holds a size of
+the object when the mapping was last set by default (half its width, or 1000),
+or 0. The offset in key 7 is likewise set from the object's box when a default
+mapping is made (minus the middle of an extrude's box in its own frame, in x
+and y), and goes stale when the object is reshaped: an extrude scaled to three
+quarters keeps the offset and radius of its old size.
+
+A dictionary can hold no parts (key 8 alone: 470 extrudes in the 2023 demo).
+The directory has a spare entry after the last (zero in most, stale bytes in
+some) and the values end 6 bytes before the record's end, at the u32 at
++0x5c; rebuilt from the values read with that entry and those bytes kept,
+every one of the 30,497 dictionaries of the 2026 JohnMosbyHwy demo and all
+but 5 of the 2023 Dover Dam demo's that hold parts come out byte for byte
+(the 5 hold the further key groups). openvwx edits
+a part's values in place; adds or removes an extrude's, sweep's or multiple
+extrude's Top, Bottom or Sides part by rebuilding the dictionary, only when it
+rebuilds byte for byte and holds no keys above 8; and writes a new dictionary
+with the whole object's part for a 3D object that has none or an empty one,
+mapped as most objects of its type in the drawing are. None of what it
+writes has been opened in Vectorworks.
+
+How openvwx draws each kind is its own reading (the sources name the kinds
+and their settings, not the arithmetic): see `texcoords.ts`. Two things in it
+are measured from real drawings. A plane on a 3D polygon is laid in the
+polygon's own frame (below). And Surface UV on a level face runs from the far
+side of the object's box: eight thin panel extrudes of one drawing each hold
+an image as wide as the panel, flipped, with an offset of the image's width,
+which reads the right way round only if the unflipped coordinate runs from
+the box's far x backwards. Triangles are not trusted to be wound outward (an
+extrude's sides and caps come either way), so no direction is taken from a
+face's normal.
 Mapping 5 is UV: a mesh (Laubwerk plants) holds its texture in a part of
 its own with mapping 5 (part 4; its whole-object part 3 has none), and its
 UV map in a TDMD of kind `TeMe` (stored `eMeT`): key 1 a normal per vertex
 (3 f64), key 2 `(u, v)` per vertex (2 f64, fractions of the image, v up),
 key 3 two i32 per face: the texture part it shows, front and back (4, 5
-or 6 in the plants, whose dictionaries hold parts 3–6), key 4 one i32 (3),
-key 5 one f64 (50), key 6 three f64 (the vertex count, then two numbers not
+or 6 in the plants, whose dictionaries hold parts 3–6: openvwx draws each
+face with its front part's texture), key 4 one i32 (1, 2 or 3 across the
+610 maps of the corpus: 3 in these), key 5 one f64 (50 here, 70 in others), key 6 three f64 (the vertex count, then two numbers not
 worked out: they aren't sums of the points, normals, areas or (u, v)), key 7
 twelve f64 (an unturned frame at the origin) in all 46 of the 2026 JohnMosbyHwy
 demo's. openvwx writes new UV-mapped meshes (SketchUp import) so, with one

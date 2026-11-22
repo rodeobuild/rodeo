@@ -21,6 +21,7 @@ import { editSymbol } from "../symbolEdit.ts";
 import { editWorksheet } from "../worksheetEditor.ts";
 import { editRecordFormat, newRecordFormat } from "../recordFormatEditor.ts";
 import { duplicateHatch, editHatch, newHatch } from "../hatchEditor.ts";
+import { editTexture, newTexture } from "../textureEditor.ts";
 import { duplicateGradient, editGradient, newGradient } from "../gradientEditor.ts";
 import { canEditLineType, duplicateLineType, editLineType, newLineType } from "../lineTypeEditor.ts";
 import { canEditTextStyle, duplicateTextStyle, editTextStyle, newTextStyle } from "../textStyleEditor.ts";
@@ -275,6 +276,7 @@ export function mountResources(root: HTMLElement, setTool: (id: ToolId) => void)
   // New Resource: each kind a new one can be copied from the drawing's own (a first gradient comes from a hatch)
   const has = (...kinds: ResourceKind[]): boolean => !!doc?.resources().some((r) => kinds.includes(r.kind));
   const newButton = menuButton(h("button", { cls: "btn res-new", text: "+", title: "New resource", attrs: { type: "button", "aria-label": "New resource" } }), () => [
+    { label: "New Texture…", enabled: () => !!doc, run: () => void newTexture() },
     { label: "New Hatch…", enabled: () => has("hatch"), run: () => void newHatch() },
     { label: "New Gradient…", enabled: () => has("gradient", "hatch"), run: () => void newGradient() },
     { label: "New Line Type…", enabled: () => has("line-type"), run: () => void newLineType() },
@@ -348,6 +350,17 @@ export function mountResources(root: HTMLElement, setTool: (id: ToolId) => void)
     // the core leaves imageSize 0 when the file does not say how large the image is
     const size = res.imageSize ?? 0;
     if (size > 0) lines.push(`Tile size: ${sizeText(size, doc?.info.units)}`);
+    // a texture's shaders, the ones it has
+    if (e.kind === "texture" && res.shaders) {
+      const sh = res.shaders;
+      const parts = [
+        sh.color && `Color: ${sh.color.kind}`,
+        sh.reflectivity && `Reflectivity: ${sh.reflectivity.kind}`,
+        sh.transparency && `Transparency: ${sh.transparency.kind}`,
+        sh.bump && `Bump: ${sh.bump.kind}`,
+      ].filter((x): x is string => typeof x === "string");
+      if (parts.length) lines.push(parts.join(" · "));
+    }
     detailMeta.replaceChildren(...lines.map((text) => h("div", { text })));
     detail.hidden = false;
   };
@@ -390,6 +403,7 @@ export function mountResources(root: HTMLElement, setTool: (id: ToolId) => void)
     el.addEventListener("click", () => choose(entry));
     if (fields.kind === "worksheet") el.addEventListener("dblclick", () => void editWorksheet(fields.index));
     if (fields.kind === "record-format") el.addEventListener("dblclick", () => void (doc?.recordFormatFields(fields.index) && editRecordFormat(fields.index)));
+    if (fields.kind === "texture") el.addEventListener("dblclick", () => void editTexture(fields.index));
     if (fields.kind === "hatch") el.addEventListener("dblclick", () => void editHatch(fields.index));
     if (fields.kind === "gradient") el.addEventListener("dblclick", () => void editGradient(fields.index));
     if (fields.kind === "line-type") el.addEventListener("dblclick", () => void editLineType(fields.index));
@@ -452,6 +466,10 @@ export function mountResources(root: HTMLElement, setTool: (id: ToolId) => void)
   };
 
   const remove = async (e: Entry): Promise<void> => {
+    if (e.kind === "texture") {
+      if (await confirmDialog("Delete Texture", `Delete the texture "${e.name}"?`, "Delete")) attempt("Delete", (s) => s.deleteTexture(e.index));
+      return;
+    }
     if (e.kind === "record-format") {
       const ok = await confirmDialog("Delete Record Format", `Delete the record format "${e.name}"? Objects that have a record of it lose the record and its values.`, "Delete");
       if (ok) attempt("Delete", (s) => s.deleteRecordFormat(e.index));
@@ -539,6 +557,15 @@ export function mountResources(root: HTMLElement, setTool: (id: ToolId) => void)
         { label: "Delete…", run: () => void remove(e) },
       ];
     }
+    if (e.kind === "texture") {
+      return [
+        { label: "Edit Texture…", run: () => void editTexture(e.index) },
+        { label: "New Texture…", run: () => void newTexture() },
+        "-",
+        ...rows,
+        { label: "Delete…", run: () => void remove(e) },
+      ];
+    }
     if (e.kind !== "symbol") return rows;
     return [
       { label: "Place with Symbol Tool", run: () => choose(e) },
@@ -622,7 +649,8 @@ export function mountResources(root: HTMLElement, setTool: (id: ToolId) => void)
       );
     }
     for (const res of d.resources()) {
-      if (res.kind === "symbol") continue;
+      // a texture shader's settings formats are not resources the palette lists (Vectorworks' Resource Manager leaves them out)
+      if (res.kind === "symbol" || res.shaderFormat) continue;
       const thumb = h("span", { cls: "res-thumb" });
       if (res.preview) {
         const bytes = res.preview;

@@ -125,6 +125,27 @@ console.log("guessPreset without a name");
   check(guessPreset(face(null, { opacity: 0.95 })) === "matte", "95 % opaque is still matte");
 }
 
+console.log("guessPreset from the texture's shaders");
+{
+  const shaded = (name: string | null, shaders: NonNullable<ResourceInfo["shaders"]>): ModelFace => {
+    const f = face(name ?? "Surface");
+    return { ...f, texture: 0, resource: { ...(f.resource as ResourceInfo), shaders } };
+  };
+  check(guessPreset(shaded("Surface", { transparency: { kind: "Glass" } })) === "glass", "a Glass transparency guesses glass");
+  check(guessPreset(shaded("Brick", { transparency: { kind: "Glass" } })) === "glass", "Glass wins over a name: Brick with Glass guesses glass");
+  check(guessPreset(shaded("Surface", { reflectivity: { kind: "Mirror" } })) === "chrome", "a Mirror reflectivity guesses chrome");
+  check(guessPreset(shaded("Oak", { reflectivity: { kind: "Mirror" } })) === "chrome", "Mirror comes before a name too");
+  check(guessPreset(shaded("Surface", { reflectivity: { kind: "Glow" } })) === "emissive", "a Glow reflectivity guesses emissive");
+  check(guessPreset(shaded("Surface", { reflectivity: { kind: "Backlit" } })) === "emissive", "a Backlit reflectivity guesses emissive");
+  check(guessPreset(shaded("Surface", { reflectivity: { kind: "Plastic" } })) === "plastic", "a Plastic reflectivity with no name rule guesses plastic");
+  check(guessPreset(shaded("Oak", { reflectivity: { kind: "Plastic" } })) === "wood", "a name rule still wins over Plastic: Oak stays wood");
+  check(guessPreset(shaded("Surface", { reflectivity: { kind: "Anisotropic" } })) === "brushed-metal", "an Anisotropic reflectivity guesses brushed metal");
+  check(guessPreset(shaded("Surface", { transparency: { kind: "Plain", percent: 50 } })) === "glass", "a Plain transparency under 95 % guesses glass");
+  check(guessPreset(shaded("Surface", { transparency: { kind: "Plain", percent: 97 } })) === "matte", "a Plain transparency of 97 % stays matte");
+  check(guessPreset(shaded("Surface", { transparency: { kind: "Plain" } })) === "matte", "a Plain transparency with no amount stays matte");
+  check(guessPreset({ ...shaded("Surface", { reflectivity: { kind: "Plastic" } }), alphaMap: cutout }) === "foliage", "a cut-out picture stays foliage over Plastic");
+}
+
 console.log("presetFor");
 {
   check(presetFor(face("Glass"), { preset: "wood" }).id === "wood", "an override names the finish");

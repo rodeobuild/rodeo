@@ -7,6 +7,7 @@
 // None with the fill, pen and texture set here. Stood on a stage built in 3D (an extrude, a mesh or a
 // symbol with solids under the first click), it rises to the stage's top.
 
+import { TEXTURE_BY_CLASS, TEXTURE_NONE } from "../../../core/index.ts";
 import type { Attributes, EditSession, NewShape, Pt } from "../../../core/index.ts";
 import { attempt, setEditGroup } from "../../../app/commands.ts";
 import { placed } from "../../../app/detailShapes.ts";
@@ -35,7 +36,7 @@ interface Custom {
   readonly newClass: string;
   readonly fill: string;
   readonly pen: string;
-  /** a texture resource's name index, or -1 for none */
+  /** a texture resource's name index, or TEXTURE_NONE for none */
   readonly texture: number;
 }
 
@@ -118,7 +119,7 @@ function lecternInstance(s: EditSession, { kind, custom }: LecternChoice, layerI
   if (cls !== undefined) {
     // a class sets the look: its fill, pen and texture
     for (const group of ["fill", "penColor"] as const) s.setAttributesByClass([...plan, ...meshes], group, true);
-    for (const m of meshes) s.setObjectTexture(m, WHOLE_OBJECT, { texture: 0 });
+    for (const m of meshes) s.setObjectTexture(m, WHOLE_OBJECT, { texture: TEXTURE_BY_CLASS });
   } else if (custom && custom.texture > 0) {
     for (const m of meshes) s.setObjectTexture(m, WHOLE_OBJECT, { texture: custom.texture });
   }
@@ -239,7 +240,7 @@ async function lecternDialog(): Promise<LecternChoice | null> {
   const texture = h(
     "select",
     { cls: "menu-dialog-input menu-dialog-select wide", attrs: { "aria-label": "Texture" }, title: textures.length ? "" : "This drawing has no textures" },
-    h("option", { value: "-1", text: "None" }),
+    h("option", { value: String(TEXTURE_NONE), text: "None" }),
     ...textures.map((t) => h("option", { value: String(t.index), text: t.name })),
   );
 

@@ -75,6 +75,9 @@ interface Material {
   readonly file: string | null;
   /** the size the image tiles at, mm */
   readonly size: number;
+  /** how the image wraps across (s) and up (t): "clamp" where the faces do not repeat it (the image's edge runs on) */
+  readonly wrapS: "repeat" | "clamp";
+  readonly wrapT: "repeat" | "clamp";
 }
 
 /** One mesh's corners, normals and texture coordinates, y up in metres. */
@@ -177,8 +180,8 @@ function materialPrim(m: Material): string[] {
       `                asset inputs:file = @${m.file}@`,
       '                token inputs:sourceColorSpace = "sRGB"',
       `                float2 inputs:st.connect = <${m.path}/St.outputs:result>`,
-      '                token inputs:wrapS = "repeat"',
-      '                token inputs:wrapT = "repeat"',
+      `                token inputs:wrapS = "${m.wrapS}"`,
+      `                token inputs:wrapT = "${m.wrapT}"`,
       "                float3 outputs:rgb",
       "            }",
       "",
@@ -237,7 +240,10 @@ export function usdScene(doc: VwxDocument, meshes: readonly Mesh3D[], options: U
     if (res?.image?.length && !ext) leftOut.add(res.index);
     const textured = res && ext ? res : undefined;
     const opacity = Math.min(1, Math.max(0, m.opacity));
-    const key = textured ? `t${textured.index}|${opacity}` : `${m.color}|${opacity}`;
+    // a texture its faces do not repeat is a material of its own, clamped where they do not repeat
+    const wrapS = textured?.image && m.textureClamp?.u ? "clamp" : "repeat";
+    const wrapT = textured?.image && m.textureClamp?.v ? "clamp" : "repeat";
+    const key = textured ? `t${textured.index}|${opacity}|${wrapS}|${wrapT}` : `${m.color}|${opacity}`;
     let mat = materials.get(key);
     if (!mat) {
       const plain = `Color_${m.color.replace("#", "").slice(0, 6)}${opacity < 1 ? `_${Math.round(opacity * 100)}` : ""}`;
@@ -248,7 +254,7 @@ export function usdScene(doc: VwxDocument, meshes: readonly Mesh3D[], options: U
         files.push([file, textured.image!]);
       }
       const size = textured?.imageSize && textured.imageSize > 0 ? textured.imageSize : DEFAULT_IMAGE_MM;
-      mat = { path: `/Model/Materials/${name}`, name, color: m.color, opacity, file, size };
+      mat = { path: `/Model/Materials/${name}`, name, color: m.color, opacity, file, size, wrapS, wrapT };
       materials.set(key, mat);
     }
     return mat;

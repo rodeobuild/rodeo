@@ -136,6 +136,29 @@ export interface ImageTextureSpec {
   readonly previews: { readonly large: Uint8Array; readonly small: Uint8Array };
 }
 
+/** One field of a texture's shader record, as its record format lays it out. */
+export interface ShaderField {
+  /** position in the record (0, 1 and 2 are Family, Prototype and Version) */
+  readonly index: number;
+  /** the field's name: the drawing's format's, else Rodeo's name for the field where it has one ("" when neither) */
+  readonly name: string;
+  /** true when the name came from the drawing's format; Rodeo's own names are English and are not translated */
+  readonly named: boolean;
+  readonly kind: "integer" | "boolean" | "number" | "dimension" | "text" | "other";
+  readonly value: number | boolean | string;
+}
+
+/** One shader of a texture (families 1 to 4 only). */
+export interface TextureShader {
+  readonly family: "color" | "reflectivity" | "transparency" | "bump" | "other";
+  /** "Plain", "Image", "Mirror"... (textureShaders.ts), or "#<n>" */
+  readonly kind: string;
+  /** every field after Family, Prototype and Version */
+  readonly fields: readonly ShaderField[];
+  /** whether an image sits under it */
+  readonly image: boolean;
+}
+
 /** A symbol definition (resource). */
 export interface SymbolInfo {
   /** name-table index of the definition (stable id) */
@@ -746,12 +769,20 @@ export interface Mesh3D {
   opacity: number;
   /** ResourceInfo.index of the texture applied, or -1 */
   texture: number;
+  /** the texture part these faces are textured as (TexturePart.part), when not the whole object's */
+  texturePart?: number;
   /**
    * where the texture's image falls, when the object places it itself (a mesh's UV map, a plane
    * mapping): u and v at each corner, 6 floats per triangle, in fractions of the image, v up. Without
    * them the view projects the image along each face's main axis.
    */
   uvs?: Float32Array;
+  /**
+   * the texture does not repeat across (u) or up (v): present only when one of them is true. Rodeo
+   * reads a part with repeat off as showing the image once, its edge pixels running on beyond it
+   * (clamp to edge), which is how the faces are drawn and exported.
+   */
+  textureClamp?: { readonly u: boolean; readonly v: boolean };
   /** a wall's faces: drawn behind faces lying exactly on them (a door's frame, a cabinet's back) */
   recessed?: boolean;
   /**
@@ -836,10 +867,14 @@ export interface ModelTreePiece {
   opacity: number;
   /** ResourceInfo.index of the texture applied, or -1 */
   texture: number;
+  /** the texture part these faces are textured as (TexturePart.part), when not the whole object's */
+  texturePart?: number;
   /** 9 numbers per triangle, counter-clockwise seen from outside */
   triangles: Float64Array;
   /** u and v at each corner (6 per triangle), when the object places its texture itself */
   uvs?: Float64Array;
+  /** the texture does not repeat across (u) or up (v): present only when one of them is true (see Mesh3D.textureClamp) */
+  textureClamp?: { readonly u: boolean; readonly v: boolean };
   /** the faces the triangles were cut from, where the object keeps them (a mesh's): corners, and with uvs (u, v) at each */
   faces?: { corners: number[]; uvs?: number[] }[];
   /** an open 3D polygon: its points */
@@ -881,6 +916,8 @@ export interface ResourceInfo {
   previewSizes?: { width: number; height: number }[];
   /** textures: the image the shader tiles, when the file embeds one */
   image?: Uint8Array;
+  /** record formats: one of a texture shader's settings formats, which the Resources palette leaves out */
+  shaderFormat?: true;
   imageMime?: string;
   /** textures: real-world width the image spans, mm (0 when unknown) */
   imageSize?: number;
@@ -889,6 +926,17 @@ export interface ResourceInfo {
   /** textures: the transparency shader's mask, black where the image is clear */
   mask?: Uint8Array;
   maskMime?: string;
+  /**
+   * textures: what each of its shaders is, as Vectorworks names the kinds; a family the texture has
+   * no shader for is absent (read without decoding any image)
+   */
+  shaders?: {
+    /** "Plain", "Image", "Fresnel", "Noise", "Tiles", "Bricks", "Pavement"; absent when the texture has no colour shader */
+    color?: { kind: string; /** #rrggbb: a plain colour, or an image's filter colour */ rgb?: string };
+    reflectivity?: { kind: string };
+    transparency?: { kind: string; /** 0–100, for "Plain" when the amount reads */ percent?: number };
+    bump?: { kind: string };
+  };
   /** hatches: their line families and colours */
   hatch?: HatchFill;
   /** tiles: the motif and how it repeats */
@@ -1054,26 +1102,49 @@ export interface PluginFieldSpec {
   readonly value: RecordValue;
 }
 
+// A part's texture value: TEXTURE_NONE (0) or TEXTURE_BY_CLASS (-1), or a texture's name index. The
+// constants are exported from texmap.ts.
+
+/** A texture's mapping as Vectorworks names it: kind 0 with the auto-align flag is "autoPlane". */
+export type TextureMapType = "plane" | "autoPlane" | "sphere" | "cylinder" | "perimeter" | "surfaceUV" | "imported" | "default" | "shader";
+
 /** One texture part of an object, as Object Info's Render tab shows it. */
 export interface TexturePart {
-  /** Vectorworks' part id: 3 the whole object; walls, slabs, solids and some plug-ins hold further parts */
+  /** Vectorworks' part id: 3 the whole object; extrudes, sweeps, walls, slabs and solids hold further parts */
   readonly part: number;
-  /** a texture's name index, 0 the class's texture, -1 none */
+  /** English name: "Overall", "Top", "Left", "Material 1", "Component 2", "Part 1000"... (the UI translates it) */
+  readonly name: string;
+  /** a texture's name index, TEXTURE_NONE (0) or TEXTURE_BY_CLASS (-1) */
   readonly texture: number;
-  /** the mapping method, as Vectorworks numbers it */
+  /** the mapping kind as stored (0 to 7) */
   readonly mapping: number;
-  /** offset along the texture's width and height, mm */
+  readonly mapType: TextureMapType;
+  /** mm */
   readonly offsetU: number;
   readonly offsetV: number;
-  /** scale across and up (1 the texture's own size) */
-  readonly scaleU: number;
-  readonly scaleV: number;
+  /** 1 the texture's own size; the file holds it twice (across and up) and both are kept equal */
+  readonly scale: number;
   /** degrees */
   readonly rotation: number;
+  /** mm: a sphere's or cylinder's radius */
+  readonly radius: number;
+  readonly flip: boolean;
+  readonly repeatH: boolean;
+  readonly repeatV: boolean;
+  readonly longestEdge: boolean;
+  readonly worldZ: boolean;
+  readonly worldOrigin: boolean;
+  /** false while Vectorworks has never set the mapping (a default mapping applies) */
+  readonly initialized: boolean;
+  /** the u, v and w axis rows (9 numbers) */
+  readonly axes: readonly number[];
+  /** the offset after them (3 numbers, mm) */
+  readonly origin: readonly number[];
 }
 
-/** What setObjectTexture changes of a part. */
-export type TexturePartChange = Partial<Pick<TexturePart, "texture" | "offsetU" | "offsetV" | "scaleU" | "scaleV" | "rotation">>;
+/** What setObjectTexture changes of a part. `mapType` takes "plane", "autoPlane", "sphere", "cylinder", "perimeter" or "surfaceUV". */
+export type TexturePartChange = Partial<Pick<TexturePart,
+  "texture" | "mapType" | "offsetU" | "offsetV" | "scale" | "rotation" | "radius" | "flip" | "repeatH" | "repeatV" | "longestEdge" | "worldZ" | "worldOrigin" | "axes" | "origin">>;
 
 /** One container's contents in a model brought in whole (addMeshModel): meshes, groups and placed symbols. */
 export interface MeshNode {
@@ -1357,6 +1428,14 @@ export interface VwxDocument {
   symbolShapes(index: number): Shape[];
   /** Every resource in the library (symbols, textures, hatches, styles, ...). */
   resources(): ResourceInfo[];
+  /**
+   * A texture's shaders in file order, families 1 to 4 only (its colour, reflectivity, transparency
+   * and bump shaders; the preview and shadow options are left out). [] for a texture with none that
+   * reads. Throws for an index that is not a texture.
+   */
+  textureShaders(index: number): TextureShader[];
+  /** How many objects' texture settings name a texture (as a part's texture) and how many classes take it. */
+  textureUses(index: number): { objects: number; classes: number };
   /** A worksheet's cells as stored (`index` its name index); null when there's none or it can't be read. */
   worksheetContents(index: number): WorksheetContents | null;
   /**
@@ -1436,6 +1515,10 @@ export interface VwxDocument {
   symbolRecords(index: number): ObjectRecord[];
   /** An object's texture parts; empty when it has none yet but can take a texture, null when it can't. */
   objectTextures(id: string): TexturePart[] | null;
+  /** The parts an object could be given beyond those it holds (4, 5, 6 for an extrude, sweep or multiple extrude), with their names; [] for every other type. */
+  texturePartChoices(id: string): { part: number; name: string }[];
+  /** The texture part a face of object `id` belongs to, given its normal in the model's frame: 4 Top, 5 Bottom or 6 Sides for an extrude, sweep or multiple extrude, else OVERALL (3). */
+  texturePartOfFace(id: string, normal: readonly [number, number, number]): number;
   /** The stories, the top one first. */
   stories(): StoryInfo[];
   /** The Renderworks cameras placed in the drawing (on layers or in viewports), in file order. */
@@ -1614,6 +1697,13 @@ export interface EditSession {
    * mostly are.
    */
   setObjectTexture(id: string, part: number, change: TexturePartChange): void;
+  /**
+   * Gives an object an override texture part (one of texturePartChoices): a copy of its whole-object
+   * part's values, after the parts it has. One undo step.
+   */
+  addTexturePart(id: string, part: number): void;
+  /** Removes an override part (4, 5 or 6 of an extrude, sweep or multiple extrude). One undo step. */
+  removeTexturePart(id: string, part: number): void;
   /**
    * Changes a light object: whether it is on, its kind, colour (#rrggbb), brightness (1 = 100 %), a
    * spot's spread and beam (a spread narrowed past the beam takes the beam with it), where it is and
@@ -2028,6 +2118,44 @@ export interface EditSession {
    * shaders' record formats brought along where the drawing has none. Its name index.
    */
   addImageTexture(name: string, spec: ImageTextureSpec): number;
+  /**
+   * Sets a texture's size in millimetres (its real-world width). Each image under it that shows the
+   * old size (in inches, to 1e-9) shows the new one too. Throws for mm that is not finite and above 0.
+   */
+  setTextureSize(index: number, mm: number): void;
+  /**
+   * Sets one field of the texture's shader of `family` (the one textureShaders shows). Fields 0 to 2
+   * (Family, Prototype, Version) can't be set; a text field can't either. Throws when the texture has
+   * no such shader, the field is out of range, or the value isn't of the field's type.
+   */
+  setShaderField(index: number, family: TextureShader["family"], field: number, value: number | boolean): void;
+  /**
+   * Sets the texture's colour (#rrggbb). A Plain colour's R, G, B are written, or an Image colour's
+   * filter colour; channels are 0–255, or 0–65535 when the record's channels already are. Throws for
+   * any other colour kind or a texture with no colour shader.
+   */
+  setTextureColor(index: number, rgb: string): void;
+  /**
+   * Sets a Plain transparency's opacity to `percent` (0–100), adding a Plain transparency shader copied
+   * from the drawing's "NNAMaxon Plain Transparency" format when the texture has none. `null` removes
+   * its Plain transparency shader (and does nothing when it has none). Throws for another kind.
+   */
+  setTextureOpacity(index: number, percent: number | null): void;
+  /** Removes the texture's shaders of `family` (reflectivity, transparency or bump) with what is under them. The colour shader can't go. */
+  removeTextureShader(index: number, family: "reflectivity" | "transparency" | "bump"): void;
+  /**
+   * A new texture named `name` whose one shader is a plain colour (#rrggbb) of `sizeMm` millimetres,
+   * with two PNG previews (256 and 64 pixels). Its name index.
+   */
+  createColorTexture(name: string, rgb: string, sizeMm: number, previews: { large: Uint8Array; small: Uint8Array }): number;
+  /** Deletes a texture and its name. Throws, naming how many objects and classes use it, when any does. */
+  deleteTexture(index: number): void;
+  /**
+   * Replaces a texture's own preview pictures, by width as previewSizes lists them (a PNG of each
+   * size). Its shaders and everything else of it stay as they are. One undo step. Throws for an index
+   * that is not a texture, or a PNG that isn't of its preview's size.
+   */
+  setTexturePreviews(index: number, previews: ReadonlyMap<number, Uint8Array>): void;
   /** Convert to Group: symbol instances and plug-in objects replaced by groups of their contents (a plug-in's drawing), placed alike; the groups' ids */
   convertToGroups(ids: string[]): string[];
   /**

@@ -75,7 +75,8 @@ import { RESOURCE_TYPES, readResources } from "./resources.ts";
 import { isStory, readStory } from "./stories.ts";
 import { HELIODON, readHeliodonSun } from "./sun.ts";
 import { Rec, buildTree, joinRecords, splitRecords } from "./records.ts";
-import { TAKES_TEXTURE, readTextureParts, textureDict } from "./texmap.ts";
+import { OVERALL, OVERRIDE_PARTS, OVERRIDE_TYPES, TAKES_TEXTURE, facePartOf, isTextureDict, partName, readTextureParts, rebuildsExactly, textureDict } from "./texmap.ts";
+import { TEXTURE, textureShaderList } from "./textureEdit.ts";
 import {
   MM_PER_POINT,
   WORKSHEET,
@@ -102,6 +103,7 @@ import type {
   SymbolMember,
   ObjectRecord,
   ResourceInfo,
+  TextureShader,
   DocumentInfo,
   DropShadow,
   LayerInfo,
@@ -1747,8 +1749,23 @@ export class Model implements VwxDocument {
   }
 
   resources(): ResourceInfo[] {
-    this.resourceList ??= readResources(this.recs, this.names);
+    this.resourceList ??= readResources(this.recs, this.names, (index) => this.formatDef(index));
     return this.resourceList;
+  }
+
+  textureShaders(index: number): TextureShader[] {
+    const tex = this.recs.find((r) => r.type === TEXTURE && r.nameIndex === index);
+    if (!tex) throw new Error(`no texture #${index}`);
+    return textureShaderList(tex, (i) => this.formatDef(i));
+  }
+
+  textureUses(index: number): { objects: number; classes: number } {
+    let objects = 0;
+    for (const r of this.recs) {
+      if (isTextureDict(r) && readTextureParts(r.data, r.parent?.type ?? -1).some((p) => p.texture === index)) objects++;
+    }
+    const classes = [...this.classRecs.values()].filter((c) => c.data.length >= CLASS_TEXTURE + 4 && i32(c.data, CLASS_TEXTURE) === index).length;
+    return { objects, classes };
   }
 
   /**
@@ -2019,8 +2036,22 @@ export class Model implements VwxDocument {
     const r = this.rec(id);
     if (!r) return null;
     const dict = textureDict(r);
-    if (dict) return readTextureParts(dict.data);
+    if (dict) return readTextureParts(dict.data, r.type);
     return TAKES_TEXTURE.has(r.type) ? [] : null;
+  }
+
+  texturePartChoices(id: string): { part: number; name: string }[] {
+    const r = this.rec(id);
+    const dict = r && OVERRIDE_TYPES.has(r.type) ? textureDict(r) : null;
+    if (!r || !dict || !rebuildsExactly(dict.data)) return [];
+    const held = readTextureParts(dict.data, r.type);
+    if (!held.some((p) => p.part === OVERALL)) return [];
+    return OVERRIDE_PARTS.filter((part) => !held.some((p) => p.part === part)).map((part) => ({ part, name: partName(part, r.type) }));
+  }
+
+  texturePartOfFace(id: string, normal: readonly [number, number, number]): number {
+    const r = this.rec(id);
+    return r ? facePartOf(r.type, r.data, normal) : OVERALL;
   }
 
   records(id: string): ObjectRecord[] {

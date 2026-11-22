@@ -38,11 +38,15 @@
 // shader comes first. The texture's
 // size (the real-world width its image covers) is an f64 at +0x5a, in inches
 // as far as the demo files show (a "24x24 tile" texture reads 24).
+// Each shader's family and prototype (colour, reflectivity, transparency, bump) are
+// read from its 48's first three fields by textureShaders.ts into ResourceInfo.shaders.
 
 import { readAttrs } from "./attrs.ts";
 import { concat, f64, setF64, setU16, setU32, setU64, u16, u32 } from "./bytes.ts";
 import { decodeShape } from "./geometry.ts";
+import { type FormatDef, recordFormat } from "./params.ts";
 import type { Rec } from "./records.ts";
+import { readShaderRecord, type ShaderRecord, textureShaders } from "./textureShaders.ts";
 import type { GradientStop, HatchFill, HatchLine, ResourceInfo, ResourceKind, Shape, TextStyleDef, TileFill } from "./types.ts";
 
 export const RESOURCE_TYPES: ReadonlyMap<number, ResourceKind> = new Map<number, ResourceKind>([
@@ -69,6 +73,12 @@ const SHADER_IMAGE_TYPE = 93;
 const RECORD_TYPE = 48;
 const RECORD_FORMAT = 0x50;
 const FOLDER_TYPE = 92;
+/** a type-76 list: where a texture shader's record formats sit when its tag (at +0x50) is "TMFH" */
+const LIST_TYPE = 76;
+const LIST_TAG = 0x50;
+const SHADER_FORMAT_LIST = "TMFH";
+/** a texture shader's settings formats by name, for a format whose list is not known */
+const SHADER_FORMAT_NAME = /^NNA(Maxon |Preview Object Options$|Shadow Options$)/;
 const IMAGE_SCAN_START = 0xe0;
 const IMAGE_SCAN_END = 0x140;
 const TEXTURE_SIZE = 0x5a;
@@ -459,6 +469,16 @@ export function newGradient(like: Uint8Array, stops: readonly GradientStop[]): U
   return writeGradient(head, stops);
 }
 
+/**
+ * Whether a record format is one of a texture shader's settings formats: its list is tagged TMFH.
+ * Where the format has no list in the file, its name decides.
+ */
+function isShaderFormat(r: Rec, name: string): boolean {
+  const list = r.parent;
+  if (!list) return SHADER_FORMAT_NAME.test(name);
+  return list.type === LIST_TYPE && list.data.length >= LIST_TAG + 4 && String.fromCharCode(...list.data.subarray(LIST_TAG, LIST_TAG + 4)) === SHADER_FORMAT_LIST;
+}
+
 function folderOf(r: Rec, names: ReadonlyMap<number, string>): string {
   const parts: string[] = [];
   for (let p = r.parent; p; p = p.parent) {
@@ -467,7 +487,20 @@ function folderOf(r: Rec, names: ReadonlyMap<number, string>): string {
   return parts.filter(Boolean).join("/");
 }
 
-export function readResources(recs: Iterable<Rec>, names: ReadonlyMap<number, string>): ResourceInfo[] {
+/** A texture's shaders (its type-48 children, read through their formats: formatOf gives a format by its name index). */
+function textureShadersOf(r: Rec, formatOf: (index: number) => FormatDef | null): NonNullable<ResourceInfo["shaders"]> {
+  const list: ShaderRecord[] = [];
+  for (const c of r.children) {
+    if (c.type !== RECORD_TYPE || c.data.length < RECORD_FORMAT + 2) continue;
+    const fmt = formatOf(recordFormat(c.data));
+    const shader = fmt ? readShaderRecord(c.data, fmt) : null;
+    if (shader) list.push(shader);
+  }
+  return textureShaders(list);
+}
+
+/** formatOf gives a record format's definition by its name index, or null (textures' shaders are read through it). */
+export function readResources(recs: Iterable<Rec>, names: ReadonlyMap<number, string>, formatOf: (index: number) => FormatDef | null = () => null): ResourceInfo[] {
   const out: ResourceInfo[] = [];
   for (const r of recs) {
     const kind = RESOURCE_TYPES.get(r.type);
@@ -484,6 +517,7 @@ export function readResources(recs: Iterable<Rec>, names: ReadonlyMap<number, st
       previewMime: p?.mime ?? "",
       previewSizes: r.children.flatMap((c) => (c.type === PREVIEW_TYPE ? (previewSize(c.data) ?? []) : [])),
     };
+    if (kind === "record-format" && isShaderFormat(r, name)) info.shaderFormat = true;
     if (kind === "hatch") {
       const hatch = hatchFill(r);
       if (hatch) info.hatch = hatch;
@@ -501,6 +535,7 @@ export function readResources(recs: Iterable<Rec>, names: ReadonlyMap<number, st
       if (style) info.textStyle = style;
     }
     if (kind === "texture") {
+      info.shaders = textureShadersOf(r, formatOf);
       const { image: img, mask } = textureImages(r, names);
       if (mask) {
         info.mask = mask.bytes;
@@ -511,9 +546,10 @@ export function readResources(recs: Iterable<Rec>, names: ReadonlyMap<number, st
         info.imageMime = img.mime;
         const px = imagePixels(img.bytes, img.mime);
         if (px && px.width > 0 && px.height > 0) info.imagePixels = px;
-        const size = r.data.length >= TEXTURE_SIZE + 8 ? f64(r.data, TEXTURE_SIZE) : 0;
-        info.imageSize = Number.isFinite(size) && size > 0 ? size * MM_PER_INCH : 0;
       }
+      // a plain colour has no image but still has the size its shader covers
+      const size = r.data.length >= TEXTURE_SIZE + 8 ? f64(r.data, TEXTURE_SIZE) : 0;
+      info.imageSize = Number.isFinite(size) && size > 0 ? size * MM_PER_INCH : 0;
     }
     out.push(info);
   }

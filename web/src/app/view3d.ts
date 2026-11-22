@@ -85,6 +85,20 @@ export interface FaceHit {
   readonly objectId: string | null;
 }
 
+/** The textured face under the pointer: where it is hit, and the triangle hit with its texture coordinates. */
+export interface TextureHit {
+  readonly objectId: string | null;
+  readonly point: Vec3;
+  /** the face's normal, toward the viewer */
+  readonly normal: Vec3;
+  /** the triangle's three corners, model mm (9 numbers) */
+  readonly corners: readonly number[];
+  /** (u, v) at each corner in fractions of the image, v up (6 numbers) */
+  readonly uvs: readonly number[];
+  /** the texture's resource index */
+  readonly texture: number;
+}
+
 /**
  * A 2D tool drawing in the 3D view, on the active layer's plane (draw3d.ts): it takes the left button's
  * presses, moves and releases, and every move of the pointer over the view, in place of orbiting and
@@ -204,6 +218,8 @@ const MAX_DASHES = 8;
 const SPOT_SHADOW_HALF_ANGLE = (75 * Math.PI) / 180;
 /** image size assumed for a texture that does not give one (mm) */
 const DEFAULT_IMAGE_MM = 1000;
+/** a face group's transform when it is not moved: the world corners are then read as they are */
+const IDENTITY_MATRIX = new THREE.Matrix4();
 /** where a texture's mask is grey enough to cut the face away (0 black, 1 white) */
 const CUTOUT_ALPHA = 0.5;
 /** pointer travel (CSS px) that still counts as a click rather than a drag: a mouse's, and a finger's, which wobbles more */
@@ -270,6 +286,8 @@ interface FaceGroup {
   readonly runs: Run[];
   readonly texture: number;
   readonly recessed: boolean;
+  /** the directions the texture does not repeat in ("u", "v", "uv"), or "" when it repeats both ways: see faceKey */
+  readonly clamp: string;
   /** its texture is cut out by a mask (plants, image props): drawn textured in Shaded too, as a card it would be wrong */
   readonly cutout: boolean;
   readonly shaded: THREE.MeshLambertMaterial;
@@ -295,6 +313,7 @@ interface FaceBuild {
   readonly opacity: number;
   readonly recessed: boolean;
   readonly texture: number;
+  readonly clamp: string;
   readonly imageSize: number;
   tris: number;
   fill: number;
@@ -405,6 +424,8 @@ export class View3D {
   private readonly textures = new Map<number, THREE.Texture>();
   /** the textures' transparency masks, by the same index */
   private readonly masks = new Map<number, THREE.Texture>();
+  /** copies of the textures and masks whose faces do not repeat, by index, direction and kind (see textureFor) */
+  private readonly clamped = new Map<string, THREE.Texture>();
   private readonly loading = new Set<number>();
   private readonly faceByMesh = new Map<THREE.Object3D, FaceGroup>();
   private resourceByIndex = new Map<number, ResourceInfo>();
@@ -713,8 +734,8 @@ export class View3D {
       opacity: g.shaded.opacity,
       texture: g.texture,
       resource: this.resourceByIndex.get(g.texture) ?? null,
-      map: this.textures.get(g.texture) ?? null,
-      alphaMap: this.masks.get(g.texture) ?? null,
+      map: this.textureFor(this.textures, g.texture, g.clamp, "map"),
+      alphaMap: this.textureFor(this.masks, g.texture, g.clamp, "mask"),
       recessed: g.recessed,
       objectOf: this.ownerLookup(g.runs),
     }));
@@ -1476,6 +1497,113 @@ export class View3D {
     // the face's first vertex is 3 x its triangle number (see build)
     const run = findRun(group.runs, Math.floor(hit.face.a / 3));
     return run ? (this.objectIds[run.obj] ?? null) : null;
+  }
+
+  /**
+   * The textured face under the pointer of `e`: the triangle hit, its corners in world mm and its
+   * texture coordinates (v up, as the mapping has them). Null over an untextured face, a face whose
+   * group has no uv attribute, or empty space.
+   */
+  textureHitAt(e: MouseEvent): TextureHit | null {
+    const hit = this.hitAt(e);
+    if (!hit?.face) return null;
+    const group = this.faceByMesh.get(hit.object);
+    const uv = group?.mesh.geometry.getAttribute("uv") as THREE.BufferAttribute | undefined;
+    if (!group || !uv) return null;
+    const xyz = group.mesh.geometry.getAttribute("position").array as Float32Array;
+    const uvs = uv.array as Float32Array;
+    const m = hit.object.matrixWorld;
+    const corners: number[] = [];
+    const out: number[] = [];
+    // the index holds vertex numbers: vertex v's position is xyz[3v..], its uv uvs[2v..]
+    for (const vertex of [hit.face.a, hit.face.b, hit.face.c]) {
+      const p = new THREE.Vector3(xyz[3 * vertex], xyz[3 * vertex + 1], xyz[3 * vertex + 2]).applyMatrix4(m);
+      corners.push(p.x, p.y, p.z);
+      // build stores v as 1 − v (ownUvs), so it is turned back here
+      out.push(uvs[2 * vertex], 1 - uvs[2 * vertex + 1]);
+    }
+    const n = hit.face.normal.clone().transformDirection(m);
+    const eye = this.camera === this.persp ? this.camera.position.clone().sub(hit.point) : new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 2);
+    if (n.dot(eye) < 0) n.negate();
+    return {
+      objectId: this.objectOfHit(hit),
+      point: [hit.point.x, hit.point.y, hit.point.z],
+      normal: [n.x, n.y, n.z],
+      corners,
+      uvs: out,
+      texture: group.texture,
+    };
+  }
+
+  /**
+   * Every triangle of the object's faces (its runs in every face group), as world corners: 9 numbers a
+   * triangle, model mm. Empty when the object has no faces in the model.
+   */
+  objectTriangles(id: string): Float32Array {
+    const obj = this.objectIds.indexOf(id);
+    let count = 0;
+    for (const g of this.faces) for (const r of g.runs) if (r.obj === obj) count += r.end - r.start;
+    const out = new Float32Array(count * 9);
+    let at = 0;
+    for (const g of this.faces) {
+      for (const r of g.runs) {
+        if (r.obj !== obj) continue;
+        for (let t = r.start; t < r.end; t++) at = this.worldCorners(g, t, out, at);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The triangle of object `id` whose world corners are `corners` (as objectTriangles gives them), with
+   * its texture coordinates as textureHitAt gives them; null when the model has no such triangle, or
+   * none of its faces has uvs. `point` and `normal` are carried over as the caller holds them.
+   */
+  textureTriangleOf(id: string, corners: readonly number[], point: Vec3, normal: Vec3): TextureHit | null {
+    const obj = this.objectIds.indexOf(id);
+    if (obj < 0) return null;
+    const world = new Float32Array(9);
+    for (const g of this.faces) {
+      const uv = g.mesh.geometry.getAttribute("uv") as THREE.BufferAttribute | undefined;
+      if (!uv) continue;
+      for (const r of g.runs) {
+        if (r.obj !== obj) continue;
+        for (let t = r.start; t < r.end; t++) {
+          this.worldCorners(g, t, world, 0);
+          let same = true;
+          for (let i = 0; i < 9 && same; i++) same = Math.abs(world[i] - corners[i]) <= 1e-3;
+          if (!same) continue;
+          const uvs = uv.array as Float32Array;
+          const out: number[] = [];
+          for (let k = 0; k < 3; k++) out.push(uvs[2 * (3 * t + k)], 1 - uvs[2 * (3 * t + k) + 1]);
+          return { objectId: id, point, normal, corners: Array.from(world), uvs: out, texture: g.texture };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Writes triangle `t` of a face group's world corners into `out` at `at`; returns the index after them. */
+  private worldCorners(g: FaceGroup, t: number, out: { [i: number]: number }, at: number): number {
+    const xyz = g.mesh.geometry.getAttribute("position").array as Float32Array;
+    const m = g.mesh.matrixWorld;
+    const identity = m.equals(IDENTITY_MATRIX);
+    for (let k = 0; k < 3; k++) {
+      const i = 3 * (3 * t + k);
+      let x = xyz[i];
+      let y = xyz[i + 1];
+      let z = xyz[i + 2];
+      if (!identity) {
+        const p = new THREE.Vector3(x, y, z).applyMatrix4(m);
+        x = p.x;
+        y = p.y;
+        z = p.z;
+      }
+      out[at++] = x;
+      out[at++] = y;
+      out[at++] = z;
+    }
+    return at;
   }
 
   /** Draws line segments (6 numbers each, world mm) over the model: what a tool has chosen, and fainter what it could; null takes them away. */
@@ -2320,6 +2448,8 @@ export class View3D {
     }
     for (const tex of this.textures.values()) releaseTexture(tex);
     for (const tex of this.masks.values()) releaseTexture(tex);
+    for (const tex of this.clamped.values()) releaseTexture(tex);
+    this.clamped.clear();
     this.masks.clear();
     this.faces = [];
     this.edges = [];
@@ -2342,7 +2472,7 @@ export class View3D {
     for (const m of meshes) {
       const tris = Math.floor(m.triangles.length / 9);
       if (tris > 0) {
-        const { key, opacity, texture } = this.faceKey(m);
+        const { key, opacity, texture, clamp } = this.faceKey(m);
         let fb = faceBuilds.get(key);
         if (!fb) {
           fb = {
@@ -2350,6 +2480,7 @@ export class View3D {
             opacity,
             recessed: m.recessed === true,
             texture,
+            clamp,
             imageSize: this.imageSizeOf(texture) ?? DEFAULT_IMAGE_MM,
             tris: 0,
             fill: 0,
@@ -2428,7 +2559,7 @@ export class View3D {
     mesh.castShadow = fb.opacity >= 0.95;
     mesh.receiveShadow = true;
     const cutout = textured !== null && this.resourceByIndex.get(fb.texture)?.mask !== undefined;
-    const group: FaceGroup = { mesh, index, runs: fb.runs, texture: fb.texture, recessed: fb.recessed, cutout, shaded, textured, plain: null };
+    const group: FaceGroup = { mesh, index, runs: fb.runs, texture: fb.texture, recessed: fb.recessed, clamp: fb.clamp, cutout, shaded, textured, plain: null };
     this.scene.add(mesh);
     this.faces.push(group);
     this.faceByMesh.set(mesh, group);
@@ -2450,12 +2581,16 @@ export class View3D {
     this.edges.push({ lines, index, runs: eb.runs, dashed: null, sketch: null });
   }
 
-  /** Merge key of a mesh: colour, opacity and the texture when it has an image or a preview to take a colour from. */
-  private faceKey(m: Mesh3D): { key: string; opacity: number; texture: number } {
+  /**
+   * Merge key of a mesh: colour, opacity, the texture when it has an image or a preview to take a colour
+   * from, and the directions its texture does not repeat in (so clamped faces form their own group).
+   */
+  private faceKey(m: Mesh3D): { key: string; opacity: number; texture: number; clamp: string } {
     const opacity = Math.min(1, Math.max(0, m.opacity));
     const res = this.resourceByIndex.get(m.texture);
     const texture = res?.image?.length || res?.preview?.length ? m.texture : -1;
-    return { key: `${m.color}|${opacity}|${texture}|${m.recessed ? "r" : ""}`, opacity, texture };
+    const clamp = texture >= 0 && m.textureClamp ? `${m.textureClamp.u ? "u" : ""}${m.textureClamp.v ? "v" : ""}` : "";
+    return { key: `${m.color}|${opacity}|${texture}|${m.recessed ? "r" : ""}|${clamp}`, opacity, texture, clamp };
   }
 
   /** Image size in mm of a texture that has an image, or null. */
@@ -2654,6 +2789,26 @@ export class View3D {
     return tex;
   }
 
+  /**
+   * The texture (or mask) a group's faces show. A group whose faces do not repeat across (u) or up (v)
+   * gets a copy of it that clamps those directions to the edge: the image once, its edge pixels running on.
+   * Copies are kept per index, directions and kind, and released with the originals.
+   */
+  private textureFor(source: Map<number, THREE.Texture>, idx: number, clamp: string, kind: "map" | "mask"): THREE.Texture | null {
+    const tex = source.get(idx);
+    if (!tex || !clamp) return tex ?? null;
+    const key = `${idx}|${clamp}|${kind}`;
+    let copy = this.clamped.get(key);
+    if (!copy) {
+      copy = tex.clone();
+      copy.wrapS = clamp.includes("u") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+      copy.wrapT = clamp.includes("v") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+      copy.needsUpdate = true;
+      this.clamped.set(key, copy);
+    }
+    return copy;
+  }
+
   /** Gives the faces of a texture without an image the average colour of its preview. */
   private loadPreviewColour(idx: number, preview: Uint8Array, mime: string): void {
     const serial = this.serial;
@@ -2720,10 +2875,10 @@ export class View3D {
           // the image shows as it is, so the material colour goes to white; a mask cuts it out
           for (const f of this.faces) {
             if (f.texture === idx && f.textured) {
-              f.textured.map = tex;
+              f.textured.map = this.textureFor(this.textures, idx, f.clamp, "map");
               f.textured.color.set(0xffffff);
               if (mask) {
-                f.textured.alphaMap = mask;
+                f.textured.alphaMap = this.textureFor(this.masks, idx, f.clamp, "mask");
                 f.textured.alphaTest = CUTOUT_ALPHA;
               }
               f.textured.userData.ready = true;

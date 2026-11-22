@@ -12,7 +12,7 @@
 import { ATTR_END, BLACK, BY_CLASS, BY_CLASS_BITS, BY_CLASS_KEYS, CLASS_TEXT_STYLE, CLASS_TEXTURE, WHITE, addTableColors, byClassGroup, readAttrs, writeAttrs, writeClassAttrs, writeLineType } from "./attrs.ts";
 import { concat, encodeUtf16, f64, i16, i32, setF64, setI16, setI32, setU16, setU32, setU64, u16, u32, u64 } from "./bytes.ts";
 import { WallInserts, type HoleSize, type PlanLike, type WallInsertPlace } from "./wallInserts.ts";
-import { worksheetImageTemplate, symbolDefinitionTemplate, symbolLibraryTemplate, builtinTemplates, imageTexture, shaderFormatList, extrudeShell as builtinExtrudeShell, meshShell as builtinMeshShell, pluginTemplate, poly3dHead as builtinPoly3dHead, WALL_SHELL_LENGTH, plainWall, wallShell, viewportShell as builtinViewportShell, recordFormatTemplate, type Template } from "./builtins.ts";
+import { worksheetImageTemplate, symbolDefinitionTemplate, symbolLibraryTemplate, builtinTemplates, imageTexture, shaderFormatList, extrudeShell as builtinExtrudeShell, meshShell as builtinMeshShell, pluginTemplate, poly3dHead as builtinPoly3dHead, WALL_SHELL_LENGTH, plainWall, wallShell, viewportShell as builtinViewportShell, recordFormatTemplate, colorTexture, type Template } from "./builtins.ts";
 import {
   FILL_MAPPING,
   LOCUS,
@@ -135,6 +135,8 @@ import { writeLayerView } from "./layerView.ts";
 import { writeNameTable } from "./names.ts";
 import { RECORD, RECORD_FORMAT, encodeFormat, encodePluginFormat, encodeRecord, readFormat, readValues, recordFormat, writeValue, type FormatDef } from "./params.ts";
 import { NEXT_MARK, Rec, newGuid } from "./records.ts";
+import { FAMILY_NUMBER, HOLDER_SIZE_AT, IMAGE_HOLDER, TEXTURE_SIZE_AT, checkShaderValue, channelScale, f64At, firstOf, parseRgb, shaderEntries, withF64, writeShaderField, type ShaderEntry } from "./textureEdit.ts";
+import { PLAIN_COLOR_LAYOUT, PLAIN_TRANSPARENCY_LAYOUT, IMAGE_COLOR_LAYOUT, sameLayout, shaderKind } from "./textureShaders.ts";
 import { DATABASE_BLOCK, DATABASE_OBJECTS, DATABASE_ORDER, IMAGE_BOUNDS, IMAGE_FRAME, MM_PER_POINT, SHEET_COUNTS, SHEET_PLACED, SHEET_PLACED_BIT, WORKSHEET_IMAGE, newWorksheetRecord, readWorksheet, readWorksheetImage, writeWorksheetCell, writeWorksheetImage } from "./worksheet.ts";
 import { blankWorksheetTemplate, blockTemplate } from "./worksheetNew.ts";
 import { FormulaError, isError } from "./formula/ast.ts";
@@ -162,9 +164,29 @@ import { SOURCE_TOLERANCE, type SourcePoly, sourceDataProblems } from "./sourceD
 import { intersectMeshes, MAX_CSG_TRIANGLES, subtractMeshes } from "./csg.ts";
 import { facesOf } from "./faces3d.ts";
 import { deviceLightValues, isLightingDevice, readDeviceLight } from "./lightingDevice.ts";
-import { isPathGroup, isProfileGroup, objectTriangles, writeLight } from "./model3d.ts";
+import { isPathGroup, isProfileGroup, mappingBox, objectTriangles, writeLight } from "./model3d.ts";
 import { meshTriangleCount, simplifiedMesh } from "./meshSimplify.ts";
-import { OVERALL, TAKES_TEXTURE, holdsParts, isTextureDict, newTextureDict, newUvMapDict, newUvTextureDict, partLike, readTextureParts, tailValues, textureDict, writeTexturePart } from "./texmap.ts";
+import {
+  addTexturePartTo,
+  holdsParts,
+  isTextureDict,
+  newTextureDict,
+  newUvMapDict,
+  newUvTextureDict,
+  OVERALL,
+  OVERRIDE_PARTS,
+  OVERRIDE_TYPES,
+  partLike,
+  readTextureParts,
+  removeTexturePartFrom,
+  TAKES_TEXTURE,
+  TEXTURE_BY_CLASS,
+  TEXTURE_NONE,
+  tailValues,
+  textureDict,
+  WRITABLE_MAP_TYPES,
+  writeTexturePart,
+} from "./texmap.ts";
 import { RESOURCE_TYPES, TEXT_STYLE_TYPE, newGradient, newTextStyle, previewSize, readTextStyle, writeGradient, writeHatch, writePreview, writeTextStyle } from "./resources.ts";
 import { DROP_SHADOW, NEW_SHADOW, SHADOW_BYTES, readDropShadow, writeDropShadow } from "./shadow.ts";
 import { isStory, isStoryList, newStory, readStory, writeStory } from "./stories.ts";
@@ -216,6 +238,7 @@ import type {
   TextStyleSpec,
   TextureData,
   ImageTextureSpec,
+  TextureShader,
   TexturePart,
   TexturePartChange,
   Vec3,
@@ -851,6 +874,27 @@ function linearDimension(r: Rec): LinearDimension | null {
 function readableAngle(u: Pt): number {
   const deg = (Math.atan2(u.y, u.x) * 180) / Math.PI;
   return deg > 90 ? deg - 180 : deg <= -90 ? deg + 180 : deg;
+}
+
+/**
+ * The placement Vectorworks gives a sphere or cylinder mapping when it is chosen: the origin at the
+ * middle of the object's box (its bottom middle for a cylinder), identity axes, and the radius half
+ * the larger of its x and y extents. Written only when the mapping changes to one of those kinds and
+ * the change gives none of axes, origin and radius; `current` is the part's mapping now, if it has one.
+ */
+function defaultRadialMapping(doc: Model, r: Rec, current: TexturePart | undefined, change: TexturePartChange): TexturePartChange {
+  if (change.mapType !== "cylinder" && change.mapType !== "sphere") return change;
+  if (current?.mapType === change.mapType) return change;
+  if (change.axes !== undefined || change.origin !== undefined || change.radius !== undefined) return change;
+  const box = mappingBox(doc, r);
+  if (!box) return change;
+  const [x0, y0, z0] = box.min;
+  const [x1, y1, z1] = box.max;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const cz = change.mapType === "cylinder" ? z0 : (z0 + z1) / 2;
+  const extent = Math.max(x1 - x0, y1 - y0);
+  return { ...change, axes: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [-cx, -cy, -cz], ...(extent > 0 ? { radius: extent / 2 } : {}) };
 }
 
 export class Session implements EditSession {
@@ -1967,12 +2011,21 @@ export class Session implements EditSession {
   setObjectTexture(id: string, part: number, change: TexturePartChange): void {
     const r = this.object(id);
     const t = change.texture;
-    if (t !== undefined && (!Number.isInteger(t) || t < -1 || (t > 0 && !this.textureLookup().textures.has(t)))) throw new Error(`no texture #${t}`);
-    for (const v of [change.offsetU, change.offsetV, change.scaleU, change.scaleV, change.rotation]) {
+    if (t !== undefined && (!Number.isInteger(t) || t < TEXTURE_BY_CLASS || (t > TEXTURE_NONE && !this.textureLookup().textures.has(t)))) throw new Error(`no texture #${t}`);
+    for (const v of [change.offsetU, change.offsetV, change.scale, change.rotation, change.radius, ...(change.axes ?? []), ...(change.origin ?? [])]) {
       if (v !== undefined && !Number.isFinite(v)) throw new Error("texture placement takes finite numbers");
     }
-    if (change.scaleU === 0 || change.scaleV === 0) throw new Error("a texture's scale can't be 0");
+    if (change.scale === 0) throw new Error("a texture's scale can't be 0");
+    if (change.radius !== undefined && change.radius < 0) throw new Error("a texture's radius can't be negative");
+    if (change.axes !== undefined && change.axes.length !== 9) throw new Error("a texture's axes are 9 numbers");
+    if (change.origin !== undefined && change.origin.length !== 3) throw new Error("a texture's origin is 3 numbers");
+    if (change.mapType !== undefined && !WRITABLE_MAP_TYPES.has(change.mapType)) throw new Error(`a texture can't be mapped as ${change.mapType}`);
+    for (const k of ["flip", "repeatH", "repeatV", "longestEdge", "worldZ", "worldOrigin"] as const) {
+      if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is on or off`);
+    }
     const dict = textureDict(r);
+    const current = dict && holdsParts(dict.data) ? readTextureParts(dict.data, r.type).find((x) => x.part === part) : undefined;
+    change = defaultRadialMapping(this.doc, r, current, change);
     const p = this.plan();
     if (dict && holdsParts(dict.data)) {
       if (!writeTexturePart(p.mut(dict.index), part, change)) throw new Error(`this object has no texture part ${part}`);
@@ -1988,7 +2041,7 @@ export class Session implements EditSession {
         if (l) counts.set(`${l.flag} ${l.mapping}`, (counts.get(`${l.flag} ${l.mapping}`) ?? 0) + 1);
       }
       const [flag, mapping] = ([...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "77 0").split(" ").map(Number);
-      const body = newTextureDict([{ part: OVERALL, texture: t ?? -1, flag, mapping }], dict ? tailValues(dict.data) : [0]);
+      const body = newTextureDict([{ part: OVERALL, texture: t ?? TEXTURE_NONE, flag, mapping }], dict ? tailValues(dict.data) : [0]);
       if (dict) {
         const d = new Uint8Array(0x50 + body.length);
         d.set(p.cur(dict.index).subarray(0, 0x50));
@@ -2001,6 +2054,30 @@ export class Session implements EditSession {
         this.addAux(p, r, d, DROP_SHADOW);
       }
     }
+    this.commit(p, "objects", [id]);
+  }
+
+  /** Gives an object an override texture part (4, 5 or 6 of an extrude, sweep or multiple extrude): a copy of its whole-object part's values. */
+  addTexturePart(id: string, part: number): void {
+    const r = this.object(id);
+    if (!OVERRIDE_TYPES.has(r.type)) throw new Error(`${typeLabel(r.type)} objects don't take texture parts of their own`);
+    if (!OVERRIDE_PARTS.includes(part)) throw new Error(`texture part ${part} isn't one an object can be given`);
+    const dict = textureDict(r);
+    if (!dict || !holdsParts(dict.data)) throw new Error("this object has no texture parts yet: set its texture first");
+    const p = this.plan();
+    p.set(dict.index, addTexturePartTo(p.cur(dict.index), part));
+    this.commit(p, "objects", [id]);
+  }
+
+  /** Removes an override texture part (4, 5 or 6 of an extrude, sweep or multiple extrude). */
+  removeTexturePart(id: string, part: number): void {
+    const r = this.object(id);
+    if (!OVERRIDE_TYPES.has(r.type)) throw new Error(`${typeLabel(r.type)} objects don't take texture parts of their own`);
+    if (!OVERRIDE_PARTS.includes(part)) throw new Error(`texture part ${part} can't be removed`);
+    const dict = textureDict(r);
+    if (!dict || !holdsParts(dict.data)) throw new Error("this object has no texture parts");
+    const p = this.plan();
+    p.set(dict.index, removeTexturePartFrom(p.cur(dict.index), part));
     this.commit(p, "objects", [id]);
   }
 
@@ -5388,9 +5465,10 @@ export class Session implements EditSession {
 
   createRecordFormat(name: string, fields: readonly RecordFieldSpec[]): number {
     if (fields.some((f) => f.from !== undefined)) throw new Error("a new record format has no fields to keep");
-    // a data record format with only its defaults under it: other children (a choice list) aren't copied
+    // a data record format with only its defaults under it: other children (a choice list) aren't copied;
+    // a texture shader's format is not a template, so a drawing's own format stays out of the shader list
     const tpl = this.doc.recs.find(
-      (r) => r.type === RECORD_FORMAT && !readFormat(r.data).parametric && r.children.length === 1 && r.children[0].type === RECORD,
+      (r) => r.type === RECORD_FORMAT && formatList(r) !== SHADER_LIST && !readFormat(r.data).parametric && r.children.length === 1 && r.children[0].type === RECORD,
     );
     // none to copy: a new one, first in the class list so that list's end stays as it is
     const before = tpl ?? this.doc.classList?.children[0];
@@ -5722,6 +5800,204 @@ export class Session implements EditSession {
     if (color.length !== 3 || !color.every(Number.isFinite)) throw new Error("a texture's colour is three numbers");
     if (!(previews.large instanceof Uint8Array) || !(previews.small instanceof Uint8Array)) throw new Error("a texture takes two PNG previews");
     return this.importTexture(name, imageTexture({ image, mime, width, height, size, color, previews }));
+  }
+
+  // ---- texture shaders, size and colour ------------------------------------------------
+
+  /** The texture's name, or its index when it has none. */
+  private textureName(index: number): string {
+    return this.doc.names.get(index) ?? `#${index}`;
+  }
+
+  /** The texture record `index`; throws when there is none. */
+  private textureRec(index: number): Rec {
+    const rec = this.textureLookup().textures.get(index);
+    if (!rec) throw new Error(`no texture #${index}`);
+    return rec;
+  }
+
+  /** A texture's shader records (readable ones), in file order. */
+  private shadersOf(tex: Rec): ShaderEntry[] {
+    return shaderEntries(tex, (i) => this.doc.formatDef(i));
+  }
+
+  /** The first shader of `family` the texture has (the one it shows), or null. */
+  private shaderOf(tex: Rec, family: "color" | "reflectivity" | "transparency" | "bump"): ShaderEntry | null {
+    return firstOf(this.shadersOf(tex), FAMILY_NUMBER[family]) ?? null;
+  }
+
+  /** Removes the shader records `gone` from texture `tex`, with what is under each, and sets the next marks of those left. */
+  private dropShaders(p: Plan, tex: Rec, gone: readonly Rec[]): void {
+    const drop = new Set(gone);
+    for (const r of gone) p.remove(r.index, subtreeEnd(r));
+    const kept = tex.children.filter((c) => !drop.has(c));
+    kept.forEach((c, i) => {
+      const more = i < kept.length - 1;
+      if (c.hasNext !== more) setNext(p.mut(c.index), more);
+    });
+  }
+
+  setTextureSize(index: number, mm: number): void {
+    if (!(mm > 0) || !Number.isFinite(mm)) throw new Error("a texture's size is a number of millimetres above 0");
+    const tex = this.textureRec(index);
+    if (tex.data.length < TEXTURE_SIZE_AT + 8) throw new Error(`texture "${this.textureName(index)}" has no size to change`);
+    const old = f64(tex.data, TEXTURE_SIZE_AT);
+    const inches = mm / 25.4;
+    const p = this.plan();
+    p.set(tex.index, withF64(tex.data, TEXTURE_SIZE_AT, inches));
+    // the images that show the old size show the new one
+    for (const r of tex.walk()) {
+      if (r === tex || r.type !== IMAGE_HOLDER) continue;
+      if (Math.abs(f64At(r.data, HOLDER_SIZE_AT) - old) <= 1e-9 * Math.abs(old)) p.set(r.index, withF64(r.data, HOLDER_SIZE_AT, inches));
+    }
+    this.commit(p, "all", []);
+  }
+
+  setShaderField(index: number, family: TextureShader["family"], field: number, value: number | boolean): void {
+    if (!(family in FAMILY_NUMBER)) throw new Error("a texture's shader is a colour, reflectivity, transparency or bump shader");
+    const key = family as keyof typeof FAMILY_NUMBER;
+    const tex = this.textureRec(index);
+    const e = this.shaderOf(tex, key);
+    if (!e) throw new Error(`texture "${this.textureName(index)}" has no ${key} shader`);
+    if (!Number.isInteger(field) || field < 0 || field >= e.fmt.fields.length) throw new Error(`the ${key} shader has no field ${field}`);
+    if (field < 3) throw new Error("a shader's Family, Prototype and Version can't be set");
+    checkShaderValue(e.fmt, field, value, `field ${field} of the ${key} shader`);
+    const p = this.plan();
+    p.set(e.rec.index, writeShaderField(e.rec.data, e.fmt, field, value));
+    this.commit(p, "all", []);
+  }
+
+  setTextureColor(index: number, rgb: string): void {
+    const [r, g, b] = parseRgb(rgb);
+    const tex = this.textureRec(index);
+    const name = this.textureName(index);
+    const e = this.shaderOf(tex, "color");
+    if (!e) throw new Error(`texture "${name}" has no colour shader`);
+    // the first colour channel: Plain (prototype 40) keeps its colour at 3 to 5, Image (41) its filter at 5 to 7
+    let at: number;
+    if (e.prototype === 40 && sameLayout(e.layout, PLAIN_COLOR_LAYOUT)) at = 3;
+    else if (e.prototype === 41 && sameLayout(e.layout, IMAGE_COLOR_LAYOUT)) at = 5;
+    else throw new Error(`texture "${name}"'s colour is "${shaderKind(e.family, e.prototype)}", whose colour can't be set (only Plain and Image)`);
+    const scale = channelScale([0, 1, 2].map((k) => e.values[at + k].value as number));
+    let d = e.rec.data;
+    [r, g, b].forEach((c, k) => {
+      d = writeShaderField(d, e.fmt, at + k, c * scale);
+    });
+    const p = this.plan();
+    p.set(e.rec.index, d);
+    this.commit(p, "all", []);
+  }
+
+  setTextureOpacity(index: number, percent: number | null): void {
+    if (percent !== null && (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0 || percent > 100)) throw new Error("an opacity is a percentage from 0 to 100");
+    const tex = this.textureRec(index);
+    const name = this.textureName(index);
+    const e = this.shaderOf(tex, "transparency");
+    const plain = e !== null && e.prototype === 10 && sameLayout(e.layout, PLAIN_TRANSPARENCY_LAYOUT);
+    if (e && !plain) {
+      throw new Error(`texture "${name}"'s transparency is "${shaderKind(e.family, e.prototype)}", not Plain, so ${percent === null ? "it isn't removed here" : "its opacity can't be set here"}`);
+    }
+    if (percent === null) {
+      if (!e) return;
+      if (e.rec.children.length) throw new Error(`texture "${name}"'s Plain transparency holds records, so it can't be removed here`);
+      const p = this.plan();
+      this.dropShaders(p, tex, [e.rec]);
+      this.commit(p, "all", []);
+      return;
+    }
+    if (e) {
+      const p = this.plan();
+      p.set(e.rec.index, writeShaderField(e.rec.data, e.fmt, 3, percent / 100));
+      this.commit(p, "all", []);
+      return;
+    }
+    // no transparency yet: a copy of the drawing's own Plain Transparency defaults, with the opacity set
+    const format = this.textureLookup().formats.get("NNAMaxon Plain Transparency");
+    if (!format) throw new Error("this drawing has no Plain Transparency shader to copy: import a texture that has one first");
+    const fmt = readFormat(format.data);
+    if (!sameLayout(fmt.fields.map((f) => f.type), PLAIN_TRANSPARENCY_LAYOUT)) throw new Error('this drawing\'s "NNAMaxon Plain Transparency" record format has other fields, so an opacity can\'t be added');
+    const defaults = format.children.find((c) => c.type === RECORD);
+    if (!defaults || !readValues(defaults.data, fmt)) throw new Error('the record format "NNAMaxon Plain Transparency" has no default values');
+    const kids = tex.children;
+    if (!kids.length) throw new Error(`texture "${name}" has no records to keep a shader in`);
+    // after the last colour, reflectivity, transparency or bump shader, ahead of what follows it (the options)
+    const families = new Set<number>(Object.values(FAMILY_NUMBER));
+    const lastShader = this.shadersOf(tex).filter((s) => families.has(s.family)).at(-1);
+    const after = lastShader ? kids[kids.indexOf(lastShader.rec) + 1] : kids.find((c) => c.type === RECORD);
+    const [copy] = this.instantiate(templateOf(defaults), kids[0].owner);
+    const made = writeShaderField(copy, fmt, 3, percent / 100);
+    const p = this.plan();
+    if (after) {
+      setNext(made, true);
+      p.insert(after.index, [made]);
+    } else {
+      setNext(made, false);
+      const prev = kids[kids.length - 1];
+      if (!prev.hasNext) setNext(p.mut(prev.index), true);
+      p.insert(subtreeEnd(tex) + 1, [made]);
+    }
+    this.commit(p, "all", []);
+  }
+
+  removeTextureShader(index: number, family: "reflectivity" | "transparency" | "bump"): void {
+    if ((family as string) === "color") throw new Error("a texture's colour shader can't be removed: a texture always has one");
+    if (family !== "reflectivity" && family !== "transparency" && family !== "bump") throw new Error("the shader to remove is reflectivity, transparency or bump");
+    const tex = this.textureRec(index);
+    const gone = this.shadersOf(tex).filter((e) => e.family === FAMILY_NUMBER[family]).map((e) => e.rec);
+    if (!gone.length) throw new Error(`texture "${this.textureName(index)}" has no ${family} shader`);
+    const p = this.plan();
+    this.dropShaders(p, tex, gone);
+    this.commit(p, "all", []);
+  }
+
+  createColorTexture(name: string, rgb: string, sizeMm: number, previews: { large: Uint8Array; small: Uint8Array }): number {
+    const [r, g, b] = parseRgb(rgb);
+    if (!(sizeMm > 0) || !Number.isFinite(sizeMm)) throw new Error("a texture's size is a number of millimetres above 0");
+    if (!(previews.large instanceof Uint8Array) || !(previews.small instanceof Uint8Array)) throw new Error("a texture takes two PNG previews");
+    let data = colorTexture({ size: sizeMm, color: [r, g, b], previews });
+    const plain = this.textureLookup().formats.get("NNAMaxon Plain Color");
+    if (plain) {
+      // the drawing's own format, and its defaults with the colour set
+      const fmt = readFormat(plain.data);
+      if (!sameLayout(fmt.fields.map((f) => f.type), PLAIN_COLOR_LAYOUT)) throw new Error('this drawing\'s "NNAMaxon Plain Color" record format has other fields, so a colour texture can\'t be made');
+      const defaults = plain.children.find((c) => c.type === RECORD);
+      const values = defaults ? readValues(defaults.data, fmt) : null;
+      if (!defaults || !values) throw new Error('the record format "NNAMaxon Plain Color" has no default values');
+      const scale = channelScale([0, 1, 2].map((k) => values[3 + k].value as number));
+      let shader = defaults.data;
+      [r, g, b].forEach((c, k) => {
+        shader = writeShaderField(shader, fmt, 3 + k, c * scale);
+      });
+      const t = templateOf(plain);
+      data = {
+        records: data.records.map((x) => (x.format === "NNAMaxon Plain Color" ? { ...x, data: shader } : x)),
+        formats: data.formats.map((f) =>
+          f.name === "NNAMaxon Plain Color" ? { name: f.name, list: formatList(plain), records: t.recs.map((d, i) => ({ data: d, parent: t.parent[i] })) } : f,
+        ),
+      };
+    }
+    return this.importTexture(name, data);
+  }
+
+  setTexturePreviews(index: number, previews: ReadonlyMap<number, Uint8Array>): void {
+    const rec = this.textureRec(index);
+    // the texture's own record is kept, so only its previews change
+    this.rewriteResource(rec, rec.data, previews);
+  }
+
+  deleteTexture(index: number): void {
+    const rec = this.textureRec(index);
+    const name = this.textureName(index);
+    const uses = this.doc.textureUses(index);
+    const parts = [
+      uses.objects && `${uses.objects} object${uses.objects === 1 ? "" : "s"}`,
+      uses.classes && `${uses.classes} class${uses.classes === 1 ? "" : "es"}`,
+    ].filter(Boolean);
+    if (parts.length) throw new Error(`${parts.join(" and ")} use "${name}"; give them another texture first`);
+    this.refuseNamed(name, "deleting");
+    const p = this.plan();
+    this.removeResource(p, rec, index);
+    this.commit(p, "all", []);
   }
 
   /** The drawing's record formats a texture's shaders use (by name, their index), and the ones it lacks; throws when one's fields differ or it has nowhere to go. */
@@ -6711,7 +6987,7 @@ export class Session implements EditSession {
           const format = this.doc.names.get(recordFormat(src.data));
           if (format) entry.format = format;
         } else if (isTextureDict(src)) {
-          const names = readTextureParts(src.data).map((x) => (x.texture > 0 ? (this.doc.names.get(x.texture) ?? "") : ""));
+          const names = readTextureParts(src.data, src.parent?.type ?? -1).map((x) => (x.texture > 0 ? (this.doc.names.get(x.texture) ?? "") : ""));
           if (names.some(Boolean)) entry.textures = names;
         }
         records.push(entry);
@@ -6839,7 +7115,7 @@ export class Session implements EditSession {
         }
         // a texture this drawing lacks leaves the part without one
         g.textures?.forEach((name, k) => {
-          if (name) writeTexturePart(copies[i], readTextureParts(copies[i])[k]?.part ?? -1, { texture: textures.get(name) ?? -1 });
+          if (name) writeTexturePart(copies[i], readTextureParts(copies[i], g.parent >= 0 ? items[g.parent].data[0x19] : -1)[k]?.part ?? -1, { texture: textures.get(name) ?? TEXTURE_NONE });
         });
         if (!g.object) return;
         const d = copies[i];
@@ -7309,7 +7585,7 @@ export class Session implements EditSession {
         block.push(...recsOut);
         roots.push(recsOut[0]);
         const dict = textureDict(r);
-        const whole = dict ? readTextureParts(dict.data).find((t) => t.part === OVERALL) : undefined;
+        const whole = dict ? readTextureParts(dict.data, r.type).find((t) => t.part === OVERALL) : undefined;
         made.push({ id: recOfData(recsOut[0]).guid, whole });
       }
       if (!made.length) throw new Error("nothing is left on that side of the line");
@@ -7320,8 +7596,8 @@ export class Session implements EditSession {
       // each object's texture on its mesh, as Convert to Mesh puts it
       for (const { id, whole } of made) {
         if (!whole) continue;
-        const { texture, offsetU, offsetV, scaleU, scaleV, rotation } = whole;
-        this.setObjectTexture(id, OVERALL, scaleU && scaleV ? { texture, offsetU, offsetV, scaleU, scaleV, rotation } : { texture });
+        const { texture, offsetU, offsetV, scale, rotation } = whole;
+        this.setObjectTexture(id, OVERALL, scale ? { texture, offsetU, offsetV, scale, rotation } : { texture });
       }
       return made.map((m) => m.id);
     });
@@ -7344,7 +7620,7 @@ export class Session implements EditSession {
         // a 2D object stays as it is
         if (!faces.length) continue;
         const dict = textureDict(rec);
-        const whole = dict ? readTextureParts(dict.data).find((t) => t.part === OVERALL) : undefined;
+        const whole = dict ? readTextureParts(dict.data, rec.type).find((t) => t.part === OVERALL) : undefined;
         const p = this.plan();
         const made = this.instantiate(
           meshRecords(
@@ -7362,8 +7638,8 @@ export class Session implements EditSession {
         this.commit(p, "objects", [top]);
         // the object's texture on the whole mesh, mapped as the drawing's meshes mostly are
         if (whole) {
-          const { texture, offsetU, offsetV, scaleU, scaleV, rotation } = whole;
-          this.setObjectTexture(top, OVERALL, scaleU && scaleV ? { texture, offsetU, offsetV, scaleU, scaleV, rotation } : { texture });
+          const { texture, offsetU, offsetV, scale, rotation } = whole;
+          this.setObjectTexture(top, OVERALL, scale ? { texture, offsetU, offsetV, scale, rotation } : { texture });
         }
         out.push(top);
       }
@@ -8685,7 +8961,7 @@ function standExtrude(made: Uint8Array[], r: Rec, box: BBox, height: number, low
   [0, 0, 0].forEach((v, i) => setF64(d, FRAME_OFFSET + 8 * i, v));
   [box.x1, box.y1, height, box.x0, box.y0, low].forEach((v, i) => setF64(d, BOX_3D + 8 * i, v));
   writeBBox(d, box);
-  for (const aux of made.slice(1, -1)) for (const part of isTextureDict(recOfData(aux)) ? readTextureParts(aux) : []) writeTexturePart(aux, part.part, { texture: -1 });
+  for (const aux of made.slice(1, -1)) for (const part of isTextureDict(recOfData(aux)) ? readTextureParts(aux, made[0][0x19]) : []) writeTexturePart(aux, part.part, { texture: TEXTURE_NONE });
 }
 
 const SWEEP_HEADER = 356;

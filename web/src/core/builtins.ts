@@ -255,7 +255,7 @@ const NEXT_MARKER = 0x05792ca4n;
 const EXTRUDE_SCDT = fromHex(
   "54444d4405005343445401001300000001000c00000000000000000001000100000000000000000000",
 );
-/** and a "ttwr" one: the commonest of theirs, its one texture part set to none (−1) */
+/** and a "ttwr" one: the commonest of theirs, its one texture part at −1, the class's texture (TEXTURE_BY_CLASS) */
 const EXTRUDE_TTWR = fromHex(
   "54444d4405007474777208000b01000001003600000002004000000003004a00000004005400000005005b0000000600" +
   "6500000007009b0000000800010100000000000000000800010000000300000008000100000000000000080001000000" +
@@ -443,14 +443,20 @@ const SHADERS: readonly { name: string; fields: readonly (readonly [number, stri
   { name: "NNAMaxon Image Color", fields: [[1, "Family"], [1, "Prototype"], [1, "Version"], [1], [1], [1], [1], [1], [2]] },
   { name: "NNAPreview Object Options", fields: [[1, "Family"], [1, "Prototype"], [1, "Version"], [1], [7]] },
   { name: "NNAShadow Options", fields: [[1, "Family"], [1, "Prototype"], [1, "Version"], [2], [2]] },
+  // a plain colour (census 1.40: the colour's three channels as integers, the brightness a number)
+  { name: "NNAMaxon Plain Color", fields: [[1, "Family"], [1, "Prototype"], [1, "Version"], [1], [1], [1], [3]] },
 ];
+/** the image texture's shaders (SHADERS' first three), and the colour texture's (its Plain Color, then the two options) */
+const IMAGE_SHADERS = [0, 1, 2];
+const COLOR_SHADERS = [3, 1, 2];
 const FIELD_SIZE = 136;
-const FIELD_BYTES: Record<number, number> = { 1: 4, 2: 2, 7: 10 };
+const FIELD_BYTES: Record<number, number> = { 1: 4, 2: 2, 3: 10, 7: 10 };
 /** the values each shader's settings start with, as the format's defaults (field by field) */
 const SHADER_DEFAULTS: readonly (readonly number[])[] = [
   [1, 41, 1, 4, 1, 255, 255, 255, 1],
   [8, 2, 1, 1, 25.4],
   [8, 1, 1, 1, 1],
+  [1, 40, 1, 255, 255, 255, 1],
 ];
 
 /** A record with the header bits the demos' texture records have: 0x40 (0x41 for a record format or record) at +0x1f, 0x12 at +0x2f. */
@@ -517,12 +523,15 @@ export function imageTexture(spec: ImageTextureSpec): TextureData {
   setF64(holder, 0x80, inches);
   holder[0x88] = holder[0x89] = 1;
   const preview = (png: Uint8Array, side: number, role: number): Uint8Array => newPreview(png, side, side, "image/png", role);
+  // the holder sits under the image's shader (index 3), and a record with children has a non-zero pointer at +0x10, as the demos' do
+  const shader = shaderRecord(0, [1, 41, 1, 4, 1, ...color.map((c) => Math.max(0, Math.min(255, Math.round(c)))), 1]);
+  setU64(shader, 0x10, 1n);
   const records: { data: Uint8Array; parent: number; format?: string }[] = [
     { data: tex, parent: -1 },
     { data: preview(previews.large, 256, 2), parent: 0 },
     { data: preview(previews.small, 64, 1), parent: 0 },
-    { data: shaderRecord(0, [1, 41, 1, 4, 1, ...color.map((c) => Math.max(0, Math.min(255, Math.round(c)))), 1]), parent: 0, format: SHADERS[0].name },
-    { data: holder, parent: 0 },
+    { data: shader, parent: 0, format: SHADERS[0].name },
+    { data: holder, parent: 3 },
     { data: newPreview(image, width, height, mime), parent: 4 },
     { data: shaderRecord(1, [8, 2, 1, 1, 2 * inches * 25.4]), parent: 0, format: SHADERS[1].name },
     { data: shaderRecord(2, SHADER_DEFAULTS[2]), parent: 0, format: SHADERS[2].name },
@@ -531,7 +540,35 @@ export function imageTexture(spec: ImageTextureSpec): TextureData {
   records.forEach((r, i) => {
     if (i > 0 && records.slice(i + 1).some((x) => x.parent === r.parent)) setU64(r.data, 0x08, NEXT_MARKER);
   });
-  return { records, formats: SHADERS.map((_, i) => shaderFormat(i)) };
+  return { records, formats: IMAGE_SHADERS.map((i) => shaderFormat(i)) };
+}
+
+/**
+ * A texture whose one shader is a plain colour, as imageTexture makes an image one but without the
+ * image and its holder. Its Plain Color settings are written from the census layout (the caller
+ * may swap in the drawing's own format and defaults when it has that format). `color` is 0–255.
+ */
+export function colorTexture(spec: { size: number; color: readonly number[]; previews: { large: Uint8Array; small: Uint8Array } }): TextureData {
+  const { size, color, previews } = spec;
+  const inches = size * (1 / 25.4);
+  const tex = textureRecord(TEXTURE, 0x62);
+  tex[0x2f] = 0x11;
+  setU64(tex, 0x10, 1n);
+  setF64(tex, 0x5a, inches);
+  const preview = (png: Uint8Array, side: number, role: number): Uint8Array => newPreview(png, side, side, "image/png", role);
+  const channels = color.map((c) => Math.max(0, Math.min(255, Math.round(c))));
+  const records: { data: Uint8Array; parent: number; format?: string }[] = [
+    { data: tex, parent: -1 },
+    { data: preview(previews.large, 256, 2), parent: 0 },
+    { data: preview(previews.small, 64, 1), parent: 0 },
+    { data: shaderRecord(3, [1, 40, 1, ...channels, 1]), parent: 0, format: SHADERS[3].name },
+    { data: shaderRecord(1, [8, 2, 1, 1, 2 * inches * 25.4]), parent: 0, format: SHADERS[1].name },
+    { data: shaderRecord(2, SHADER_DEFAULTS[2]), parent: 0, format: SHADERS[2].name },
+  ];
+  records.forEach((r, i) => {
+    if (i > 0 && records.slice(i + 1).some((x) => x.parent === r.parent)) setU64(r.data, 0x08, NEXT_MARKER);
+  });
+  return { records, formats: COLOR_SHADERS.map((i) => shaderFormat(i)) };
 }
 
 /** The list shader record formats sit in (a type-76 list tagged TMFH), empty, for the top of a class list. */

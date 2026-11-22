@@ -6,6 +6,7 @@
 // Vectorworks' is a slab object, and Rodeo lays slabs only on rectangles copied from one the
 // drawing has.
 
+import { TEXTURE_NONE } from "../../../core/index.ts";
 import type { EditSession, Pt } from "../../../core/index.ts";
 import { attempt, setEditGroup } from "../../../app/commands.ts";
 import { offsetPolyline } from "../../../app/geom.ts";
@@ -37,7 +38,7 @@ let last: RoomSettings | null = null;
 /** 10' walls 6" thick on a 6" floor in feet and inches, else 3 m walls 150 thick on a 150 floor. */
 function first(): RoomSettings {
   const ft = imperial();
-  const look = (fill: string): Look => ({ classIndex: store.activeClassIndex, fill, pen: "#000000", texture: -1 });
+  const look = (fill: string): Look => ({ classIndex: store.activeClassIndex, fill, pen: "#000000", texture: TEXTURE_NONE });
   return { height: ft ? 3048 : 3000, style: PLAIN, thickness: ft ? 152.4 : 150, walls: look("#e6e6e6"), floorThickness: ft ? 152.4 : 150, floor: look("#d9cbb0"), deleteShape: false };
 }
 

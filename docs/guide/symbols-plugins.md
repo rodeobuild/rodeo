@@ -1,6 +1,6 @@
 # Symbols and plug-in objects
 
-This page covers symbols, the Resources panel that holds them with the drawing's other resources, plug-in objects such as doors, windows and title blocks, the data records attached to objects, and the textures set on an object's parts.
+This page covers symbols, the Resources panel that holds them with the drawing's other resources, plug-in objects such as doors, windows and title blocks, the data records attached to objects, and textures: making and editing them, and how they are set and mapped on an object's parts.
 
 ## Symbols
 
@@ -59,9 +59,31 @@ These are edited the same way:
 - **Line types:** dash and gap lengths on the printed page.
 - **Text styles:** font, size in points and alignment, with a sample line. Editing one restyles the texts that follow it, by name or through their class, keeping a size they set apart in proportion.
 
+### Textures
+
+**New Texture…** (the + button, or a texture's right-click menu) makes a texture from a colour or from a PNG or JPEG image, with its name and **Size**: the width one repeat covers.
+
+**Edit Texture…** (right-click, or double-click the tile) shows the texture's name, size and how many objects and classes use it, then each of its shaders:
+
+- **Color:** a plain colour to pick, or an image with its filter colour. Other kinds (noise, tiles, bricks and so on) are named and kept as they are.
+- **Reflectivity**, **Transparency** and **Bump:** the kind Vectorworks names (Mirror, Plastic, Glass, Image and so on) with its settings as the drawing's file names them, each to change, and **Remove** to take the shader off. A texture with no transparency can be given a **Plain transparency** with its **Opacity %**.
+
+A preview follows the edits. OK makes them as one undo step. **Delete…** removes a texture nothing uses.
+
+In the 3D view a texture with a plain colour colours its faces, and a Plain transparency makes them see-through. The Render palette's Auto finish reads the shaders: Glass transparency is glass, Mirror reflectivity chrome, Glow and Backlit glowing, and Plastic and Anisotropic set the finish where the texture's name says nothing.
+
+**Limits:**
+
+- An image's **Filter color** is kept in the file and can be changed, but Rodeo doesn't tint the image by it: when Vectorworks applies it isn't known.
+- A texture's image can't be swapped for another, and shaders other than Plain transparency can't be added: Rodeo only writes shader settings it can copy from the drawing itself.
+- Plain transparency can be added only in a drawing that already has that shader (import a texture that has one first).
+- The settings of a shader are listed under the names in the drawing's file, which are in the language of the Vectorworks that saved it. Rodeo doesn't interpret them beyond colour and opacity.
+- A texture in use isn't deleted.
+- Textures Rodeo makes or edits haven't been opened in Vectorworks.
+
 ### New resources
 
-The panel's + button makes a new hatch, gradient, line type, text style or record format. A drawing with no gradient or text style yet gets its first from a hatch's frame.
+The panel's + button makes a new hatch, gradient, line type, text style, record format or texture. A drawing with no gradient or text style yet gets its first from a hatch's frame.
 
 ### Importing resources from another file
 
@@ -144,14 +166,63 @@ Object Info's Data tab attaches a record of any of the document's data record fo
 
 ### Render tab
 
-Object Info's Render tab lists an object's texture parts (the whole object, and by number the further parts walls, slabs, solids and some plug-ins hold). It sets each one's texture (none, the class's or one of the drawing's) and its offset, scale and rotation. A 3D object without parts takes a texture on the whole of it.
+Object Info's Render tab lists an object's texture parts under the names Vectorworks gives them: **Overall** for the whole object; **Top**, **Bottom** and **Sides** of an extrude, sweep or multiple extrude; a wall's **Left**, **Right**, **Start Cap**, **End Cap**, **Top**, **Bottom** and **Holes** and its components; a slab's **Top**, **Bottom** and **Sides**; a mesh's materials; and a plug-in's own parts by number. A 3D object without parts takes a texture on the whole of it.
+
+For each part it sets:
+
+- **Texture:** none, the class's or one of the drawing's. A part other than Overall set to none shows the Overall texture.
+- **Map Type:** how the image is laid on the faces (below).
+- **Offset H** and **Offset V**, **Scale** and **Rotation:** where one repeat of the image sits, how large and turned how far.
+- **Radius**, for Sphere and Cylinder: the radius the image is wrapped at.
+- **Flip Horizontal:** mirrors the image.
+- **Repeat Horizontally** and **Repeat Vertically:** off, the image shows once that way and its edge runs on beyond it.
+- **Align to Longest Edge**, **Use World Z** and **Use World Origin**, for Auto-Align Plane.
+
+**Texture a part on its own** adds a Top, Bottom or Sides part to an extrude, sweep or multiple extrude, starting as a copy of Overall. That face then takes its own texture and mapping.
+
+### Map types
+
+- **Auto-Align Plane:** each flat face is projected on its own plane, so the image is undistorted on every face. It runs across the face and up it; Align to Longest Edge runs it along the face's longest edge instead. With Use World Origin the image is measured from the drawing's origin, so it carries on across neighbouring objects; without, from the object's own corner, so it moves with the object.
+- **Plane:** one projection through the whole object. Faces square to it show the image; faces edge-on to it show streaks, as in Vectorworks.
+- **Surface UV:** each flat face is laid on its own plane from the object's corner, and an extrude's curved sides take the image along their outline. It is what Vectorworks gives new extrudes and solids since 2022.
+- **Perimeter:** the image wraps round an extrude's sides along its outline, without a seam at the corners, and lies flat on its caps.
+- **Cylinder** and **Sphere:** the image wraps round an axis or a centre at the Radius. Choosing one centres it on the object and takes the radius from the object's width.
+- **Imported**, **Default** and **Shader** show only on a part that already has them (a mesh's own UV map, an image prop). Choosing another map type replaces them.
+
+A part Vectorworks never mapped says so. It is drawn by the default (Auto-Align Plane from the world's origin) until one of its settings changes.
+
+### Attribute Mapping in 3D
+
+In the 3D view the **Attribute Mapping** tool works on textures. Click a textured face: one repeat of the image is outlined on it, with a square at its origin corner and two round handles.
+
+- Drag inside the outline to slide the texture across the face.
+- Drag the round handle at the end of the first edge to turn it about the origin corner. <kbd>⇧</kbd> keeps the turn to 15° steps.
+- Drag the round handle at the far corner to scale it about the origin corner.
+
+The change is made when the drag ends, as one undo step, and the Render tab shows the new numbers. <kbd>Esc</kbd> gives up a drag, or drops the pick. On an extrude's top, bottom or sides that has its own part, the tool works on that part alone.
+
+A face still drawn by the default mapping needs a second click, which maps the texture on the object itself (Auto-Align Plane without Use World Origin) so that it can be moved.
+
+Right-click a face with the tool for the texture commands below and **Texture This Face on Its Own**, which gives an extrude's top, bottom or sides its own part.
 
 ### Texture commands
 
-Right-clicking a part's heading there, or a textured object in the drawing (every textured part of it), gives these, each one undo step:
+Right-clicking a part's heading in the Render tab, or a textured object in the drawing (every textured part of it), gives these, each one undo step:
 
 - **Rotate Texture by 90°**
-- **Reset to Default Mapping** (no offset, scale 1, no rotation)
-- **Remove Texture Override** (None; from the drawing, the whole object's texture only)
+- **Reset to Default Mapping** (no offset, scale 1, no rotation, not flipped)
+- **Remove Texture Override:** an extrude's Top, Bottom or Sides part is removed, so the face shows the Overall texture again. On any other part the texture is set to none; from the drawing, the whole object's texture only.
+- **Locate in View** (from a part's heading): shows the 3D view fitted to the object, with that part's faces outlined for a moment.
 
 The heading's menu also folds or opens every part (**Expand All**, **Collapse All**).
+
+**Limits:**
+
+- Vectorworks' developer documents name the map types and their settings but not their arithmetic, so how each one lays the image is Rodeo's own reading. Plane mapping on 3D polygons and Surface UV on flat panels were checked against real drawings; on other objects where a repeat starts, and which way round a wrapped image runs, may differ from Vectorworks. One real drawing's solid with a Perimeter mapping shows its image turned half round in Rodeo.
+- Use World Z is kept and written but doesn't change how Rodeo draws.
+- Flip Horizontal isn't applied to a 3D polygon's plane mapping or to a mesh's own UV map.
+- With a repeat off, Rodeo runs the image's edge colour on beyond it.
+- Only an extrude's, sweep's and multiple extrude's Top, Bottom and Sides can be added or removed as parts. A wall's sides, caps and holes, a slab's and a roof's parts are listed and edited, but Rodeo draws walls and slabs by their components and whole-object part, not by those.
+- Picking one face among several of a solid, and decals (a second image over a texture), aren't done: no drawing Rodeo has seen holds a decal, so how one is stored isn't known.
+- A few plug-in objects hold further groups of parts that Rodeo leaves as they are.
+- Nothing Rodeo writes here has been opened in Vectorworks.

@@ -8,7 +8,9 @@ import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { MeshBasicNodeMaterial, WebGPURenderer } from "three/webgpu";
 import { int, ivec2, screenCoordinate, texture, uniform } from "three/tsl";
 import { OIDNDenoiser, TRANSMISSIVE_BACKGROUND_ENVIRONMENT, WebGPUPathTracer } from "three-gpu-pathtracer/webgpu";
+import { AtlasTexture } from "three-gpu-pathtracer/src/webgpu/AtlasTexture.js";
 import { initUNetFromURL } from "oidn-webgpu";
+import { type AtlasBlit, uprightAtlasBlit } from "./atlasUpload.ts";
 import { BvhBuilder } from "./bvhBuilder.ts";
 import { asTraced, frameSize, TraceFinisher } from "./pathtrace.ts";
 import { webgpuAvailable } from "./gpuSupport.ts";
@@ -34,6 +36,18 @@ const WEIGHTS = { live: "rt_hdr_alb_nrm_small.tza", still: "rt_hdr_alb_nrm.tza" 
 const PREVIEW_STEPS = 5;
 /** Reads that fail in a row before the engine is taken as broken. */
 const READ_FAILURES_MAX = 3;
+
+let atlasUpright = false;
+/**
+ * Makes the tracer's texture atlas take ImageBitmap textures the way the other renderers read them
+ * (atlasUpload.ts). The atlas blit is the library's own method, so it is wrapped once, on its class.
+ */
+function keepAtlasUpright(): void {
+  if (atlasUpright) return;
+  atlasUpright = true;
+  const proto = AtlasTexture.prototype as unknown as { _renderTextures: AtlasBlit };
+  proto._renderTextures = uprightAtlasBlit(proto._renderTextures);
+}
 
 /** The sample counts a plan runs to: the denoiser's milestones below the preview's count, then the count itself. */
 function milestonesFor(preview: number, denoise: boolean): number[] {
@@ -587,6 +601,7 @@ export class GpuEngine implements TraceEngine {
       this.built = false;
       console.warn(`openvwx: the WebGPU device was lost (${info.reason}): ${info.message}`);
     });
+    keepAtlasUpright();
     const tracer = new WebGPUPathTracer(renderer);
     // the sample counts come back through getSampleCountsAsync, which the library does not always await: kept like the rest
     const counted = tracer as unknown as { getSampleCountsAsync(): Promise<unknown> };

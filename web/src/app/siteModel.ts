@@ -7,6 +7,7 @@
 // Vectorworks' site models in a drawing are left alone.
 
 import type { Attributes, EditSession, NewShape, ObjectInfo, PluginFieldSpec, Pt, RecordFieldSpec, RecordValue, Shape, VwxDocument } from "../core/index.ts";
+import { TEXTURE_BY_CLASS } from "../core/index.ts";
 import type { FlatObject } from "../export/scene3d.ts";
 import { attempt, setSelection, turnAbout, zoomToSelection } from "./commands.ts";
 import { appContext, followEdits, otherSiteModifiers, registerPluginDrivers, siteModelsUpdated, type PluginDriver, type PluginWidget, sentToSurface } from "./ext.ts";
@@ -602,7 +603,7 @@ function solidParts(s: EditSession, m: Model, t: Terrain, range: { min: number; 
       const faces = drapedFaces(surface, at, bed.ring, raised);
       if (!faces.length) continue;
       const [id] = s.addMeshes(m.layerId, [faces], bed.classIndex ?? classIndex, solid(bed.colour ?? colour(MODIFIER_TYPES.bed.colour)));
-      s.setObjectTexture(id, WHOLE_OBJECT, { texture: 0 });
+      s.setObjectTexture(id, WHOLE_OBJECT, { texture: TEXTURE_BY_CLASS });
       ids.push(id);
     }
   }

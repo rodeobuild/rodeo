@@ -8,6 +8,7 @@
 // steps objects; these are plain groups, in a class chosen (that sets their look) or in None with
 // the fill, pen and texture set here.
 
+import { TEXTURE_BY_CLASS, TEXTURE_NONE } from "../../../core/index.ts";
 import type { Attributes, EditSession, Pt } from "../../../core/index.ts";
 import { attempt, setEditGroup } from "../../../app/commands.ts";
 import { placed } from "../../../app/detailShapes.ts";
@@ -55,7 +56,7 @@ export interface Look {
   readonly classIndex: number;
   readonly fill: string;
   readonly pen: string;
-  /** a texture resource's index, or -1 for none */
+  /** a texture resource's index, or TEXTURE_NONE for none */
   readonly texture: number;
 }
 
@@ -103,7 +104,7 @@ function firstStage(): StageSettings {
     classIndex: store.activeClassIndex,
     fill: "#bfbfbf",
     pen: "#000000",
-    texture: -1,
+    texture: TEXTURE_NONE,
   };
 }
 
@@ -116,7 +117,7 @@ export function lookFields(look: Look, prefix = ""): PrefField[] {
     { kind: "choice", key: `${prefix}class`, label: "Class", value: String(look.classIndex), options: classes, wide: true },
     { kind: "color", key: `${prefix}fill`, label: "Fill Color (None class)", value: look.fill },
     { kind: "color", key: `${prefix}pen`, label: "Pen Color (None class)", value: look.pen },
-    { kind: "choice", key: `${prefix}texture`, label: "Texture (None class)", value: String(look.texture), options: [{ value: "-1", label: "None" }, ...textures.map((t) => ({ value: String(t.index), label: t.name }))], wide: true },
+    { kind: "choice", key: `${prefix}texture`, label: "Texture (None class)", value: String(look.texture), options: [{ value: String(TEXTURE_NONE), label: "None" }, ...textures.map((t) => ({ value: String(t.index), label: t.name }))], wide: true },
   ];
 }
 
@@ -169,7 +170,7 @@ export function addPiece(s: EditSession, layerId: string, parts: readonly Part[]
   const [mesh] = s.addMeshes(layerId, [solid], look.classIndex, own ? store.drawAttrs : { ...store.drawAttrs, ...lookAttrs(look) });
   if (own) {
     for (const g of ["fill", "penColor", "lineStyle", "lineWeight", "opacity"] as const) s.setAttributesByClass([mesh], g, true);
-    s.setObjectTexture(mesh, WHOLE_OBJECT, { texture: 0 });
+    s.setObjectTexture(mesh, WHOLE_OBJECT, { texture: TEXTURE_BY_CLASS });
   } else if (look.texture > 0) s.setObjectTexture(mesh, WHOLE_OBJECT, { texture: look.texture });
   const group = s.groupObjects([...ids, mesh]);
   s.setObjectClass([group], look.classIndex);
@@ -273,7 +274,7 @@ export async function createStage(): Promise<void> {
 /** 4' steps in inches and feet, else 1220 wide. */
 function firstStair(): StairSettings {
   const ft = imperial();
-  return { width: ft ? 1219.2 : 1220, style: "simple", height: lastStage?.height ?? (ft ? 609.6 : 600), classIndex: store.activeClassIndex, fill: "#bfbfbf", pen: "#000000", texture: -1 };
+  return { width: ft ? 1219.2 : 1220, style: "simple", height: lastStage?.height ?? (ft ? 609.6 : 600), classIndex: store.activeClassIndex, fill: "#bfbfbf", pen: "#000000", texture: TEXTURE_NONE };
 }
 
 /** a tread's depth, mm: 11" in inches and feet */
