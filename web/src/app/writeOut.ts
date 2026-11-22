@@ -41,7 +41,7 @@ async function fileAgain(handle: FileSystemFileHandle): Promise<ByteSource | nul
 }
 
 /** Whether `a` is the file `b` is, as it was when read: same name, size and time. */
-function sameFile(a: Blob | undefined, b: File): boolean {
+export function sameFile(a: Blob | undefined, b: File): boolean {
   return a instanceof File && a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 }
 

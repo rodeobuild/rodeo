@@ -4,6 +4,7 @@
 // beside it.
 
 import { h } from "../../app/dom.ts";
+import { downloadBlob } from "../../app/fileio.ts";
 import { isVectorscript, runScript, scriptRunning, stopScript } from "./runner.ts";
 import { VS_SOURCE } from "./vsModule.ts";
 
@@ -127,10 +128,7 @@ function saveFile(): void {
   if (!code) return;
   // a Vectorscript is saved as .vs, anything else as .py
   const ext = isVectorscript(code.value, file) ? (/\.(vs|px)$/i.test(file) ? "" : ".vs") : /\.py$/i.test(file) ? "" : ".py";
-  const url = URL.createObjectURL(new Blob([code.value], { type: "text/plain" }));
-  const a = h("a", { attrs: { href: url, download: ext ? `${file.replace(/\.[^.]*$/, "")}${ext}` : file } });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(ext ? `${file.replace(/\.[^.]*$/, "")}${ext}` : file, new Blob([code.value], { type: "text/plain" }));
 }
 
 /** File > Import > Import Script…: the script of a file in the window, run on the drawing. */

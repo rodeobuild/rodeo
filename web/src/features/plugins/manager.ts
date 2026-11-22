@@ -3,6 +3,7 @@
 // Import… (a .js file, shown with its header and a warning before it installs) and Help.
 
 import { h } from "../../app/dom.ts";
+import { downloadBlob } from "../../app/fileio.ts";
 import { confirmDialog, showDialog } from "../../app/menubar.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
 import { parseHeader } from "./header.ts";
@@ -207,10 +208,5 @@ function statusText(rec: PluginRecord, state: ReturnType<typeof activeState>): s
 /** Export: the plug-in's code as a .js file the user downloads. */
 function exportFile(rec: PluginRecord): void {
   const name = (rec.name || "plug-in").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "plug-in";
-  const url = URL.createObjectURL(new Blob([rec.code], { type: "text/javascript" }));
-  const a = h("a", { attrs: { href: url, download: name + ".js" } });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(name + ".js", new Blob([rec.code], { type: "text/javascript" }));
 }

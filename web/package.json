@@ -15,6 +15,7 @@
     "@types/node": "^26.6.6",
     "@types/nspell": "2.1.6",
     "@types/three": "0.187.0",
+    "pyodide": "0.28.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"

@@ -3,6 +3,7 @@
 
 import { PLAN_VIEW, blobSource, bytesSource, openVwxStream, savedYear, setTurnSteps, withHeldImages, type ChangeEvent, type EditSession, type LayerView } from "../core/index.ts";
 import { blankDrawing } from "../core/blank.ts";
+import { inShell } from "../platform/shell.ts";
 import { exportDxf as toDxf } from "../export/dxf.ts";
 import { pageEmf } from "../export/emf.ts";
 import { pageEps } from "../export/eps.ts";
@@ -22,6 +23,7 @@ import { documentBlob, documentBytes, holdOptions, saveSnapshot, writeToFile } f
 import { floating3d, mountFloatingPanes, redrawFloating, type PlanAt } from "./floatingPanes.ts";
 import { createSymbolDialog, duplicateArrayDialog } from "./arrayDialog.ts";
 import { installAutosave } from "./autosave.ts";
+import { installShellWindow } from "./shellWindow.ts";
 import { type RecentEntry, loadRecent, openRecentEntry, recentRows, rememberRecent } from "./recent.ts";
 import { note, reportFailure } from "./reports.ts";
 import { isOutOfMemoryError } from "./rejection.ts";
@@ -1211,7 +1213,15 @@ export class App {
       else void this.openFile(file, handle, all);
     });
     void loadRecent();
-    this.autosave = installAutosave({ openDocument: async (bytes, name) => (await this.openDocument(bytes, name, null)) === "open" ? store.session : null });
+    this.autosave = installAutosave({ openDocument: async (data, name) => (await this.openDocument(data, name, null)) === "open" ? store.session : null });
+    // the desktop window's title and unsaved mark, and its close (a no-op in a browser)
+    installShellWindow({
+      title: () => (store.session ? store.fileName : null),
+      sessions: () => this.drawings.map((d) => d.session),
+      discard: async (session) => {
+        await this.autosave?.forget(session);
+      },
+    });
     window.addEventListener("beforeunload", (e) => {
       if (store.session?.dirty || this.drawings.some((d) => d.session.dirty)) {
         e.preventDefault();
@@ -3178,7 +3188,14 @@ export class App {
     });
     if (!options) return;
     try {
-      printPdf(await withHeldImages(session.doc, () => toPdf(withoutHidden(session.doc), options)));
+      const bytes = await withHeldImages(session.doc, () => toPdf(withoutHidden(session.doc), options));
+      // the desktop app has no second window for the print dialog: its PDF is saved, to be opened and printed
+      if (inShell()) {
+        downloadBlob(`${baseName(store.fileName)}.pdf`, new Blob([new Uint8Array(bytes)], { type: "application/pdf" }));
+        toast("Saved as a PDF: open it to print", "info");
+        return;
+      }
+      printPdf(bytes);
     } catch (err) {
       toast(`Print failed: ${errorMessage(err)}`);
     }

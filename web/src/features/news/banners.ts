@@ -107,6 +107,12 @@ const ART = {
     ink("M26 12h12l6 6v22H26zM38 12v6h6M30 27h9M30 32h9M49 26h8M54 23l3 3-3 3" + rect(62, 9, 36, 32, 2.5) + "M62 15h36") +
     fill(ellipse(65.5, 12, 0.9) + ellipse(68.5, 12, 0.9) + ellipse(71.5, 12, 0.9)) +
     acc("M68 20h24v15H68zM80 20v7M68 28h7"),
+  // a window of the app on its own, with its title bar and a box in it, standing on a base like a monitor
+  desktop:
+    ink(rect(30, 6, 60, 28, 2.5) + "M30 12h60M60 34v5M46 39h28") +
+    fill(ellipse(35, 9, 1) + ellipse(39, 9, 1)) +
+    tint(boxTop(iso(60, 24), 8, 8, 8)) +
+    acc(box(iso(60, 24), 8, 8, 8)),
   // a rectangle, a selected circle with its handles and a polyline
   shapes:
     ink(rect(22, 15, 22, 18) + "M78 33l6-12 7 7 7-13") +

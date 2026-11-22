@@ -3,7 +3,7 @@
 // Refuses to run if the origin already has backups; never run on a production origin.
 import { blankDrawing } from "../core/blank.ts";
 import { openVwx } from "../core/index.ts";
-import { backupKeys, deleteBackup, deleteBackupIfUnchanged, expireBackups, RECOVERY_MAX_AGE, readBackup, Recovery, withRecovery, writeBackup } from "./recovery.ts";
+import { type Backup, backupKeys, deleteBackup, deleteBackupIfUnchanged, expireBackups, RECOVERY_MAX_AGE, readBackup, Recovery, withRecovery, writeBackup } from "./recovery.ts";
 
 function check(ok: boolean, why: string): void { if (!ok) throw new Error(why); }
 export async function checkRecovery(): Promise<void> {
@@ -93,9 +93,9 @@ export async function checkRecovery(): Promise<void> {
     await writeBackup("latest", { name: "legacy.vwx", bytes: blankDrawing("mm"), savedAt: now });
     await withRecovery("latest", async (backup, exclusive) => {
       check(exclusive && backup.name === "legacy.vwx", "legacy backup remains recoverable");
-      const recovered = openVwx(backup.bytes); recovered.markUnsaved();
+      const bytes = (backup as Backup).bytes; const recovered = openVwx(bytes); recovered.markUnsaved();
       check(recovered.dirty, "recovered copy must require a save");
-      recovery.track(recovered, () => ({ name: backup.name, size: backup.bytes.length }));
+      recovery.track(recovered, () => ({ name: backup.name, size: bytes.length }));
       check(await recovery.copy(recovered), "recovered copy transferred durably");
       await deleteBackup("latest");
       check((await backupKeys()).length === 1, "transfer preserves one copy");

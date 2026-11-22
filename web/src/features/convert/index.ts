@@ -5,7 +5,9 @@
 
 import { h } from "../../app/dom.ts";
 import { fileIn, registerMenu, registerUrlHandler, registerWelcome } from "../../app/ext.ts";
+import { NEEDS_INTERNET, online } from "../../app/online.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
+import { inShell } from "../../platform/shell.ts";
 
 /** A converted drawing the converter page handed over: the bytes, the name it opens as, and the file it came from. */
 interface Handoff {
@@ -20,8 +22,9 @@ interface Handoff {
 const DB = "openvwx-convert";
 const STORE = "handoff";
 
-/** The converter's address: its page on this site, or on rodeo.build when the editor runs from a file. */
+/** The converter's address: its page on this site, or on rodeo.build when the editor runs from a file or in the desktop app (which has no server of its own). */
 function converterUrl(): string {
+  if (inShell()) return "https://rodeo.build/convert";
   return location.protocol === "http:" || location.protocol === "https:" ? "/convert" : "https://rodeo.build/convert";
 }
 
@@ -89,7 +92,19 @@ registerUrlHandler("convert", (id, _params, ctx) => {
   })();
 });
 
-registerMenu("File", () => [{ label: "Convert Files…", run: openConverter }], { after: "Export" });
+// in the desktop app the converter is rodeo.build, which needs a connection: the row is off without one
+registerMenu(
+  "File",
+  () => [
+    {
+      label: "Convert Files…",
+      run: openConverter,
+      enabled: () => !inShell() || online(),
+      why: () => (inShell() && !online() ? NEEDS_INTERNET : null),
+    },
+  ],
+  { after: "Export" },
+);
 
 registerWelcome(
   () => h("a", { cls: "hub-link", text: "Convert files", attrs: { href: converterUrl(), target: "_blank", rel: "noopener" } }),

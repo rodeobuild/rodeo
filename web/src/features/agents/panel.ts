@@ -19,6 +19,7 @@ import { store } from "../../app/state.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
 import { currentUser, onUser, refreshUser, serverConfig } from "../../platform/api.ts";
 import type { ServerConfig } from "../../platform/protocol.ts";
+import { inShell } from "../../platform/shell.ts";
 import { formatCredit, openCreditDialog, pricing, topUpButtons } from "../account/credit.ts";
 import { requireSignIn } from "../account/signin.ts";
 import type { AgentEvent, RunTarget } from "./agent.ts";
@@ -339,6 +340,7 @@ function chatView(start: DrawingRef | null): Chat {
     if (!shared.loaded) return null;
     const box = (text: string, ...actions: HTMLElement[]): HTMLElement => h("div", { cls: "ag-setup" }, h("p", { text }), ...actions);
     if (!shared.serverAi) {
+      if (inShell()) return box("They run on rodeo.build: open it in a browser to use them.");
       return box(shared.hasServer ? "The agents aren't set up on this server yet." : "The agents run through the Rodeo server, and this copy of the editor has none.");
     }
     if (!currentUser()) return box("Sign in to use the agents.", button("Sign In…", "primary", () => void requireSignIn("Sign in to use the agents")));
@@ -1069,7 +1071,13 @@ function lightbox(url: string, full: Blob | null, caption: string): void {
   };
   const save = button("Download", "", () => {
     if (full) downloadBlob("render.png", full);
-    else {
+    else if (inShell()) {
+      // the desktop app saves through its own dialog, so the picture's bytes are read from its address first
+      fetch(url)
+        .then((r) => r.blob())
+        .then((blob) => downloadBlob("picture.jpg", blob))
+        .catch(() => toast("Rodeo couldn't save that picture."));
+    } else {
       const a = h("a", { attrs: { href: url, download: "picture.jpg" }, hidden: true });
       document.body.append(a);
       a.click();

@@ -5,9 +5,20 @@
 // them (appearance.ts applies those). The theme, the black background, zoomed
 // line thickness and the snap radius keep their own settings (theme.ts, state.ts).
 
+import { shell } from "../platform/shell.ts";
+
 const PREFS_KEY = "openvwx.prefs.v1";
-/** drawings larger than this aren't copied (autosave.ts) */
+/** drawings larger than this aren't copied to the browser's storage (autosave.ts) */
 export const AUTOSAVE_MAX_BYTES = 150 * 1024 * 1024;
+
+/**
+ * The largest drawing autosave copies, in bytes: AUTOSAVE_MAX_BYTES in a browser, where a copy is
+ * held in its storage; null in the desktop app, where a copy is streamed to a folder on this
+ * computer and any size is copied.
+ */
+export function autosaveLimit(): number | null {
+  return shell() ? null : AUTOSAVE_MAX_BYTES;
+}
 
 /** How a view change moves (Interactive, "Animate view transitions"). */
 export type ViewMotion = "decelerate" | "accelerate" | "smooth" | "linear";

@@ -12,6 +12,7 @@ import type { Pt } from "../core/index.ts";
 import type { ModelFormat } from "../export/model3d.ts";
 import type { MeshImportFormat } from "./meshImport.ts";
 import { h } from "./dom.ts";
+import { shell } from "../platform/shell.ts";
 import { IS_MAC, menuButton, openContextMenu, rowEnabled, setFallbackWhy, shortcutText, type Item, type Row } from "./menu.ts";
 import { NO_DRAWING, STEP, need, whyIn, whyNot } from "./menuReasons.ts";
 import { combinationOf, registerMenus, rowForKeys, withMenuKeys } from "./menuKeys.ts";
@@ -1324,8 +1325,22 @@ const SOURCE_URL = "https://github.com/rodeobuild/rodeo";
 /** The user guide, published with the source: Help > User Guide. */
 const GUIDE_URL = "https://github.com/rodeobuild/rodeo/blob/main/docs/guide/README.md";
 
+/** The desktop app's version line for About ("Desktop app 0.1.0 (macOS)"), or null outside the app or when its shell can't say. */
+async function desktopLine(): Promise<string | null> {
+  const s = shell();
+  if (!s) return null;
+  try {
+    const info = await s.call("shell_info", {});
+    const os = info.os === "macos" ? "macOS" : info.os === "windows" ? "Windows" : "Linux";
+    return `Desktop app ${info.version} (${os})`;
+  } catch {
+    return null;
+  }
+}
+
 /** Help > About Rodeo… */
 async function aboutDialog(): Promise<void> {
+  const app = await desktopLine();
   await showDialog({
     title: "About Rodeo",
     okLabel: "Close",
@@ -1333,6 +1348,7 @@ async function aboutDialog(): Promise<void> {
       h("p", {
         text: "Rodeo is a drawing and 3D modelling tool that runs in your browser. It opens and saves Vectorworks files, opens AutoCAD DWG files and Revit projects, and imports DXF, PDF, images, OBJ, glTF, 3DS and IFC, with more formats to come.",
       }),
+      ...(app ? [h("p", { cls: "muted", text: app })] : []),
       h("p", { cls: "muted", text: "Files you open stay on this computer unless you save them to the cloud." }),
       h(
         "p",
@@ -1369,6 +1385,8 @@ export interface DialogSpec<T> {
   readonly check: () => DialogCheck<T>;
   /** extra class for the dialog box, e.g. a wider one */
   readonly cls?: string;
+  /** the label of the button that cancels; "Cancel" when not given */
+  readonly cancelLabel?: string;
 }
 
 /** Focuses a control, and selects its text when it is a text field. */
@@ -1393,7 +1411,7 @@ export function showDialog<T>(spec: DialogSpec<T>): Promise<T | null> {
       resolve(value);
     };
 
-    const cancel = h("button", { cls: "btn", text: "Cancel", attrs: { type: "button" } });
+    const cancel = h("button", { cls: "btn", text: spec.cancelLabel ?? "Cancel", attrs: { type: "button" } });
     cancel.addEventListener("click", () => finish(null));
     const form = h(
       "form",

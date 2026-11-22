@@ -121,6 +121,7 @@ function mountRecent(actions: WelcomeActions): void {
   paintRecent = (): void => {
     const here: RecentFile[] = recentList().map((entry) => ({
       name: entry.name,
+      folder: entry.folder,
       at: entry.openedAt,
       icon: ICON_FILE,
       open: () => actions.openRecent(entry),
@@ -136,7 +137,7 @@ function mountRecent(actions: WelcomeActions): void {
 function recentRow(file: RecentFile): HTMLElement {
   const button = h(
     "button",
-    { cls: "hub-file", attrs: { type: "button", title: file.name } },
+    { cls: "hub-file", attrs: { type: "button", title: file.folder ? `${file.name} · ${file.folder}` : file.name } },
     h("span", { cls: "hub-file-icon", html: file.icon }),
     h("span", { cls: "hub-file-name", text: file.name, attrs: { translate: "no" } }),
     h("span", { cls: "hub-file-time", text: timeAgo(file.at) }),

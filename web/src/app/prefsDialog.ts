@@ -12,7 +12,7 @@ import { h } from "./dom.ts";
 import { showDialog } from "./menubar.ts";
 import {
   APPEARANCE_DEFAULTS,
-  AUTOSAVE_MAX_BYTES,
+  autosaveLimit,
   PREF_RANGES,
   prefs,
   setPrefs,
@@ -22,6 +22,7 @@ import {
   type Resolution3d,
   type ViewMotion,
 } from "./prefs.ts";
+import { shell } from "../platform/shell.ts";
 import { setSnapSettings, setZoomLineThickness, store } from "./state.ts";
 import { darkCanvas, setDarkCanvas, setTheme, theme, type Theme } from "./theme.ts";
 import { language, LANGUAGES, setLanguage } from "./i18n.ts";
@@ -121,7 +122,12 @@ export async function preferencesDialog(): Promise<void> {
     value: String(p.autosaveMinutes),
     attrs: { type: "text", inputmode: "numeric", "aria-label": "Minutes between copies" },
   });
-  const limit = Math.round(AUTOSAVE_MAX_BYTES / (1024 * 1024));
+  const limit = autosaveLimit();
+  // the browser's sentence is kept whole, as its translations have it
+  const megabytes = limit === null ? 0 : Math.round(limit / (1024 * 1024));
+  const copyNote = shell()
+    ? "The copy stays in a folder on this computer and is offered back after a crash or a closed window. Drawings of any size are copied."
+    : `The copy stays in this browser and is offered back after a crash or a closed tab. Drawings over ${megabytes} MB are not copied.`;
   // Interactive
   const [fullCursor, fullCursorRow] = check(p.fullCursor, "Full-screen cursor");
   const [selectBox, selectBoxRow] = check(p.selectBox, "Show the selection box");
@@ -208,7 +214,7 @@ export async function preferencesDialog(): Promise<void> {
       { cls: "prefs-pane" },
       autosaveRow,
       field("Every", minutes, h("span", { cls: "menu-dialog-unit", text: "minutes" })),
-      note(`The copy stays in this browser and is offered back after a crash or a closed tab. Drawings over ${limit} MB are not copied.`),
+      note(copyNote),
     ),
     interactive: h(
       "div",

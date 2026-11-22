@@ -1,0 +1,8 @@
+{
+  "identifier": "build.rodeo.desktop.test",
+  "app": {
+    "security": {
+      "capabilities": ["default", "test-result"]
+    }
+  }
+}

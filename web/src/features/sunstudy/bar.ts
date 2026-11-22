@@ -5,6 +5,7 @@
 
 import { byId, h } from "../../app/dom.ts";
 import { appContext } from "../../app/ext.ts";
+import { NEEDS_INTERNET, online, onOnlineChange } from "../../app/online.ts";
 import { dayLabel, hourLabel, sunPlace, type Viz3D } from "../../app/heliodon.ts";
 import { setViz, store } from "../../app/state.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
@@ -280,14 +281,19 @@ function build(): Ui {
     cls: "menu-dialog-input sunstudy-query",
     attrs: { type: "search", placeholder: "A place, e.g. Lisbon", "aria-label": "Place" },
   });
+  const searchButton = h("button", { cls: "btn small", text: "Search", attrs: { type: "submit" } });
   const results = h("ul", { cls: "sunstudy-results" });
-  const findForm = h(
-    "form",
-    { cls: "sunstudy-find", hidden: true },
-    query,
-    h("button", { cls: "btn small", text: "Search", attrs: { type: "submit" } }),
-    results,
-  );
+  const findForm = h("form", { cls: "sunstudy-find", hidden: true }, query, searchButton, results);
+  // the place search needs the internet; the latitude and longitude above work without it
+  const paintSearch = (): void => {
+    const off = !online();
+    query.disabled = off;
+    searchButton.disabled = off;
+    query.placeholder = off ? NEEDS_INTERNET : "A place, e.g. Lisbon";
+    query.title = off ? NEEDS_INTERNET : "";
+  };
+  paintSearch();
+  onOnlineChange(paintSearch);
 
   /** Puts the study at a place: its latitude, and the longitude and name kept with it. */
   const choose = (p: Place): void => {

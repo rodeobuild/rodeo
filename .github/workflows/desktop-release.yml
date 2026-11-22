@@ -1,0 +1,358 @@
+# Builds the Rodeo desktop installers (desktop/, a Tauri 2 app) and attaches them to a GitHub Release.
+# To release: bump "version" in desktop/package.json, desktop/src-tauri/tauri.conf.json and the [package]
+# version in desktop/src-tauri/Cargo.toml, commit that to main, then tag that commit and push the tag:
+#   git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
+# The tag must be "desktop-v" plus that version, and the three version fields must agree, or the run stops
+# before anything is built.
+#
+# A manual run (Actions > Desktop release > Run workflow) builds all three platforms and keeps the installers
+# as workflow artifacts under the default retention. It creates no release.
+#
+# Builds are UNSIGNED until the signing secrets exist (see desktop/SIGNING.md). What users see meanwhile:
+#   macOS: the app is ad-hoc signed, which Apple Silicon needs to run at all, but Gatekeeper still blocks the
+#     first launch. Right-click Rodeo.app and choose Open, or run: xattr -dr com.apple.quarantine /Applications/Rodeo.app
+#   Windows: SmartScreen says it protected your PC. Choose More info, then Run anyway.
+#   Linux: nothing to get past. Each file has a .sha256 beside it; make the AppImage executable with chmod +x.
+# The release notes say so for each platform whose build is unsigned.
+name: Desktop release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: The version fields agree, and on a tag the tag matches them
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pkg=$(node -p 'require("./desktop/package.json").version')
+          conf=$(node -p 'require("./desktop/src-tauri/tauri.conf.json").version')
+          cargo=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{sub(/^version *= *"/,""); sub(/".*$/,""); print; exit}' desktop/src-tauri/Cargo.toml)
+          if [ -z "$cargo" ]; then
+            echo "::error::No version found in desktop/src-tauri/Cargo.toml [package]"
+            exit 1
+          fi
+          if [ "$pkg" != "$conf" ] || [ "$pkg" != "$cargo" ]; then
+            echo "::error::Versions differ: package.json $pkg, tauri.conf.json $conf, Cargo.toml $cargo"
+            exit 1
+          fi
+          if [ "$EVENT" = "push" ]; then
+            want="desktop-v$pkg"
+            if [ "$TAG" != "$want" ]; then
+              echo "::error::The tag is $TAG but the version is $pkg, so the tag must be $want"
+              exit 1
+            fi
+          fi
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+          echo "Version $pkg"
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos
+            args: "--target universal-apple-darwin --bundles app,dmg"
+            rust_targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          - os: windows-latest
+            name: windows
+            args: "--bundles nsis"
+            rust_targets: ""
+          - os: ubuntu-22.04
+            name: linux
+            args: "--bundles deb,appimage"
+            rust_targets: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "desktop/src-tauri -> target"
+
+      - name: Linux packages for Tauri (WebKitGTK 4.1)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Signing secrets for macOS (empty when unset, so the build is unsigned)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -eu
+          put() {
+            if [ -n "$2" ]; then
+              printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"
+            fi
+          }
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+              echo "::error::APPLE_CERTIFICATE is set but APPLE_SIGNING_IDENTITY is not"
+              exit 1
+            fi
+            put APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+            put APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+            put APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
+            put APPLE_ID "$APPLE_ID"
+            put APPLE_PASSWORD "$APPLE_PASSWORD"
+            put APPLE_TEAM_ID "$APPLE_TEAM_ID"
+            echo "Signing with the Developer ID certificate"
+          else
+            # "-" is ad-hoc signing: no certificate, but the app is still signed, which Apple Silicon requires
+            printf 'APPLE_SIGNING_IDENTITY=-\n' >> "$GITHUB_ENV"
+            echo "No Apple certificate secret: building an ad-hoc signed, unsigned-for-users build"
+          fi
+
+      - name: Web editor (web/dist)
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Desktop dependencies and staging
+        working-directory: desktop
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/stage.mjs
+
+      - name: Staged folder holds no source maps, service worker or client drawings
+        working-directory: desktop
+        run: |
+          set -eu
+          bad=$(find app -type f \( -name '*.map' -o -name 'sw.js' -o -name '*.vwx' \) -print)
+          if [ -n "$bad" ]; then
+            echo "::error::These must not be in the desktop build:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          if [ ! -f app/pyodide/pyodide.asm.wasm ]; then
+            echo "::error::app/pyodide/pyodide.asm.wasm is missing, so Run Script would not work"
+            exit 1
+          fi
+
+      - name: The shell's unit tests
+        if: runner.os == 'Linux'
+        working-directory: desktop/src-tauri
+        run: cargo test --lib
+
+      - name: The editor's checks of the desktop seam
+        if: runner.os == 'Linux'
+        working-directory: web
+        run: |
+          set -eu
+          npx tsx src/platform/shell.check.ts
+          npx tsx src/app/shellFiles.check.ts
+          npx tsx src/app/recoveryShell.check.ts
+          npx tsx src/features/desktop/update.check.ts
+
+      - name: Build the installers (tauri build)
+        working-directory: desktop
+        env:
+          TAURI_ARGS: ${{ matrix.args }}
+        run: |
+          # word splitting is wanted here: TAURI_ARGS holds several flags
+          # (the Windows installer carries the WebView2 installer: tauri.conf.json, webviewInstallMode)
+          # shellcheck disable=SC2086
+          npx tauri build $TAURI_ARGS
+
+      - name: Collect the installers under stable names
+        env:
+          KIND: ${{ matrix.name }}
+        run: |
+          set -eu
+          version=$(node -p 'require("./desktop/package.json").version')
+          mkdir -p installers
+          pick() {
+            # $1: find -path pattern under the Tauri target folder, $2: the name it gets in installers/
+            found=$(find desktop/src-tauri/target -path "$1" -type f)
+            n=$(printf '%s' "$found" | grep -c . || true)
+            if [ "$n" != 1 ]; then
+              echo "::error::Expected one file matching $1, found $n"
+              printf '%s\n' "$found"
+              exit 1
+            fi
+            cp "$found" "installers/$2"
+            if command -v sha256sum >/dev/null 2>&1; then
+              (cd installers && sha256sum "$2" > "$2.sha256")
+            else
+              (cd installers && shasum -a 256 "$2" > "$2.sha256")
+            fi
+          }
+          case "$KIND" in
+            macos)
+              pick '*/release/bundle/dmg/*.dmg' "Rodeo-$version-macos-universal.dmg"
+              if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+                touch installers/UNSIGNED-macos
+              fi
+              ;;
+            windows)
+              pick '*/release/bundle/nsis/*-setup.exe' "Rodeo-$version-windows-x64-setup.exe"
+              # no signing step yet: when one is added, this marker must stop being written for a signed build
+              touch installers/UNSIGNED-windows
+              ;;
+            linux)
+              pick '*/release/bundle/deb/*.deb' "Rodeo-$version-linux-amd64.deb"
+              pick '*/release/bundle/appimage/*.AppImage' "Rodeo-$version-linux-x86_64.AppImage"
+              # the editor itself as a plain folder: the same files the app serves, for any browser
+              # and any static file server, should the app one day no longer start
+              web="Rodeo-$version-web.zip"
+              (cd desktop/app && zip -qr "../../installers/$web" .)
+              (cd installers && sha256sum "$web" > "$web.sha256")
+              ;;
+            *)
+              echo "::error::Unknown platform $KIND"
+              exit 1
+              ;;
+          esac
+          ls -l installers
+
+      - name: Smoke test the macOS installers
+        if: runner.os == 'macOS'
+        run: |
+          set -eu
+          app=$(find desktop/src-tauri/target -path '*/release/bundle/macos/*.app' -type d | head -n 1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          hdiutil verify installers/*.dmg
+
+      - name: Smoke test the Windows installer
+        if: runner.os == 'Windows'
+        run: |
+          set -eu
+          exe=$(ls installers/*-setup.exe)
+          size=$(wc -c < "$exe" | tr -d ' ')
+          echo "$exe is $size bytes"
+          if [ "$size" -lt 52428800 ]; then
+            echo "::error::$exe is under 50 MB; the offline WebView2 installer should make it larger"
+            exit 1
+          fi
+
+      - name: Smoke test the Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          dpkg-deb --info installers/*.deb > /dev/null
+          kind=$(file -b installers/*.AppImage)
+          echo "$kind"
+          case "$kind" in
+            *ELF*) ;;
+            *) echo "::error::The AppImage is not an ELF executable"; exit 1 ;;
+          esac
+
+      - name: Upload the installers as workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: rodeo-desktop-${{ matrix.name }}
+          path: installers/
+          if-no-files-found: error
+
+  release:
+    needs: [check, build]
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: rodeo-desktop-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write the release notes and create the release
+        run: |
+          set -eu
+          cd dist
+          unsigned_mac=no
+          unsigned_win=no
+          if [ -f UNSIGNED-macos ]; then unsigned_mac=yes; fi
+          if [ -f UNSIGNED-windows ]; then unsigned_win=yes; fi
+          rm -f UNSIGNED-*
+          cd ..
+
+          {
+            printf 'Rodeo desktop %s: the whole editor in one installer. It works with the network off, and there is no account.\n\n' "$VERSION"
+            printf 'Files:\n'
+            for f in $(find dist -maxdepth 1 -type f -printf '%f\n' | sort); do
+              case "$f" in
+                *.dmg) what="macOS (Apple Silicon and Intel)" ;;
+                *-setup.exe) what="Windows, 64-bit" ;;
+                *.deb) what="Debian and Ubuntu, 64-bit" ;;
+                *.AppImage) what="Linux, 64-bit, runs on most distributions" ;;
+                *-web.zip) what="the editor as a plain folder, for any browser: unzip it and serve the folder with any static file server" ;;
+                *.sha256) continue ;;
+                *) echo "::error::Unexpected file $f"; exit 1 ;;
+              esac
+              # the single quotes keep the backticks literal
+              # shellcheck disable=SC2016
+              printf -- '- `%s`: %s\n' "$f" "$what"
+            done
+            printf '\n'
+            if [ "$unsigned_mac" = yes ]; then
+              # the single quotes keep the backticks literal
+              # shellcheck disable=SC2016
+              printf '**macOS (unsigned build).** Gatekeeper blocks the first launch. Right-click Rodeo.app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Rodeo.app` in Terminal.\n\n'
+            fi
+            if [ "$unsigned_win" = yes ]; then
+              # the single quotes keep the backticks literal
+              # shellcheck disable=SC2016
+              printf '**Windows (unsigned build).** SmartScreen says it protected your PC. Choose More info, then Run anyway.\n\n'
+            fi
+            printf 'Checksums: each file has a .sha256 beside it.\n'
+          } > notes.md
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists: uploading with --clobber (its notes are not changed)"
+            gh release upload "$TAG" --clobber dist/*
+          else
+            gh release create "$TAG" --title "Rodeo desktop $VERSION" --notes-file notes.md dist/*
+          fi

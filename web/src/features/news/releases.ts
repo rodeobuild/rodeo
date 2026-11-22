@@ -109,6 +109,19 @@ export const RELEASES: readonly Release[] = [
     "plug",
   ),
   release(
+    "2026-11-23T00:00:00Z",
+    "desktop-app",
+    "Rodeo as a desktop app",
+    `The whole editor in its own window, for macOS, Windows and Linux, with no browser or account needed.
+- Download it from the releases page on GitHub (look for "Rodeo desktop"): a .dmg for Mac, a setup .exe for Windows, a .deb or an AppImage for Linux.
+- It works with the network off: it opens, edits, saves and renders drawings, runs scripts and imports every format the web editor does.
+- Save writes back to the same file. Open Recent and the start screen list recent files, and double-clicking a .vwx file opens it in Rodeo.
+- Autosave copies drawings of any size; a drawing of 256 MB or more is copied at most every 15 minutes.
+- Updates are offered, never forced: Help › Check for Updates… looks for a newer version, and the weekly check can be turned off.
+- Not in the app: sign-in, cloud drawings, editing together, sharing, agents, AI Render and the Gallery. They run on rodeo.build.`,
+    "desktop",
+  ),
+  release(
     "2026-11-23T12:00:00Z",
     "vectorworks-2018-2019",
     "Vectorworks 2018 and 2019 drawings open",

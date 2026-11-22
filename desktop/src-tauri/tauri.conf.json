@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Rodeo",
+  "version": "0.1.0",
+  "identifier": "build.rodeo.desktop",
+  "build": {
+    "frontendDist": "../app"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost data: blob: https:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "shortDescription": "Draw and model; opens Vectorworks files",
+    "copyright": "Rodeo contributors, AGPL-3.0",
+    "licenseFile": "../../LICENSE",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.3"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      }
+    },
+    "fileAssociations": [
+      { "ext": ["vwx"], "name": "Vectorworks drawing", "description": "Vectorworks drawing", "role": "Editor", "rank": "Alternate" },
+      { "ext": ["sta"], "name": "Vectorworks template", "description": "Vectorworks template", "role": "Editor", "rank": "Alternate" },
+      { "ext": ["dwg"], "name": "AutoCAD drawing", "description": "AutoCAD drawing", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["dxf"], "name": "AutoCAD DXF drawing", "description": "AutoCAD DXF drawing", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["rvt", "rfa", "rte", "rft"], "name": "Revit project or family", "description": "Revit project or family", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["pln", "pla", "tpl"], "name": "Archicad project", "description": "Archicad project", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["pdf"], "name": "PDF document", "description": "PDF document", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["emf"], "name": "Windows metafile", "description": "Windows enhanced metafile", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["obj", "glb", "gltf", "3ds", "stl", "ifc", "usd", "usda", "usdc", "usdz", "3dm", "fbx", "dae", "kmz", "blend", "ply", "3mf", "skp"], "name": "3D model", "description": "3D model", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["stp", "step", "igs", "iges"], "name": "STEP or IGES model", "description": "STEP or IGES model", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["sldprt", "ipt", "fcstd", "f3d", "prt"], "name": "CAD part", "description": "CAD part file", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["csv", "tsv", "dif", "slk", "sylk", "xlsx", "xlsm"], "name": "Spreadsheet", "description": "Spreadsheet or worksheet", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif"], "name": "Picture", "description": "Picture", "role": "Viewer", "rank": "Alternate" }
+    ]
+  }
+}

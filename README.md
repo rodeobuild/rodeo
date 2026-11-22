@@ -50,6 +50,7 @@ Accounts, cloud drawings, sharing and live collaboration come from the optional 
 | `web/scripts/vwx.ts` | a Node command line |
 | `web/src/convert/` | the converter: any format read into a drawing and written out without the editor (the converter page, the `rodeo` command and MCP use it) |
 | `cli/` | the npm package `@rodeo.build/cli`, the `rodeo` command |
+| `desktop/` | the desktop app: the native shell around the web build, and its build, tests and release |
 | `web/vendor/` | generated third-party builds (rvt-rs) |
 | `server/` | accounts, cloud drawings, collaboration, billing; `server/scripts/` holds its tests |
 | `cloudrender/` | the GPU worker behind Render Image's cloud option (Modal) |
@@ -100,6 +101,15 @@ contained (for example the first group or symbol instance) fails because
 there is no record to copy; and pasting between files matches classes, line
 types and symbols by name but keeps colour indices as they are.
 
+## Desktop app
+
+Rodeo also runs as a desktop app for macOS, Windows and Linux: the whole
+editor in its own window, with no browser or account. Download it from the
+[releases page](https://github.com/rodeobuild/rodeo/releases) (look for
+"Rodeo desktop"). It works with the network off. It is built from `desktop/`:
+see [desktop/README.md](desktop/README.md) for how it is built, measured and
+tested.
+
 ## Roadmap
 
 [PARITY.md](PARITY.md) is the checklist of Vectorworks features and which of
@@ -114,8 +124,6 @@ them Rodeo has; the items below are the format work behind them.
    and styles.
 5. 3D: Parasolid solids (free-form surfaces show only their edges), the site
    model's NURBS drape, 3D editing.
-6. Desktop app: wrap `web/dist` with Electron or Tauri.
-
 ## Notes
 
 - `samples/` is git-ignored: real drawings contain client names, addresses

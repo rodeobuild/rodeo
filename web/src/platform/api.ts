@@ -40,7 +40,12 @@ import type {
   Version,
 } from "./protocol.ts";
 
+import { inShell } from "./shell.ts";
+
 const BASE = "/api";
+
+/** How long the config may take: a server that accepts the connection and never answers must not hold up every server feature. */
+const CONFIG_TIMEOUT_MS = 8000;
 
 export class ApiError extends Error {
   constructor(
@@ -215,10 +220,15 @@ export async function bytesOf(res: Response): Promise<Uint8Array> {
 
 let config: Promise<ServerConfig | null> | null = null;
 
-/** What the server offers, or null with no server (fetched once). */
+/**
+ * What the server offers, or null with no server (fetched once). The desktop app has no server at its
+ * own address, so it asks nothing there: null at once, and everything that waits on the config stays off.
+ */
 export function serverConfig(): Promise<ServerConfig | null> {
-  config ??= fetch(`${BASE}/config`, { credentials: "include" })
+  if (inShell()) return Promise.resolve(null);
+  config ??= fetch(`${BASE}/config`, { credentials: "include", signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS) })
     .then(async (r) => (r.ok && (r.headers.get("content-type") ?? "").includes("json") ? ((await r.json()) as ServerConfig) : null))
+    // a timeout (or any failure) reads as no server
     .catch(() => null);
   return config;
 }

@@ -1,0 +1,28 @@
+{
+  "identifier": "default",
+  "description": "The editor's window: exactly the shell's own commands (web/src/platform/shell.ts). No core, dialog or fs permissions: the dialogs are called from Rust.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-shell-info",
+    "allow-file-pick-open",
+    "allow-file-pick-save",
+    "allow-file-stat",
+    "allow-file-read",
+    "allow-file-write-begin",
+    "allow-write-chunk",
+    "allow-write-end",
+    "allow-file-reveal",
+    "allow-pending-take",
+    "allow-recent-list",
+    "allow-recent-add",
+    "allow-recent-remove",
+    "allow-recent-clear",
+    "allow-kept-list",
+    "allow-kept-read",
+    "allow-kept-write-begin",
+    "allow-kept-remove",
+    "allow-window-state",
+    "allow-window-close",
+    "allow-open-external"
+  ]
+}

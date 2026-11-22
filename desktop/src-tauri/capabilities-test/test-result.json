@@ -1,0 +1,6 @@
+{
+  "identifier": "test-result",
+  "description": "Test builds only: the test bridge's answer command. Not in a normal build.",
+  "windows": ["main"],
+  "permissions": ["allow-test-result"]
+}

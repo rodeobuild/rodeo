@@ -3,10 +3,14 @@
 // picker (or a drop, in browsers that hand one over) gave, so a drawing is listed once it is
 // opened with Open…, dropped in such a browser, or saved with Save As. The handles are kept in
 // this browser (IndexedDB), never the drawings; reopening one asks for permission to read it
-// again when the browser wants that. The hub reads the same list through recentList and
-// onRecentChange, and the app reads a listed drawing through openRecentEntry.
+// again when the browser wants that. In the desktop app the list is kept by the shell instead (it
+// holds the paths, which the page never sees), and IndexedDB is not used at all. The hub reads the
+// same list through recentList and onRecentChange, and the app reads a listed drawing through
+// openRecentEntry.
 
+import { shell } from "../platform/shell.ts";
 import type { Row } from "./menu.ts";
+import { asHandle, shellHandleOf, ShellHandle } from "./shellFiles.ts";
 import { toast } from "./toast.ts";
 
 const DB_NAME = "openvwx-recent";
@@ -20,6 +24,8 @@ export interface RecentEntry {
   readonly handle: FileSystemFileHandle;
   /** when it was last opened or saved, ms since the epoch */
   readonly openedAt: number;
+  /** the folder it is in, shown beside its name (the desktop app only; a browser does not say) */
+  readonly folder?: string;
 }
 
 /** The permission calls of a file handle, which not every browser (or the DOM typings) has. */
@@ -71,8 +77,20 @@ async function store(list: RecentEntry[]): Promise<void> {
   }
 }
 
-/** Reads the kept list, at start. */
+/** Reads the kept list, at start (in the desktop app, the list the shell keeps). */
 export async function loadRecent(): Promise<void> {
+  const sh = shell();
+  if (sh) {
+    // an entry the shell finds gone stays listed: it is taken off when it is opened (readRecent)
+    let got: Awaited<ReturnType<typeof sh.call<"recent_list">>> = [];
+    try {
+      got = await sh.call("recent_list", {});
+    } catch {
+      // no list from the shell: it starts empty
+    }
+    setRecent(got.map((ref) => ({ name: ref.name, handle: asHandle(new ShellHandle(ref)), openedAt: ref.openedAt, folder: ref.folder })));
+    return;
+  }
   let list: RecentEntry[] = [];
   try {
     const kept = (await request("readonly", (s) => s.get(LIST_KEY))) as RecentEntry[] | undefined;
@@ -95,6 +113,15 @@ export function onRecentChange(fn: () => void): void {
 
 /** Puts a drawing at the top of the list (once: an earlier entry for the same file goes). */
 export async function rememberRecent(handle: FileSystemFileHandle): Promise<void> {
+  const sh = shell();
+  if (sh) {
+    const chosen = shellHandleOf(handle);
+    if (chosen) {
+      await sh.call("recent_add", { id: chosen.ref.id });
+      await loadRecent();
+    }
+    return;
+  }
   const others: RecentEntry[] = [];
   for (const r of recent) {
     if (!(await r.handle.isSameEntry(handle).catch(() => false))) others.push(r);
@@ -116,12 +143,37 @@ async function readRecent(r: RecentEntry): Promise<{ file: Blob; name: string } 
   } catch (err) {
     if (err instanceof DOMException && err.name === "NotFoundError") {
       toast(`${r.name} was moved or deleted, so it is off the list.`, "info");
-      await store(recent.filter((x) => x !== r));
+      await forgetRecent(r);
     } else {
       toast(`Could not open ${r.name}: ${err instanceof Error ? err.message : String(err)}`);
     }
     return null;
   }
+}
+
+/** Takes a drawing off the list (one that was moved or deleted). */
+async function forgetRecent(r: RecentEntry): Promise<void> {
+  const sh = shell();
+  if (sh) {
+    const chosen = shellHandleOf(r.handle);
+    if (chosen) {
+      await sh.call("recent_remove", { id: chosen.ref.id });
+      await loadRecent();
+    }
+    return;
+  }
+  await store(recent.filter((x) => x !== r));
+}
+
+/** Empties the list (Clear Menu): in the desktop app the shell's list, else the browser's. */
+async function clearRecent(): Promise<void> {
+  const sh = shell();
+  if (sh) {
+    await sh.call("recent_clear", {});
+    setRecent([]);
+    return;
+  }
+  await store([]);
 }
 
 /** Finds a drawing from the list (see readRecent): its file, name and handle, or null when it cannot be read. */
@@ -136,6 +188,6 @@ export function recentRows(open: (entry: RecentEntry) => void): Row[] {
   return [
     ...recent.map((r): Row => ({ label: r.name, run: () => open(r) })),
     "-",
-    { label: "Clear Menu", run: () => void store([]) },
+    { label: "Clear Menu", run: () => void clearRecent() },
   ];
 }

@@ -8,12 +8,14 @@ import { undo } from "../../app/commands.ts";
 import type { AppContext } from "../../app/ext.ts";
 import { IS_MAC } from "../../app/menu.ts";
 import { layerInfo, store } from "../../app/state.ts";
+import { IN_BROWSER_ONLY } from "../../app/online.ts";
 import { toast } from "../../app/toast.ts";
 import type { FaceHit, View3D } from "../../app/view3d.ts";
 import { currentUser, onUser, refreshUser, serverConfig, userLoaded, userReady } from "../../platform/api.ts";
 import type { AiCreditTerms, ServerConfig } from "../../platform/protocol.ts";
 import { formatCredit, topUpButtons } from "../account/credit.ts";
 import { requireSignIn } from "../account/signin.ts";
+import { inShell } from "../../platform/shell.ts";
 import { askAgent, agentGate, forgetVoiceThread, replyText, type AskInput, type AskSubject } from "./agent.ts";
 import type { Pin, Word } from "./command.ts";
 import { costLine, creditTermsOf, micTip, privacyLines, readiness, speechHints, transcribeOn, type Engine, type Readiness } from "./engine.ts";
@@ -178,7 +180,7 @@ export function installVoice(ctx: AppContext, mics: readonly MicButton[]): void 
       st = "hidden";
     } else if (r === "no-accounts" || r === "no-agent" || r === "no-speech") {
       st = "unsupported";
-      reason = BLOCK_TITLE[r];
+      reason = r === "no-accounts" && inShell() ? IN_BROWSER_ONLY : BLOCK_TITLE[r];
     } else if (state === "listening") {
       st = "listening";
     } else if (state === "busy") {
@@ -316,7 +318,15 @@ export function installVoice(ctx: AppContext, mics: readonly MicButton[]): void 
   function showBlock(r: Block): void {
     switch (r.kind) {
       case "no-accounts":
-        card({ tone: "info", title: BLOCK_TITLE["no-accounts"], body: "This copy of Rodeo has no account server, so voice commands are off here.", actions: [] }, INFO_MS);
+        card(
+          {
+            tone: "info",
+            title: BLOCK_TITLE["no-accounts"],
+            body: inShell() ? "They run on rodeo.build: open it in a browser to use them." : "This copy of Rodeo has no account server, so voice commands are off here.",
+            actions: [],
+          },
+          INFO_MS,
+        );
         return;
       case "no-agent":
         card({ tone: "info", title: BLOCK_TITLE["no-agent"], body: "The agent isn't set up on this server, so voice commands are off here.", actions: [] }, INFO_MS);

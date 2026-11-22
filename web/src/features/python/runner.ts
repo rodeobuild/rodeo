@@ -20,6 +20,7 @@ import { store, type DisplayMode, type ToolId } from "../../app/state.ts";
 import { DISPLAY_MODES } from "../../app/displayModes.ts";
 import { textDefaults } from "../../app/tools/text.ts";
 import { toast } from "../../app/toast.ts";
+import { inShell } from "../../platform/shell.ts";
 import { millimetresPerUnit, parseLength } from "../../app/units.ts";
 import { showAlert } from "../plugins/ui.ts";
 import { closeLayoutDialog, closeLayoutDialogs, runLayoutDialog } from "./layoutDialog.ts";
@@ -29,7 +30,20 @@ import "./vs/steps.ts";
 import { VS_SOURCE } from "./vsModule.ts";
 import { VSC_SOURCE } from "./vscriptModule.ts";
 
-const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
+/**
+ * Where Pyodide's files are. A build that carries its own copy says so in its page
+ * (<meta name="rodeo-pyodide" content="pyodide/">, written by desktop/scripts/stage.mjs): the
+ * desktop app, and the same build served from a folder. The website has no such line and uses the CDN.
+ */
+function pyodideBase(): string {
+  const own = document.querySelector<HTMLMetaElement>('meta[name="rodeo-pyodide"]')?.content;
+  return own ? new URL(own, document.baseURI).href : "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
+}
+
+/** Whether Python's files come with this build, not from the network. */
+function pyodideOwn(): boolean {
+  return document.querySelector('meta[name="rodeo-pyodide"]') !== null;
+}
 
 /** Where a plug-in's own Python files are put for its run, first on the import path. */
 const PLUGIN_DIR = "/rodeo/plugin";
@@ -40,8 +54,9 @@ const TEXT_PAPER_MM = 2.5;
 const MM_PER_POINT = 25.4 / 72;
 
 function workerSource(): string {
+  const base = pyodideBase();
   return `
-importScripts(${JSON.stringify(PYODIDE + "pyodide.js")});
+importScripts(${JSON.stringify(base + "pyodide.js")});
 const VS = ${JSON.stringify(VS_SOURCE)};
 const VSC = ${JSON.stringify(VSC_SOURCE)};
 const RUN = ${JSON.stringify(RUN_PY)};
@@ -54,7 +69,7 @@ const NATIVE_FETCH = self.fetch;
 // the Python packages Pyodide keeps out of its standard library, loaded when a script imports one
 const PACKAGES = ["ssl", "sqlite3", "lzma"];
 const ready = (async () => {
-  py = await loadPyodide({ indexURL: ${JSON.stringify(PYODIDE)} });
+  py = await loadPyodide({ indexURL: ${JSON.stringify(base)} });
   py.registerJsModule("_rodeo", {
     ask: (kind, args) => new Promise((resolve) => {
       const id = ++seq;
@@ -609,7 +624,8 @@ function startWorker(): Promise<boolean> {
   ready = new Promise<boolean>((resolve, reject) => {
     w.onerror = (e) => {
       e.preventDefault();
-      reject(new Error(e.message || "Python couldn't start."));
+      // in the app the files are on disk: a failure there is a damaged install, never the network
+      reject(new Error(inShell() ? "Python couldn't start: its files in the app couldn't be read. Reinstall Rodeo to fix it." : e.message || "Python couldn't start."));
     };
     w.onmessage = (e: MessageEvent) => {
       const m = e.data as { type: string; jspi?: boolean; message?: string; text?: string; result?: string; id?: number; kind?: string; args?: string };
@@ -909,7 +925,7 @@ export async function runScript(code: string, file: string, events: RunEvents, p
   if (running) return { error: { name: "Busy", message: "A script is running already.", line: null }, steps: 0 };
   const s = store.session;
   if (!s) return { error: { name: "Error", message: "Open a drawing first.", line: null }, steps: 0 };
-  if (!worker) events.print("system", "Starting Python (the first run fetches it, about 11 MB)…");
+  if (!worker) events.print("system", pyodideOwn() ? "Starting Python…" : "Starting Python (the first run fetches it, about 11 MB)…");
   printTo = events;
   let jspi: boolean;
   try {

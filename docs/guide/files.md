@@ -1,12 +1,12 @@
 # Files: opening, saving and tabs
 
-This page covers opening and saving drawings, autosave, working with several drawings in tabs, starting new drawings and templates, and a drawing's units and file information, sharing and embedding drawings. Bringing in other formats is covered in [Importing, exporting and printing](import-export.md).
+This page covers opening and saving drawings, autosave, working with several drawings in tabs, starting new drawings and templates, a drawing's units and file information, sharing and embedding drawings, and the desktop app. Bringing in other formats is covered in [Importing, exporting and printing](import-export.md).
 
 ## Opening and saving
 
 ### Open, Save and Open Recent
 
-Open a `.vwx` file with **Open** or by dropping it on the window. **Open** also opens DWG files and Revit and Archicad projects as new drawings, as described in [Importing, exporting and printing](import-export.md). **Save** writes back to the same file where the browser allows it (Chrome/Edge File System Access API); otherwise it downloads a copy.
+Open a `.vwx` file with **Open** or by dropping it on the window. **Open** also opens DWG files and Revit and Archicad projects as new drawings, as described in [Importing, exporting and printing](import-export.md). **Save** writes back to the same file where the browser allows it (Chrome/Edge File System Access API); otherwise it downloads a copy. In the desktop app, **Save** always writes back to the same file.
 
 Files saved by Vectorworks 2020 or later open as they are. A file saved by Vectorworks 2018 or 2019, or in the Vectorworks 2013, 2016 or 2017 format, opens converted to the current format, in the file's units, and **Save** asks where to write, so the original file stays as it was. That includes a file a newer Vectorworks exported for one of those versions.
 
@@ -34,13 +34,60 @@ While a drawing has unsaved changes, a copy of it is kept in the browser every 5
 
 Saving or closing a drawing removes its copy, and a copy no one recovers is deleted after seven days. Another Rodeo window that is still open keeps its own copies.
 
-**Limits:** drawings over 150 MB are not copied, since writing one out takes as much memory again.
+**Limits:** in the browser, drawings over 150 MB are not copied, since writing one out takes as much memory again. The desktop app copies drawings of any size; see [The desktop app](#the-desktop-app).
 
 ### Restore a cloud version
 
 **File › Version History** lists the saved versions of a cloud drawing. Choose **Restore** on an older version to make a new current version from it. Once the restore succeeds, everyone in the live session reloads that version.
 
 If the restore is refused because there is no room on the owner's plan, or the server cannot save it, the current version and pending live edits stay intact. Make room or resolve the error before trying again.
+
+## The desktop app
+
+### Getting it
+
+The desktop app is the whole editor in a window of its own, for macOS, Windows and Linux. It needs no browser and no account, and it works with the network off.
+
+Downloads are on the project's releases page at [github.com/rodeobuild/rodeo/releases](https://github.com/rodeobuild/rodeo/releases). Look for the release titled "Rodeo desktop". Each installer has a `.sha256` checksum file to compare the download against, to check that it arrived whole.
+
+- **Mac:** a `.dmg`, for Apple Silicon and Intel Macs alike.
+- **Windows:** a setup `.exe`.
+- **Linux:** a `.deb` and an AppImage.
+- **Any browser:** `Rodeo-<version>-web.zip`, the same editor as a plain folder. Unzip it and serve the folder with any static file server.
+
+The builds are not signed yet, so the first launch needs one step. On a Mac, right-click **Rodeo** in Applications and choose **Open**, or allow it in **System Settings › Privacy & Security**. On Windows, when SmartScreen stops the app, choose **More info**, then **Run anyway**.
+
+### What works with no connection
+
+With the network off, the app opens, edits and saves `.vwx` drawings, shows them in 3D, renders them (Realistic, Path Traced and Render Image), runs scripts and imports every format the web editor imports. Python is inside the app, so Run Script needs no download.
+
+Some features run on rodeo.build and are not in the app: sign-in and cloud drawings, editing together, share links and embeds, agents, AI Render and cloud renders, the Gallery, and voice transcription. Their menu rows are hidden, or greyed out with the reason. **Help › Rodeo on the Web…** opens rodeo.build in your browser.
+
+**File › Import › Import Site Context…** and the place search in Sun Study work when you are online. Without a connection they are greyed out with the reason "This needs an internet connection".
+
+### Files in the app
+
+**File › Open…** and **File › Save As…** use the system's own file dialogs. **Save** writes back to the same file, and no temporary copy is left beside it.
+
+**File › Open Recent** and the start screen list recent files with the folder each one is in. The app keeps that list itself.
+
+Double-click a `.vwx` file to open it in Rodeo, or choose **Open With › Rodeo**. Rodeo offers itself for the formats it reads and takes none of them over from another app.
+
+Drop a file on the Rodeo window to open it. Every export and download asks where to save the file.
+
+### Autosave in the app
+
+The app keeps its autosave copies in a folder on the computer. They are streamed from the drawing, so a drawing of any size is copied, and the 150 MB limit of the browser does not apply. A drawing of 256 MB or more is copied at most every 15 minutes.
+
+After a crash, the copy is offered when Rodeo next starts.
+
+### Updates
+
+Nothing installs itself. **Help › Check for Updates…** looks for a newer version and offers its download page.
+
+**Help › Check for Updates Automatically** is on by default. With it on, Rodeo makes one quiet check a week while you are online, and shows a note if a newer version is out. Turn it off and the app never contacts the network by itself. An older version keeps working.
+
+**Limits:** the builds are not signed yet, so the first launch needs the step under Getting it. Print saves a PDF to print from, and there is no print dialog. <kbd>⌘Q</kbd> and the window's close button ask about unsaved changes. Quitting from the Dock, logging out and a forced quit do not, and the autosave copy is offered at the next start, by default at most 5 minutes old. On a Mac the 3D view draws at up to 60 frames a second. The Windows and Linux builds are new and have been tested less than the Mac one. The first time the app reopens a recent file from Desktop, Documents or Downloads, macOS asks whether it may, and an unsigned build is asked again after each update.
 
 ## Sharing and embedding
 

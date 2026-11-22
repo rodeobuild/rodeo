@@ -8,6 +8,7 @@ import { writeHandle } from "../../app/fileio.ts";
 import { h } from "../../app/dom.ts";
 import { rememberRecent } from "../../app/recent.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
+import { inShell } from "../../platform/shell.ts";
 
 interface LaunchParams {
   readonly files?: readonly FileSystemHandle[];
@@ -37,6 +38,8 @@ export function openFromLaunchQueue(ctx: AppContext): void {
 
 /** Registers the service worker in a production build, and announces an update to a page that had one. */
 export function registerServiceWorker(): void {
+  // the desktop app's files are already on disk, and a cached copy would outlive an update of the app
+  if (inShell()) return;
   const env = (import.meta as unknown as { env?: { PROD?: boolean } }).env;
   if (!env?.PROD || !("serviceWorker" in navigator)) return;
   // the build's bundle name changes with every build: a new script URL installs a new worker

@@ -248,6 +248,8 @@ export type WelcomeSlot = "head" | "open" | "main" | "foot";
 /** A drawing a feature lists on the start screen's Recent list, beside those opened from this computer. */
 export interface RecentFile {
   readonly name: string;
+  /** the folder it is in, when the app knows it (the hub shows it as a tooltip) */
+  readonly folder?: string;
   /** when it was last opened or changed, ms since the epoch (the list is newest first) */
   readonly at: number;
   /** a 16 px line icon, as SVG markup */

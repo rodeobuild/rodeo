@@ -3,12 +3,15 @@
 // terrain as a site model, and roads, paths, rail, water, green spaces, trees and facilities.
 
 import { documentSource, registerMenu } from "../../app/ext.ts";
+import { NEEDS_INTERNET, online } from "../../app/online.ts";
 import { store } from "../../app/state.ts";
 
 registerMenu("File › Import", () => [
   {
     label: "Import Site Context…",
-    enabled: () => store.session !== null && !documentSource()?.readOnly,
+    // its map and data come from OpenStreetMap's services, so it needs a connection
+    enabled: () => store.session !== null && !documentSource()?.readOnly && online(),
+    why: () => (store.session !== null && !online() ? NEEDS_INTERNET : null),
     // the map (Leaflet) loads on first use, not with the editor
     run: () => void import("./dialog.ts").then((m) => m.openSiteContextDialog()),
   },

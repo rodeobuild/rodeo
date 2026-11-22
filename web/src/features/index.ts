@@ -30,3 +30,4 @@ import "./voice/index.ts";
 import "./mcp/index.ts";
 import "./touch/index.ts";
 import "./convert/index.ts";
+import "./desktop/index.ts";

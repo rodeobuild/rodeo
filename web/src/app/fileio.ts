@@ -2,6 +2,9 @@
 // download fallbacks. Also installs window-wide drag and drop.
 
 import { h } from "./dom.ts";
+import { shell, type Shell, type ShellFile, type ShellFilter } from "../platform/shell.ts";
+import { asHandle, fileFor, picked, ShellHandle, shellFilters } from "./shellFiles.ts";
+import { toast } from "./toast.ts";
 
 export interface PickedFile {
   readonly name: string;
@@ -87,6 +90,12 @@ function pickWithInput(accept: string): Promise<PickedFile | null> {
  * Resolves null when the picker is cancelled.
  */
 export async function pickFile(template = false, revit = false): Promise<PickedFile | null> {
+  const sh = shell();
+  if (sh) {
+    const types = template ? TEMPLATE_TYPES : [...VWX_TYPES, ...DWG_TYPES, ...(revit ? [...REVIT_TYPES, ...MODEL_TYPES] : []), ...PICTURE_TYPES];
+    const [ref] = await sh.call("file_pick_open", { filters: shellFilters(types), multiple: false });
+    return ref ? await picked(ref) : null;
+  }
   const open = pickers().showOpenFilePicker?.bind(window);
   if (!open) return pickWithInput(template ? ".sta,.vwx" : revit ? ".vwx,.sta,.dwg,.rvt,.rfa,.rte,.rft,.pln,.pla,.tpl,.stp,.step,.igs,.iges,.3mf,.sldprt,.ipt,.fcstd,.f3d,.prt,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif" : ".vwx,.sta,.dwg,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif");
   try {
@@ -102,6 +111,12 @@ export async function pickFile(template = false, revit = false): Promise<PickedF
 
 /** Asks the user for a .dwg file. Resolves null when the picker is cancelled. */
 export async function pickDwg(): Promise<PickedFile | null> {
+  const sh = shell();
+  if (sh) {
+    const [ref] = await sh.call("file_pick_open", { filters: shellFilters(DWG_TYPES), multiple: false });
+    if (!ref) return null;
+    return { name: ref.name, file: await fileFor(ref), handle: null };
+  }
   const open = pickers().showOpenFilePicker?.bind(window);
   if (!open) return pickWithInput(".dwg");
   try {
@@ -158,6 +173,13 @@ function pickDxfWithInput(): Promise<PickedDxf | null> {
 
 /** Asks the user for a .dxf file. Resolves null when the picker is cancelled. */
 export async function pickDxf(): Promise<PickedDxf | null> {
+  const sh = shell();
+  if (sh) {
+    const [ref] = await sh.call("file_pick_open", { filters: shellFilters(DXF_TYPES), multiple: false });
+    if (!ref) return null;
+    const file = await fileFor(ref);
+    return { name: file.name, text: await readDxfText(file), file };
+  }
   const open = pickers().showOpenFilePicker?.bind(window);
   if (!open) return pickDxfWithInput();
   try {
@@ -191,6 +213,12 @@ function pickFilesWithInput(accept: string): Promise<PickedFile[] | null> {
 
 /** Asks the user for several .dwg or .dxf files at once, such as the external references a drawing needs. Resolves null when the picker is cancelled. */
 export async function pickDrawingFiles(): Promise<PickedFile[] | null> {
+  const sh = shell();
+  if (sh) {
+    const refs = await sh.call("file_pick_open", { filters: shellFilters([...DWG_TYPES, ...DXF_TYPES]), multiple: true });
+    if (refs.length === 0) return null;
+    return await Promise.all(refs.map(async (ref) => ({ name: ref.name, file: await fileFor(ref), handle: null })));
+  }
   const open = pickers().showOpenFilePicker?.bind(window);
   if (!open) return pickFilesWithInput(".dwg,.dxf");
   try {
@@ -210,6 +238,11 @@ export async function pickDrawingFiles(): Promise<PickedFile[] | null> {
 
 /** Chooses where Save As writes, templates first when `template`. Falls back to a download when the picker is unavailable. */
 export async function chooseSaveTarget(suggestedName: string, template = false): Promise<SaveTarget | null> {
+  const sh = shell();
+  if (sh) {
+    const ref = await sh.call("file_pick_save", { suggestedName, filters: shellFilters(template ? TEMPLATE_TYPES : VWX_TYPES) });
+    return ref ? { kind: "handle", handle: asHandle(new ShellHandle(ref)) } : null;
+  }
   const save = pickers().showSaveFilePicker?.bind(window);
   if (!save) return { kind: "download" };
   try {
@@ -232,7 +265,53 @@ export async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Arra
   }
 }
 
+/** The size of each piece a save in the desktop app reads a blob in and writes out. */
+const SAVE_PIECE = 8 << 20;
+
+/**
+ * Asks where to save a file in the desktop app, then writes the blob there a piece at a time, so a
+ * big export is never copied whole. Cancelled leaves nothing; a failure says so and leaves no
+ * half-written file in place (the shell commits a write only when it is closed).
+ */
+async function saveWithDialog(sh: Shell, name: string, blob: Blob): Promise<void> {
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : "";
+  const filters: ShellFilter[] = extension ? [{ name: `${extension.toUpperCase()} file`, extensions: [extension] }] : [];
+  let ref: ShellFile | null;
+  try {
+    ref = await sh.call("file_pick_save", { suggestedName: name, filters });
+  } catch (err) {
+    toast(`Could not save ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  if (!ref) return;
+  const handle = new ShellHandle(ref);
+  let out: Awaited<ReturnType<ShellHandle["createWritable"]>> | null = null;
+  try {
+    out = await handle.createWritable();
+    for (let at = 0; at < blob.size; at += SAVE_PIECE) {
+      await out.write(new Uint8Array(await blob.slice(at, at + SAVE_PIECE).arrayBuffer()));
+    }
+    await out.close();
+  } catch (err) {
+    await out?.abort().catch(() => undefined);
+    toast(`Could not save ${ref.name}: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  toast(`Saved ${ref.name}`, "info");
+}
+
+/**
+ * Saves a file the user downloads: a browser downloads it, the desktop app asks where to save it
+ * (saveWithDialog). The desktop save runs on after this returns, so a caller that marks a drawing
+ * saved on return marks it before the bytes are written.
+ */
 export function downloadBlob(name: string, blob: Blob): void {
+  const sh = shell();
+  if (sh) {
+    void saveWithDialog(sh, name, blob);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = h("a", { attrs: { href: url, download: name }, hidden: true });
   document.body.append(a);
@@ -286,4 +365,28 @@ export function installFileDrop(onFile: (file: File, handle: Promise<FileSystemF
     const all = [...(e.dataTransfer?.files ?? [])];
     if (all[0]) onFile(all[0], handle, all);
   });
+
+  const sh = shell();
+  if (!sh) return;
+  // in the desktop app the shell says when files are dragged over the window, and hands over the
+  // files a double click, a drop on the icon or a second launch names
+  sh.on("drag", (on) => setOverlay(on));
+  const deliver = async (refs: readonly ShellFile[]): Promise<void> => {
+    const got: { name: string; file: File; handle: FileSystemFileHandle }[] = [];
+    for (const ref of refs) {
+      try {
+        got.push(await picked(ref));
+      } catch (err) {
+        console.error(err);
+        toast(`Could not open ${ref.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const first = got[0];
+    if (first) onFile(first.file, Promise.resolve(first.handle), got.map((g) => g.file));
+  };
+  sh.on("open", (refs) => {
+    void deliver(refs);
+  });
+  // the files the app was started with, or handed over before the page was ready: after the listener above
+  sh.call("pending_take", {}).then(deliver, (err: unknown) => console.error(err));
 }

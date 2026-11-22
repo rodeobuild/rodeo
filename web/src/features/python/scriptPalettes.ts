@@ -8,6 +8,7 @@
 
 import { appContext } from "../../app/ext.ts";
 import { h } from "../../app/dom.ts";
+import { downloadBlob } from "../../app/fileio.ts";
 import { openContextMenu, type Row } from "../../app/menu.ts";
 import { confirmDialog, showDialog } from "../../app/menubar.ts";
 import { store } from "../../app/state.ts";
@@ -221,9 +222,7 @@ function importScript(into?: ScriptPalette): void {
 }
 
 function exportScript(s: Script): void {
-  const url = URL.createObjectURL(new Blob([s.code], { type: "text/plain" }));
-  h("a", { attrs: { href: url, download: fileName(s) } }).click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(fileName(s), new Blob([s.code], { type: "text/plain" }));
 }
 
 function scriptRows(p: ScriptPalette, s: Script): Row[] {

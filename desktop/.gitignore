@@ -1,0 +1,6 @@
+app/
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/target-work/
+src-tauri/permissions/

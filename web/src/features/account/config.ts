@@ -4,6 +4,7 @@
 
 import { serverConfig } from "../../platform/api.ts";
 import type { ServerConfig } from "../../platform/protocol.ts";
+import { inShell } from "../../platform/shell.ts";
 
 let current: ServerConfig | null = null;
 const listeners = new Set<() => void>();
@@ -36,6 +37,8 @@ export async function loadConfig(): Promise<ServerConfig | null> {
  * funding and sponsor settings change it while the editor runs.
  */
 export async function reloadConfig(): Promise<void> {
+  // the desktop app has no server at its own address
+  if (inShell()) return;
   const res = await fetch("/api/config", { credentials: "include" });
   if (!res.ok) throw new Error(`The server answered ${res.status}`);
   set((await res.json()) as ServerConfig);

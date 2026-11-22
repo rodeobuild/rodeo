@@ -6,6 +6,8 @@
 import "./pill.css";
 import { onReady, registerMenu, registerTopBar } from "../../app/ext.ts";
 import type { Row } from "../../app/menu.ts";
+import { IN_BROWSER_ONLY } from "../../app/online.ts";
+import { inShell } from "../../platform/shell.ts";
 import { bridgeStatusText, startBridge } from "./bridge.ts";
 import { openConnectDialog } from "./dialog.ts";
 import { agentPill } from "./pill.ts";
@@ -16,5 +18,17 @@ export function openAgentsDialog(): void {
 }
 
 registerTopBar(agentPill, "right");
-registerMenu("Window", (): Row[] => [{ label: "Connect an Agent…", run: openAgentsDialog }], { after: "Agents" });
+registerMenu(
+  "Window",
+  (): Row[] => [
+    {
+      label: "Connect an Agent…",
+      // the desktop app has no Rodeo server to connect agents to
+      enabled: () => !inShell(),
+      why: () => (inShell() ? IN_BROWSER_ONLY : null),
+      run: openAgentsDialog,
+    },
+  ],
+  { after: "Agents" },
+);
 onReady(() => startBridge());
