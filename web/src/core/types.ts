@@ -558,6 +558,9 @@ export interface HelixOptions {
 }
 
 /** What addObjects draws: a line, rect, roundrect, polygon, polyline, arc (a circle or an ellipse too), text, locus, light or image. */
+export type { HoleSize, WallHole, WallInsertPlace } from "./wallInserts.ts";
+import type { HoleSize, WallInsertPlace } from "./wallInserts.ts";
+
 export type NewShape =
   | { kind: "line"; a: Pt; b: Pt }
   | { kind: "rect"; x0: number; y0: number; x1: number; y1: number }
@@ -1197,23 +1200,6 @@ export interface PlainWallSpec {
   openings?: readonly (readonly Pt[])[];
 }
 
-/** A door or window a new one can copy, with its opening in the wall (EditSession.wallInsertKinds). */
-export interface WallInsertKind {
-  /** the door or window copied */
-  id: string;
-  /** its plug-in's name ("Door", "Window") */
-  name: string;
-  /** how many of its kind the drawing's design layers hold in walls: the same plug-in and parameters, in walls of the same style and thickness */
-  count: number;
-  /** how far its drawing reaches along its wall */
-  width: number;
-  /** the style and thickness of the wall it is set in: a copy goes only in a wall of these */
-  style: string | null;
-  thickness: number;
-  /** the corners of the box its drawing fills, along its wall's line from its middle and across it (left of the line positive) */
-  outline: Pt[];
-}
-
 /** Where a new wall would join one already drawn (EditSession.wallJoinAt). */
 export interface WallJoin {
   /** the wall joined */
@@ -1680,25 +1666,46 @@ export interface EditSession {
    */
   setWallStyle(id: string, template: string): string;
   /**
-   * The doors and windows a new one can copy (the Door and Window tools), one per plug-in,
-   * parameters and wall style and thickness: those set alone in a straight wall on a design layer
-   * whose heights don't slope, with each end cut straight across and the wall drawn between its
-   * ends only with the opening, which lies within 60 mm of the door's or window's drawing.
+   * How the door, window or symbol `id` lies in its wall (where along and across it, which way it
+   * faces, the wall's size, and the hole it stands in as the wall is drawn); null when it isn't set
+   * in a wall.
    */
-  wallInsertKinds(): WallInsertKind[];
+  wallInsertPlace(id: string): WallInsertPlace | null;
   /**
-   * Sets a copy of the door or window `source` (wallInsertKinds) in the straight wall `wallId`, its
-   * middle at `at` along the wall's line. Rodeo can't cut an opening, so the wall is redrawn as a
-   * copy of the one the source is set in, with the source in it: laid along the wall's line with
-   * the door where asked, its ends moved onto the wall's and cut as the wall's are, and its top and
-   * bottom the wall's (the door keeps its height above the bottom). The wall's class, name and
-   * attached records stay its own, and the walls joined to it stay as they are (its faces are where
-   * the source wall's lie). Throws for a wall of another style, thickness or faces than the
-   * source's, one holding a door, window or symbol already, one drawn with more than its two ends,
-   * sloping, or with an end not cut straight, a door that would reach an end or a wall meeting the
-   * side, and a top below the opening. One undo step; the new wall's and door's ids.
+   * What the edits of doors and windows since the last call left undone: how many of a wall's solids
+   * (its components, in 3D) couldn't be rebuilt round an opening and stay as they were, of how many
+   * it has there. The plan drawing and the rest of the 3D are right; null when everything was
+   * rebuilt. Reading it clears it.
    */
-  insertInWall(source: string, wallId: string, at: Pt): { wall: string; insert: string };
+  takeWallNote(): { left: number; of: number } | null;
+  /** Where the plan point `at` lies along the wall `wallId`, with the wall's thickness, height and length. Throws for what isn't a straight wall. */
+  wallSpot(wallId: string, at: Pt): { along: number; thickness: number; height: number; length: number };
+  /**
+   * Sets a new plug-in object named `name` (parameters as addPluginObject takes them) in the
+   * straight wall `wallId`, its origin on the wall's line where `at` lies along it, at the wall's
+   * bottom, and cuts the hole `size` through the wall about it: in its plan drawing, its 3D, and
+   * its record's list of breaks. `facing` turns it end for end (`reversed`) or to the wall's other
+   * side (`flipped`). It has no drawing yet (setPluginDrawing). Throws when the hole would reach
+   * the wall's end or another door's or window's hole, or the wall's 3D can't be cut. One undo step; its id.
+   */
+  addWallInsert(
+    wallId: string,
+    name: string,
+    fields: readonly PluginFieldSpec[],
+    values: Readonly<Record<string, RecordValue>>,
+    at: Pt,
+    size: HoleSize,
+    facing?: { reversed?: boolean; flipped?: boolean },
+    classIndex?: number,
+  ): string;
+  /** Gives the insert `id` a hole of another size: the one it stands in closes and `size` is cut about its origin. Nothing for one not set in a wall. */
+  resizeWallInsert(id: string, size: HoleSize): void;
+  /** Turns the insert `id` round in its wall: end for end (`along`), to the wall's other side (`across`), or both (a half turn). */
+  flipWallInsert(id: string, way: "along" | "across" | "both"): void;
+  /** Moves the insert `id` to where `at` lies along the wall `wallId`: along its own wall, or into another (its hole closing behind it), facing as it did. */
+  moveWallInsertTo(id: string, wallId: string, at: Pt): void;
+  /** Takes the doors, windows and symbols among `ids` out of their walls: each wall closes behind its own, and they stand where they stood, beside the wall in its layer or group. */
+  takeFromWall(ids: string[]): void;
   /**
    * Places a wall on `layerId` (in class `classIndex`, else None) from `start` to `end`: a copy of
    * the wall `template` names (wallTemplates) stretched along the new line, its thickness, heights
@@ -1834,14 +1841,16 @@ export interface EditSession {
   ): string[];
   /** whether the file has an object of this kind to copy settings from, which addObject needs */
   canAdd(kind: NewShape["kind"]): boolean;
-  /** Deletes the objects; a door, window or symbol set in a wall is refused (Rodeo can't close its opening yet). */
+  /** Deletes the objects. A door, window or symbol set in a wall leaves it whole: its opening closes in the wall's plan drawing and 3D, and its break goes from the wall's record. */
   deleteObjects(ids: string[]): void;
   /**
    * Moves the objects by (dx, dy). A door, window or symbol set in a straight wall slides along it
-   * by as much of the move as runs along the wall, with its opening (the wall's drawing and 3D
-   * within 60 mm of its drawing), refusing what would reach the wall's end, another door or
-   * window, or a wall meeting the side, and an opening it can't tell apart from them. One undo step.
-   * Other edits of an object set in a wall (turning, deleting, duplicating, grouping...) are refused.
+   * by as much of the move as runs along the wall, its opening closing where it stood and cut anew
+   * where it goes; a move that takes its origin off its wall and into another straight wall beside
+   * it (in the same layer or group) sets it in that wall instead, facing as it did. What would
+   * reach a wall's end or another door's or window's opening is refused. One undo step. Duplicating
+   * one copies it along its wall, deleting one closes the wall, and grouping one takes it out of
+   * the wall first (takeFromWall); turning one is refused (flipWallInsert).
    */
   moveObjects(ids: string[], dx: number, dy: number): void;
   /**

@@ -32,6 +32,7 @@ import {
   exitEditGroup,
   exitToTopLevel,
   fitToPage,
+  flipInWall,
   flipSelection,
   groupSelection,
   moveBy,
@@ -58,6 +59,8 @@ import {
   zoomBy,
   zoomToSelection,
   type AlignEdge,
+  selectedInWalls,
+  takeOutOfWall,
 } from "./commands.ts";
 import { canCenterDrawing, canLocateOrigin, centerDrawingOnOrigin, locateInternalOrigin } from "./origin.ts";
 import { editMarkerListDialog, lineThicknessDialog } from "./optionLists.ts";
@@ -159,6 +162,7 @@ import { canMakeGradeLoci, gradeLociCommand } from "./grade.ts";
 import { canAnalyseView, zoneOfVisualInfluenceDialog } from "./siteView.ts";
 import { gridMethodEntry, importSurveyFileDialog } from "./surveyInput.ts";
 import { createRetainingWall, retainingSelected } from "./retainingWall.ts";
+import "./doorWindow.ts";
 import { importTreeSurveyDialog } from "./treeSurveyImport.ts";
 import { canListVolumes, canMakeLimits, canMakePad, canMakeSection, gradeLimitsFromPadDialog, hasSiteModifiers, padFromGradeLimitsDialog, siteModelSectionDialog, siteModifiersShown, siteVolumeListDialog, toggleSiteModifiers } from "./siteCommands.ts";
 import { canMakeBoundaryModel, canMakeSiteModel, canSendToSurface, hasSiteModel, sendToSurface, siteModelFromBoundaryDialog, siteModelFromSourceDialog, updateSiteModels, editSiteCrop, isSiteModel, siteModelSelected, startLabelEdit, startSiteEdit } from "./siteModel.ts";
@@ -943,6 +947,16 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
         { label: "Rotate 3D…", why: need.selection, enabled: hasSelection, run: () => actions.rotate3D() },
         { label: "Flip Horizontal", why: need.selection, enabled: hasSelection, run: () => flipSelection(scene, "horizontal") },
         { label: "Flip Vertical", why: need.selection, enabled: hasSelection, run: () => flipSelection(scene, "vertical") },
+        {
+          label: "Flip in Wall",
+          why: whyIn("Select a door or window set in a wall."),
+          enabled: () => selectedInWalls().length > 0,
+          items: [
+            { label: "Side", why: whyIn("Select a door or window set in a wall."), enabled: () => selectedInWalls().length > 0, run: () => flipInWall("across") },
+            { label: "Hinge", why: whyIn("Select a door or window set in a wall."), enabled: () => selectedInWalls().length > 0, run: () => flipInWall("along") },
+          ],
+        },
+        { label: "Take Out of Wall", why: whyIn("Select a door or window set in a wall."), enabled: () => selectedInWalls().length > 0, run: takeOutOfWall },
         { label: "Unrotate 3D Objects", why: need.selection, keys: "⇧⌘0", enabled: hasSelection, run: unrotate3D },
         "-",
         {

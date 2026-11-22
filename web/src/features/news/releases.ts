@@ -22,6 +22,19 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-22T12:03:00Z",
+    "doors-windows-any-wall",
+    "Doors and windows in any wall",
+    `The Door and Window tools now cut their own openings, so a door or window of any size goes into any straight wall.
+- Click a wall with the Door or Window tool to set one in it. Preferences holds its kind and size: 15 door configurations and 10 window sashes. The drawing needs no door to copy, and the wall can already hold others.
+- The wall opens in plan and in 3D, and the door or window is drawn from its parameters: frame, leaf and swing, glazing, sashes, sill and trim.
+- Change its width, height or kind in Object Info and it is drawn again, with the opening recut to fit.
+- Drag it along its wall, or onto another wall. Flip it to the other side or swap its hinge. Duplicate it, delete it, or take it out of the wall: the wall closes behind it. Each is one undo step.
+- Doors and windows in Vectorworks drawings move, flip, copy and delete the same way.
+- Round walls aren't covered yet, and where a component of a wall can't be rebuilt in 3D a message says so. None of this has been opened in Vectorworks.`,
+    "door",
+  ),
+  release(
     "2026-11-23T12:00:00Z",
     "vectorworks-2018-2019",
     "Vectorworks 2018 and 2019 drawings open",

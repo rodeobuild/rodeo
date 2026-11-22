@@ -1317,36 +1317,134 @@ wall's: Vectorworks keeps them bare at any elevation (15 of the 2023 demo's
 19 wall kinds Rodeo can copy are on raised layers). The
 copy's name is cleared and its class set; its aux records and the bodies'
 Parasolid sections stay the template's. Untested in Vectorworks.
-A door or window placed with the Door and Window tools is copied with the
-wall it is set in, since Rodeo can't cut an opening. Of the 254 doors,
-windows and other objects set in the demos' walls, 158 have no point of
-their wall's drawing or bodies between 1 and 60 mm past their plan drawing
-along the wall (the jambs lie on it), and the rest have points up to 59 mm
-past it (a trim, or another wall's tee nearby); 101 are set alone in their
-wall. A copy comes from one set alone in a straight wall on a design
-layer whose six heights are its top and bottom alone, both ends cut straight
-across, with every point between its ends within 60 mm of the insert's
-drawing and no end point among them. That wall is copied whole (the door
-with it, unnamed) into the place of a straight wall of the same style,
-thickness and faces with nothing set in it and no points between its ends:
-turned and shifted onto its line so the door's middle lies where clicked,
-then its start and its end moved onto the wall's one at a time (what lies
-between keeping its place from the end that stays), each end cut as the
-wall's was, and its heights mapped as a wall holding doors takes new ones.
-It keeps the wall's name, class and attached records (most demo walls hold
-an IFC record of two fields, their values differing wall to wall), the
-copied wall's aux records otherwise, and the old wall goes. As the faces and
-cuts are the wall's own, the walls mitred or teed to it stay as they were.
-Untested in Vectorworks.
-A door, window or symbol set in a straight wall slides along it with its
-opening: the wall's points between its ends within 60 mm of its plan drawing
-along the line (its drawing's lines, polygons and polylines and its bodies'
-points) and the insert move by the slide, the rest of the wall staying. The
-opening must be told apart, so no other insert's drawing and no wall teeing
-in lies within 60 mm of it, and no end point; and it must stay so, short of
-the wall's other points, the other inserts and the tees by 2 mm. The insert's
-matrix takes the slide in its origin, its own drawing being in its frame.
-Untested in Vectorworks.
+**Openings in walls** (the Dover Dam demos of 2023 to 2026 and a reported 2022
+house; likely, and nothing Rodeo writes of it has been opened in Vectorworks).
+A door, window or symbol set in a wall is a plug-in object (86) or symbol
+instance (15) directly below the wall, after its plan drawing and bodies, its
+matrix in the drawing's frame: its origin on or beside the wall's line, its x
+axis along or against the line and its z the wall's bottom (a window's sill is
+in its parameters, not its matrix). The wall records it three times: in its
+record's list of breaks, in its plan drawing and in its bodies.
+
+*The break list.* A wall record (68) ends with `u16 count` and that many
+blocks, running exactly to the record's end. All numbers little-endian. A block
+starts `f64 off` (mm along the wall's line from its start), `u16 flags`,
+`u8 kind` at +10 (1 symbol, 2 half, 3 peak, 4 cap, Vectorworks' own wall-break
+kinds), a byte of no meaning at +11, `u32` at +12 and +16 (0 in symbol breaks;
+in caps and half breaks small numbers that grow through a drawing, likely the
+joins' ids), and at +20 a `u32` length of what follows it before the block's
+fixed part: 1 in every 2022 and 2023 block, and in 2024 to 2026 a UTF-16 name
+(a cap's wall closure, 28 bytes; a symbol break's, 28, 42 or 46). The first
+block is always a cap at -1 and the last a cap past 1e90; those between are in
+order of `off`. A block's size is a base for its kind plus 4 plus that length:
+
+| | cap | half | peak | symbol | a wall's component record (69) |
+|---|---|---|---|---|---|
+| 2022 | 409 | 401 | 401 | 413 + 84 per component | 82 + 284 per component |
+| 2023 | 602 | 594 | 594 | 606 + 88 per component | 82 + 294 per component |
+| 2024, 2025 | 607 | 599 | 599 | 611 + 88 per component | 82 + 294 per component |
+| 2026 | 607 | 599 | 599 | 611 + 88 per component | 84 + 296 per component |
+
+The sizes differ by version, so Rodeo solves them from a drawing's own walls
+(two-cap walls give the cap, three-break walls the others, symbol walls of
+different component counts the rest) and takes a list only when walking it by
+those sizes ends exactly at the record's end; found so, without reading the
+strings before it (the style's name and description, a fire rating and
+classification texts, each `u32` byte length and UTF-16), every wall of the five
+drawings reads: 246, 237, 235, 201 and 64. A wall with no component record has
+none. A symbol break's last 20 bytes are `f64` the insert's matrix z (equal for
+all 244 plug-ins checked), `u32 ref` and 8 zero bytes: `ref` is the u16 at
++0x1a of the insert's own record, the place of an object's name index, though
+no name stands in the name table for it. So an insert copied without that
+number (Rodeo used to clear it, as a name) is one its wall's break no longer
+names. `off` is the insert's origin along the wall (all 254 in the demos; two
+of the house's 21 lie 29 and 124 mm from it, why isn't known). Flags of a
+symbol break: 0x04 a plug-in object, 0x20 a symbol; 0x40 when its matrix
+mirrors; 0x80 when its y axis points to the wall's right, taking start to end
+as forward; 0x200 and 0x400 only where the origin lies off the wall's centre
+line (at a face, or by a component), so likely how it is set across the wall;
+0x2021 on Wall End Cap objects. Between the block's header and tail lies a
+copy of the wall's own attributes with its components (565 bytes and 88 a
+component in 2023), like the one in the record's head from +0x112 but not
+equal to it (21 to 27 bytes differ in every block), so Rodeo doesn't make one
+from the head: a new break copies a symbol break of the same wall, of the wall
+the insert came from, or of any wall of the drawing with as many components,
+with its own `off`, flags, z and `ref`. In a drawing with no such break the
+list is left as it is, and Vectorworks would likely not know the new opening.
+Moving an insert rewrites its break's `off` (and its place in the order),
+flipping it its flags, and taking it out removes the block and lowers the count.
+The half, peak and cap breaks (walls meeting the side, peaks, ends) are kept
+byte for byte.
+
+*The plan drawing* stops at an opening: each polygon (the wall's whole outline
+and each component's) is two pieces, one each side, the face and component
+lines stop at the jambs, and short lines cross the wall there, often two or
+three on top of each other in the classes of the wall and its components.
+Finishes are often wrapped round the jamb, so a component's piece reaches up to
+60 mm further into the opening than the core's, with a return. A swing door
+914.4 wide with 19.05 jambs stands in a core gap of 952.5, the door's width and
+both jambs, centred on its origin; a barn door of 2286 in one of 2286.
+Rodeo cuts by taking the strip between the jambs out of every polygon and line
+of the wall and adding a line across each piece's new end, drawn as a line of
+the wall already is; it wraps nothing. It closes by removing the lines that lie
+wholly within the opening and 60 mm either side, joining each pair of pieces
+that face each other across it (one way of drawing, the same reach across the
+wall) into one polygon, and each pair of lines along the wall into one.
+
+*The bodies.* The wall's group holds each component whole, without its
+openings, and one more solid spanning each opening (three in a wall of two
+windows and a door, each as long as its opening and as high); the components
+as they are cut are the solid additions' bodies, which is what Rodeo draws. A
+finish wrapped round a jamb is part of its component's solid: a return across
+the wall's depth at the jamb and, for some layers, up to 45 mm outside the gap
+the plan drawing shows (a 12.7 mm finish returning 25.4 mm before the core's
+jamb, in the 2023 demo), so the core's own hole is that much wider than the
+plan's. Many solids' triangles, as their faces are rebuilt, don't close edge
+to edge (a face's side meets two shorter ones); a house's gable walls have
+tops that slope along them, and its eave walls tops bevelled across them.
+Rodeo therefore changes only the piece of a solid round the opening and
+keeps the rest of its triangles as they are. The piece is cut off 70 mm
+either side of the opening and, first, 70 mm above its head and below its
+sill too (25 and 5 mm are tried where a slope starts that close): what is left
+is nearly always level and upright faces, whichever way the upright ones turn
+in plan, and is taken as a stack of plan outlines up the wall. A piece that
+isn't (the opening reaches the slope) is taken at its full height as a stack
+of outlines across the wall, each in the wall's elevation, which a top sloping
+along the wall allows, or as sections along the wall, which a top bevelled
+across it allows; one whose faces lean both ways is left. To cut, the
+opening's rectangle is taken out of each outline. To close, what stands
+between the jambs and 60 mm past them (the returns) gives way to the wall as
+it runs just outside on either side, carried straight across; a layer that
+differs on the two sides is left rather than guessed. The piece is built
+again from its outlines and joined to what was kept (points within 0.01 mm
+made one, sides split where another's corner lies on them). The result is
+written back as a body of straight edges with no Parasolid section, as a plain
+wall's is (§7), where those edges give the solid back when read: its faces
+come from its edges, an edge wherever two faces meet at more than 0.1°. Where
+they don't (faces that never met edge to edge), Rodeo keeps the component as a
+mesh in its solid addition in the body's place, in the solid's own frame: a
+solid addition with no body draws what it holds in its own class, fill and
+texture, as Rodeo's own solids do. That is Rodeo's own reading, and what
+Vectorworks makes of such a solid isn't known. A mesh-kept component moves
+and lifts with its wall (the solid's frame takes the move), but doesn't
+follow when the wall's end is stretched or mitred again. On the reported
+house every one of its 33 doors and windows in walls deletes; all of the
+wall's components close for 21, some for 10 (the rest stay as they were, and
+the edit says how many), none for 2. On the 2023 demo, 43, 7 and 1 of 51. A closed opening's own solid is taken
+out of the group; a new opening gets none there, and the group's whole
+components stay. A wall with no solid additions (a plain wall) has its one
+solid in the group, and that is cut. The sheets cached beside the solids
+(faces and centre lines, no volume) are left as they are.
+
+*The hole is read from the wall*, not kept beside it: the gap in its plan
+polygons about the insert's origin (the widest within the wraps' reach of the
+narrowest, on nine lines along the wall), and in height the widest stretch its
+solids leave free at the middle of that gap (the wall stands below a sill and
+over a head), which gives a round window's hole its whole height. So an
+opening Vectorworks cut and one Rodeo cut move and close alike, and a moved
+door keeps the opening's size; Rodeo's own cuts are square, so a round window
+moved has a square hole.
+
 Walls drawn in one run are mitred where they meet: as every point of such a
 wall lies on one of its two ends, each point at the joined end moves along
 the wall by its distance across the line (left positive) times tan(turn/2),

@@ -38,8 +38,21 @@ export function attempt<T>(label: string, fn: (s: EditSession) => T): { readonly
   const s = store.session;
   if (!s) return null;
   try {
-    return { value: fn(s) };
+    const value = fn(s);
+    // a door or window whose wall couldn't be wholly rebuilt in 3D: the edit stands, and says what it left
+    const left = s.takeWallNote();
+    if (left)
+      toast(
+        left.left === left.of
+          ? "The wall is closed in plan, but its 3D couldn't be rebuilt there and keeps the opening."
+          : left.left === 1
+            ? `The wall is changed in plan, but 1 of its ${left.of} components couldn't be rebuilt in 3D there and stays as it was.`
+            : `The wall is changed in plan, but ${left.left} of its ${left.of} components couldn't be rebuilt in 3D there and stay as they were.`,
+        "info",
+      );
+    return { value };
   } catch (err) {
+    s.takeWallNote();
     toast(`${label} failed: ${errorMessage(err)}`);
     return null;
   }
@@ -509,9 +522,49 @@ export function turnAbout(p: Pt, deg: number): Affine {
   return { a: c, b: s, c: -s, d: c, e: p.x - c * p.x + s * p.y, f: p.y - s * p.x - c * p.y };
 }
 
+/** The doors and windows among the selection that are set in walls. */
+export function selectedInWalls(): string[] {
+  const s = store.session;
+  return s ? [...store.selection].filter((id) => s.wallInsertPlace(id) !== null) : [];
+}
+
+/** The message when a turn would move a door or window set in a wall, which turns only with its wall. */
+const TURNS_WITH_WALL = "A door in a wall turns with its wall. Flip it, or take it out of the wall first (Modify > Take Out of Wall).";
+
+/**
+ * A turn of the selection that holds doors or windows set in walls: a selection of only those takes the flip or
+ * half turn the wall's own way (`way`, when it is one); anything else is refused. True when the turn was handled here.
+ */
+function turnWalled(way: "along" | "across" | "both" | null): boolean {
+  const walled = selectedInWalls();
+  if (!walled.length) return false;
+  if (way !== null && walled.length === store.selection.size) flipInWall(way);
+  else toast(TURNS_WITH_WALL, "info");
+  return true;
+}
+
+/** Modify > Flip in Wall › Side, › Hinge and the half turn: turns the selected doors and windows set in walls, one undo step. */
+export function flipInWall(way: "along" | "across" | "both"): void {
+  const ids = selectedInWalls();
+  if (!ids.length) return;
+  attempt("Flip in Wall", (s) =>
+    s.batch(() => {
+      for (const id of ids) s.flipWallInsert(id, way);
+    }),
+  );
+}
+
+/** Modify > Take Out of Wall: takes the selected doors and windows out of their walls, one undo step. */
+export function takeOutOfWall(): void {
+  const ids = selectedInWalls();
+  if (ids.length) attempt("Take Out of Wall", (s) => s.takeFromWall(ids));
+}
+
 /** Rotates the selection counter-clockwise by `deg` degrees about the centre of its bounds. */
 export function rotateBy(scene: Scene, deg: number): void {
   if (((deg % 360) + 360) % 360 === 0) return;
+  const half = ((deg % 360) + 360) % 360 === 180;
+  if (turnWalled(half ? "both" : null)) return;
   transformSelection(scene, "Rotate", (p) => turnAbout(p, deg));
 }
 
@@ -523,6 +576,8 @@ export function rotateBy(scene: Scene, deg: number): void {
 export function rotateEachBy(scene: Scene, deg: number): void {
   const entries = selectionEntries(scene);
   if (entries.length === 0 || ((deg % 360) + 360) % 360 === 0) return;
+  const half = ((deg % 360) + 360) % 360 === 180;
+  if (turnWalled(half ? "both" : null)) return;
   attempt("Rotate Each", (s) =>
     s.batch(() => {
       for (const { id, box } of entries) s.transformObjects([id], turnAbout({ x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, deg));
@@ -532,6 +587,7 @@ export function rotateEachBy(scene: Scene, deg: number): void {
 
 /** Mirrors the selection about the vertical (or horizontal) line through the centre of its bounds. Viewports are left as they are. */
 export function flipSelection(scene: Scene, axis: "horizontal" | "vertical"): void {
+  if (turnWalled(axis === "horizontal" ? "along" : "across")) return;
   const about = (p: Pt): Affine =>
     axis === "horizontal" ? { a: -1, b: 0, c: 0, d: 1, e: 2 * p.x, f: 0 } : { a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * p.y };
   const { rest, viewports } = splitViewports([...store.selection]);

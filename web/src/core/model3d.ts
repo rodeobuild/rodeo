@@ -2118,7 +2118,8 @@ function walk(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void {
 
 /** A wall whose components have solids of their own, which its group repeats (see Walls above). */
 function hasComponentSolids(r: Rec): boolean {
-  return r.type === WALL && r.children.some((c) => c.type === SOLID_ADDITION && c.children.some((k) => k.type === BODY));
+  // a body, or the mesh Rodeo keeps in a body's place where a component's solid can't be kept as edges (wallInserts.ts)
+  return r.type === WALL && r.children.some((c) => c.type === SOLID_ADDITION && c.children.some((k) => k.type === BODY || k.type === MESH));
 }
 
 function walkChildren(ctx: Ctx, parent: Rec, m: Xf, topId: string | null): void {

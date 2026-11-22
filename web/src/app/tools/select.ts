@@ -434,18 +434,38 @@ export class SelectTool extends BaseTool {
 
   /**
    * A drag of one door, window or symbol set in a wall, as it moves: the part of `d` along the
-   * wall's line (it slides along the wall, EditSession.moveObjects); any other drag as it is.
+   * wall's line (it slides along the wall, EditSession.moveObjects), unless `d` takes its origin
+   * off its wall and into another straight wall of the layer, where the drop sets it in that wall;
+   * any other drag as it is.
    */
   private alongWall(d: Pt): Pt {
     if (this.moveIds.size !== 1) return d;
     const doc = this.env.scene.document;
     const obj = doc?.object([...this.moveIds][0]);
     const w = obj?.parentId ? doc?.wall(obj.parentId) : null;
-    if (!w) return d;
+    if (!doc || !obj || !w) return d;
     const l = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
     if (!(l > 0)) return d;
     const u = { x: (w.end.x - w.start.x) / l, y: (w.end.y - w.start.y) / l };
     const k = d.x * u.x + d.y * u.y;
+    const place = store.session?.wallInsertPlace(obj.id);
+    if (place && obj.layerId) {
+      const at = { x: w.start.x + u.x * place.along - u.y * place.across + d.x, y: w.start.y + u.y * place.along + u.x * place.across + d.y };
+      const off = Math.abs((at.y - w.start.y) * u.x - (at.x - w.start.x) * u.y);
+      if (off > w.thickness / 2 + 1) {
+        for (const o of this.env.scene.index(obj.layerId).objects) {
+          if (o.type !== 68 || o.id === obj.parentId) continue;
+          const other = doc.wall(o.id);
+          if (!other) continue;
+          const length = Math.hypot(other.end.x - other.start.x, other.end.y - other.start.y);
+          if (!(length > 0)) continue;
+          const v = { x: (other.end.x - other.start.x) / length, y: (other.end.y - other.start.y) / length };
+          const along = (at.x - other.start.x) * v.x + (at.y - other.start.y) * v.y;
+          const across = Math.abs((at.y - other.start.y) * v.x - (at.x - other.start.x) * v.y);
+          if (along > 0 && along < length && across <= other.thickness / 2 + 1) return d;
+        }
+      }
+    }
     return { x: u.x * k, y: u.y * k };
   }
 

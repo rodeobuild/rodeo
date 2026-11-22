@@ -11,6 +11,7 @@
 
 import { ATTR_END, BLACK, BY_CLASS, BY_CLASS_BITS, BY_CLASS_KEYS, CLASS_TEXT_STYLE, CLASS_TEXTURE, WHITE, addTableColors, byClassGroup, readAttrs, writeAttrs, writeClassAttrs, writeLineType } from "./attrs.ts";
 import { concat, encodeUtf16, f64, i16, i32, setF64, setI16, setI32, setU16, setU32, setU64, u16, u32, u64 } from "./bytes.ts";
+import { WallInserts, type HoleSize, type PlanLike, type WallInsertPlace } from "./wallInserts.ts";
 import { symbolDefinitionTemplate, symbolLibraryTemplate, builtinTemplates, imageTexture, shaderFormatList, extrudeShell as builtinExtrudeShell, meshShell as builtinMeshShell, pluginTemplate, poly3dHead as builtinPoly3dHead, WALL_SHELL_LENGTH, plainWall, wallShell, viewportShell as builtinViewportShell, recordFormatTemplate, type Template } from "./builtins.ts";
 import {
   FILL_MAPPING,
@@ -205,7 +206,6 @@ import type {
   SlabTemplate,
   HeliodonSun,
   LinearDimensionInfo,
-  WallInsertKind,
   WallJoin,
   ViewportEntry,
   WallTemplate,
@@ -642,10 +642,6 @@ function sheetHeld(rec: Rec): Map<Rec, number> {
 const MAX_MITRE_TURN = (150 * Math.PI) / 180;
 /** a wall's point belongs to an end when it lies within this many times the wall's reach across its line of it (a tee's cut reaches 1 / tan 15°) */
 const WALL_END_REACH = 4;
-/** how far past a door's or window's drawing its opening in the wall may reach (a trim: the demos' reach 59 mm at most) */
-const OPENING_TRIM = 60;
-/** how much of a wall's end stays beside a door or window placed in it, at least (mm) */
-const OPENING_CLEAR = 2 * WALL_END_TOLERANCE;
 /** What a door's or window's plan drawing is made of: lines, rectangles, polygons, arcs, rounded rectangles, loci and polylines. */
 const PLAN_DRAWING: ReadonlySet<number> = new Set([2, 3, 5, 6, 13, LOCUS, 21]);
 /** where along a wall something lies, for which end it moves with: one end's, or between them */
@@ -861,7 +857,6 @@ export class Session implements EditSession {
   /** the walls a new wall can copy, for the record list they were found in */
   private wallKinds: { recs: readonly Rec[]; list: WallTemplate[] } | null = null;
   /** the doors and windows a new one can copy, for the record list they were found in */
-  private insertKinds: { recs: readonly Rec[]; list: WallInsertKind[] } | null = null;
 
   constructor(doc: Model) {
     this.doc = doc;
@@ -1336,8 +1331,8 @@ export class Session implements EditSession {
 
   /**
    * Selected records with descendants of other selected records removed. A door, window or symbol
-   * set in a wall among them throws unless `inserts` lets it through: it only slides along its wall
-   * (moveObjects), as Rodeo can't cut or close its opening.
+   * set in a wall among them throws unless `inserts` lets it through: what moves, deletes, copies
+   * or groups one takes care of its opening (wallInserts.ts); the other edits don't.
    */
   private topmost(ids: string[], inserts = false): Rec[] {
     const recs = [...new Set(ids)].map((id) => this.object(id));
@@ -1346,7 +1341,7 @@ export class Session implements EditSession {
       for (let p = r.parent; p; p = p.parent) if (set.has(p)) return false;
       return true;
     });
-    if (!inserts && top.some(isWallInsert)) throw new Error("a door or window set in a wall only slides along it yet: Rodeo can't cut or close its opening");
+    if (!inserts && top.some(isWallInsert)) throw new Error("a door or window set in a wall can't be changed this way: flip it, move it, or take it out of its wall first (Modify > Take Out of Wall)");
     return top;
   }
 
@@ -2302,7 +2297,12 @@ export class Session implements EditSession {
   addPluginObject(layerId: string, name: string, fields: readonly PluginFieldSpec[], values: Readonly<Record<string, RecordValue>>, at: Pt, angle: number, classIndex?: number): string {
     if (![at.x, at.y, angle].every(Number.isFinite)) throw new Error("a plug-in object's place and turn are finite numbers");
     const layer = this.container(layerId);
-    const cls = classIndex ?? this.noneClass();
+    const t = (angle * Math.PI) / 180;
+    return this.makePlugin(layer, name, fields, values, [Math.cos(t), Math.sin(t), 0, -Math.sin(t), Math.cos(t), 0, 0, 0, 1, at.x, at.y, layerElevationOf(layer)], classIndex ?? this.noneClass());
+  }
+
+  /** A new plug-in object at the end of `layer`'s list (a layer's, a group's or a wall's), placed by the 12 numbers of its matrix, its parameters the format's defaults with `values`. */
+  private makePlugin(layer: Rec, name: string, fields: readonly PluginFieldSpec[], values: Readonly<Record<string, RecordValue>>, matrix: readonly number[], cls: number): string {
     if (!this.doc.classRecs.has(cls)) throw new Error(`no class #${cls}`);
     return this.batch(() => {
       const format = this.pluginFormat(name, fields);
@@ -2313,9 +2313,7 @@ export class Session implements EditSession {
       const { owner, at: slot } = this.slot(layer);
       const [d, term] = this.instantiate(pluginTemplate(), owner);
       setU32(d, 0x20, cls);
-      const t = (angle * Math.PI) / 180;
-      const z = layerElevationOf(layer);
-      [Math.cos(t), Math.sin(t), 0, -Math.sin(t), Math.cos(t), 0, 0, 0, 1, at.x, at.y, z].forEach((v, i) => setF64(d, PLUGIN_MATRIX + 8 * i, v));
+      matrix.forEach((v, i) => setF64(d, PLUGIN_MATRIX + 8 * i, v));
       const p = this.plan();
       p.insert(slot, [d, term]);
       const id = recOfData(d).guid;
@@ -3670,260 +3668,132 @@ export class Session implements EditSession {
     });
   }
 
-  wallInsertKinds(): WallInsertKind[] {
-    if (this.insertKinds?.recs !== this.doc.recs) this.insertKinds = { recs: this.doc.recs, list: this.findWallInsertKinds() };
-    return this.insertKinds.list;
+  /** Cutting and closing the holes of what is set in walls (wallInserts.ts), with what it needs of this session. */
+  private readonly wallInserts = ((self: Session): WallInserts =>
+    new WallInserts({
+      get doc() {
+        return self.doc;
+      },
+      plan: () => self.plan(),
+      commit: (p: PlanLike, ids: string[]) => self.commit(p as Plan, "objects", ids),
+      object: (id: string) => self.object(id),
+      wallLayout: (p: PlanLike, wall: Rec) => self.wallLayout(p as Plan, wall),
+      copies: (of: Rec, owner: bigint) => self.instantiate(templateOf(of), owner),
+      translate: (p: PlanLike, r: Rec, dx: number, dy: number) => self.translate(p as Plan, r, dx, dy),
+      freshName: () => self.freshName(),
+      setOwner,
+      refit: (p: PlanLike, recs: Rec[]) => self.refitGroups(p as Plan, recs),
+      idOf: (d: Uint8Array) => recOfData(d).guid,
+      meshRecords: (owner: bigint, cls: number, faces: readonly (readonly number[])[]) => self.meshBlock(self.meshShell(), cls, owner, [faces], undefined, 0).block,
+    }))(this);
+
+  wallInsertPlace(id: string): WallInsertPlace | null {
+    return this.wallInserts.place(id);
   }
 
-  private findWallInsertKinds(): WallInsertKind[] {
-    const kinds = new Map<string, WallInsertKind>();
-    const counts = new Map<string, number>();
-    const layers = this.designLayerRecs();
-    const p = this.plan();
-    for (const r of this.doc.recs) {
-      const wall = r.parent;
-      if (r.type !== PLUGIN || wall?.type !== WALL || !wall.parent || !layers.has(wall.parent)) continue;
-      const name = this.doc.pluginName(r);
-      const w = name ? this.doc.wall(guidOf(wall)) : null;
-      if (!name || !w) continue;
-      const params = this.doc.records(guidOf(r)).find((x) => x.parametric)?.fields.map((f) => f.value) ?? [];
-      const key = JSON.stringify([name, params, w.style, w.thickness.toFixed(2)]);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      // the first of its kind that can be copied with its opening
-      if (kinds.has(key)) continue;
-      const src = this.openingSource(p, r, layers);
-      if (typeof src === "string") continue;
-      kinds.set(key, { id: guidOf(r), name, count: 0, width: src.width, style: w.style, thickness: w.thickness, outline: src.outline });
-    }
-    for (const [key, k] of kinds) k.count = counts.get(key) ?? 1;
-    // by name, then styled walls' by style, then narrowest first
-    return [...kinds.values()].sort(
-      (a, b) => a.name.localeCompare(b.name) || (a.style ?? "\uffff").localeCompare(b.style ?? "\uffff") || a.thickness - b.thickness || a.width - b.width,
-    );
+  takeWallNote(): { left: number; of: number } | null {
+    return this.wallInserts.takeNote();
   }
 
-  /** The records of the drawing's design layers. */
-  private designLayerRecs(): Set<Rec> {
-    return new Set(this.doc.layers().flatMap((l) => (l.kind === "design" ? [this.doc.layerRec(l.id)] : [])).filter((r): r is Rec => r !== null));
+  wallSpot(wallId: string, at: Pt): { along: number; thickness: number; height: number; length: number } {
+    return this.wallInserts.spot(wallId, at);
   }
 
-  /**
-   * What a door or window `o` is copied from with its opening (insertInWall): the straight wall it
-   * is set in alone, on a design layer, whose heights don't slope and whose ends are cut straight
-   * across, drawn between its ends only with the opening (within OPENING_TRIM of its drawing, clear
-   * of the ends). The wall's line and faces, the middle of o's drawing along it, how far the opening
-   * reaches (o's drawing and the wall's points between its ends) and how many points lie between,
-   * and o's outline about its middle in the wall's terms. Else why not.
-   */
-  private openingSource(
-    p: Plan,
-    o: Rec,
-    layers: ReadonlySet<Rec>,
-  ): { wall: Rec; line: WallLine; length: number; lo: number; hi: number; mid: number; c0: number; c1: number; inner: number; width: number; outline: Pt[] } | string {
-    const wall = o.parent;
-    if (o.type !== PLUGIN || wall?.type !== WALL) return "that isn't a door or window set in a wall";
-    if (!copyable(o) || o.data.length < PLUGIN_MATRIX + 96) return "that door or window can't be copied";
-    if (!wall.parent || !layers.has(wall.parent)) return "the wall it is set in isn't on a design layer";
-    const w = readWall(p.cur(wall.index));
-    if (!w || !wallPlan(wall)) return "the wall it is set in isn't straight";
-    if (WALL_HEIGHTS.some((at) => f64(p.cur(wall.index), at) !== w.top && f64(p.cur(wall.index), at) !== w.bottom)) return "the wall it is set in slopes";
-    let g;
-    try {
-      g = this.wallLayout(p, wall);
-    } catch (e) {
-      return (e as Error).message;
-    }
-    if (g.spans.length !== 1) return "the wall it is set in holds other doors, windows or symbols";
-    const span = g.between[0];
-    if (!span) return "it is set at the end of its wall";
-    if (!wallEndCut(g, "start") || !wallEndCut(g, "end")) return "the wall it is set in has an end not cut straight across";
-    let c0 = span.a0;
-    let c1 = span.a1;
-    let inner = 0;
-    let clear = true;
-    for (const q of g.points) {
-      const a = g.along(q);
-      if (g.pointSide(a) === "between") {
-        c0 = Math.min(c0, a);
-        c1 = Math.max(c1, a);
-        inner++;
-      }
-    }
-    if (c0 < span.a0 - OPENING_TRIM || c1 > span.a1 + OPENING_TRIM) return "the wall it is set in is drawn with more than its ends and the opening";
-    for (const q of g.points) {
-      const a = g.along(q);
-      if (g.pointSide(a) !== "between" && a > c0 - OPENING_CLEAR && a < c1 + OPENING_CLEAR) clear = false;
-    }
-    if (!clear) return "it lies too near the end of its wall";
-    const mid = (span.a0 + span.a1) / 2;
-    const outline = this.insertCorners(p, o).map((q) => ({ x: g.along(q) - mid, y: g.across(q) }));
-    return { wall, line: w, length: g.length, lo: g.lo, hi: g.hi, mid, c0, c1, inner, width: span.a1 - span.a0, outline };
-  }
-
-  insertInWall(source: string, wallId: string, at: Pt): { wall: string; insert: string } {
+  addWallInsert(
+    wallId: string,
+    name: string,
+    fields: readonly PluginFieldSpec[],
+    values: Readonly<Record<string, RecordValue>>,
+    at: Pt,
+    size: HoleSize,
+    facing: { reversed?: boolean; flipped?: boolean } = {},
+    classIndex?: number,
+  ): string {
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) throw new Error("a door's or window's place is a finite point");
-    const o = this.object(source);
-    const p0 = this.plan();
-    const src = this.openingSource(p0, o, this.designLayerRecs());
-    if (typeof src === "string") throw new Error(`that door or window can't be copied with its opening: ${src}`);
-    const r = this.object(wallId);
-    const line = r.type === WALL ? readWall(r.data) : null;
-    if (!line || !wallPlan(r) || !r.parent) throw new Error("a door or window goes in a straight wall");
-    const g = this.wallLayout(p0, r);
-    if (g.spans.length) throw new Error("a wall with a door, window or symbol set in it can't take another yet");
-    if (g.points.some((q) => g.pointSide(g.along(q)) === "between")) throw new Error("a wall drawn with more than its two ends (a joint cleaned up, a notch) can't take a door or window yet");
-    const w = this.doc.wall(wallId);
-    const w0 = this.doc.wall(guidOf(src.wall));
-    if (!w || !w0 || w.style !== w0.style || Math.abs(w.thickness - w0.thickness) > 1e-6) throw new Error("that door or window is set in a wall of another style or thickness");
-    if (Math.abs(g.lo - src.lo) > WALL_END_TOLERANCE || Math.abs(g.hi - src.hi) > WALL_END_TOLERANCE) throw new Error("that door or window is set in a wall whose faces lie otherwise about its line");
-    if (WALL_HEIGHTS.some((h) => f64(r.data, h) !== line.top && f64(r.data, h) !== line.bottom)) throw new Error("a sloping wall can't take a door or window yet");
-    const cuts = { start: wallEndCut(g, "start"), end: wallEndCut(g, "end") };
-    if (!cuts.start || !cuts.end) throw new Error("a wall with an end not cut straight across can't take a door or window yet");
-    // its middle at `at` along the wall, the opening clear of the ends and of the walls meeting the side
+    const wall = this.object(wallId);
+    const line = wall.type === WALL ? readWall(wall.data) : null;
+    if (!line || !wallPlan(wall) || !wall.parent) throw new Error("a door or window goes in a straight wall");
+    const g = this.wallLayout(this.plan(), wall);
     const t = g.along(at);
-    const lo = t - (src.mid - src.c0);
-    const hi = t + (src.c1 - src.mid);
-    let startMax = -Infinity;
-    let endMin = Infinity;
-    for (const q of g.points) {
-      const a = g.along(q);
-      if (g.pointSide(a) === "start") startMax = Math.max(startMax, a);
-      else endMin = Math.min(endMin, a);
-    }
-    if (!(lo > startMax + OPENING_CLEAR && hi < endMin - OPENING_CLEAR)) throw new Error("it doesn't fit there: it would reach the wall's end");
-    for (const tee of this.wallTees(p0, r)) {
-      const m = this.wallLayout(p0, tee.wall);
-      const a = m.points.filter((q) => m.pointSide(m.along(q)) === tee.end).map(g.along);
-      if (hi > Math.min(...a) - WALL_END_TOLERANCE && lo < Math.max(...a) + WALL_END_TOLERANCE) throw new Error("another wall meets this one there: place it to one side of the joint");
-    }
-    const ground = layerElevationOf(r);
-    const own = r.children.slice(0, auxCount(r)).filter((c) => c.type === RECORD);
+    // its x axis along the wall's line (or against it), its y to the wall's left (or right), its origin on the line at the wall's bottom
+    const sx = facing.reversed ? -1 : 1;
+    const sy = facing.flipped ? -1 : 1;
+    const m = [g.u.x * sx, g.u.y * sx, 0, -g.u.y * sy, g.u.x * sy, 0, 0, 0, 1, line.start.x + g.u.x * t, line.start.y + g.u.y * t, line.bottom];
     return this.batch(() => {
-      // a copy of the wall the source is set in, in this wall's place in its list, named and classed as it
-      const p = this.plan();
-      const copies = this.instantiate(templateOf(src.wall), r.owner);
-      const objects = new Set(objectWalk(src.wall));
-      const walked = [...src.wall.walk()];
-      walked.forEach((x, i) => objects.has(x) && setU16(copies[i], 0x1a, 0));
-      setU16(copies[0], 0x1a, u16(r.data, 0x1a));
-      setU32(copies[0], 0x20, u32(r.data, 0x20));
-      p.insert(subtreeEnd(r) + 1, copies);
-      this.refitGroups(p, [], new Map([[r.parent!, [copies[0]]]]));
-      const nid = recOfData(copies[0]).guid;
-      const did = recOfData(copies[walked.indexOf(o)]).guid;
-      this.commit(p, "objects", [nid]);
-      // laid along this wall's line with the door's middle at t, then its ends moved onto this
-      // wall's one at a time (the door stays put while the other end does), cut as this wall's are
-      const q = this.plan();
-      const wall = this.object(nid);
-      const s1 = { x: line.start.x + g.u.x * (t - src.mid), y: line.start.y + g.u.y * (t - src.mid) };
-      const e1 = { x: s1.x + g.u.x * src.length, y: s1.y + g.u.y * src.length };
-      this.transformTrees(q, [wall], stretchOnto(src.line.start, src.line.end, s1, e1), true);
-      this.placeWall(q, wall, { start: line.start, end: readWall(q.cur(wall.index))!.end }, { start: cuts.start! });
-      this.placeWall(q, wall, { start: line.start, end: line.end }, { end: cuts.end! });
-      // then the old one goes
-      q.remove(r.index, subtreeEnd(r));
-      this.refitGroups(q, [r]);
-      this.commit(q, "objects", [wallId, nid]);
-      // its top and bottom this wall's: the door and opening keep their height above the bottom
-      this.setWallHeights(nid, line.bottom - ground, line.top - ground);
-      this.adoptRecords(this.object(nid), own);
-      // what lay between the copy's ends still does, and only that: the opening, clear of the ends
-      const after = this.wallLayout(this.plan(), this.object(nid));
-      const between = after.points.filter((x) => after.pointSide(after.along(x)) === "between").length;
-      if (after.between.length !== 1 || between !== src.inner) throw new Error("it lies too near the wall's end to be placed there yet");
-      return { wall: nid, insert: did };
+      const id = this.makePlugin(wall, name, fields, values, m, classIndex ?? u32(wall.data, 0x20));
+      this.wallInserts.set(id, size);
+      return id;
     });
   }
 
-  /**
-   * Slides `o`, set in a straight wall, along it by as much of (dx, dy) as runs along the wall's
-   * line, with its opening: the wall's points between its ends within OPENING_TRIM of o's drawing
-   * go with it. Throws when the opening can't be told apart from the rest (another door or window,
-   * or a wall meeting the side, within OPENING_TRIM of it, or o at the wall's end), and when it would
-   * reach the wall's end, another door or window, or a wall meeting the side. Run it in a batch: it
-   * checks what it made once made, throwing to undo it.
-   */
-  private slideWallInsert(o: Rec, dx: number, dy: number): void {
+  resizeWallInsert(id: string, size: HoleSize): void {
+    this.wallInserts.resize(id, size);
+  }
+
+  flipWallInsert(id: string, way: "along" | "across" | "both"): void {
+    this.wallInserts.flip(id, way);
+  }
+
+  moveWallInsertTo(id: string, wallId: string, at: Pt): void {
+    const o = this.object(id);
+    if (!isWallInsert(o)) throw new Error("that object isn't set in a wall");
+    const spot = this.wallInserts.spot(wallId, at);
+    if (this.object(wallId) === o.parent) {
+      const place = this.wallInserts.place(id)!;
+      this.wallInserts.slide(id, spot.along - place.along);
+    } else this.wallInserts.copyTo(id, wallId, spot.along, true);
+  }
+
+  takeFromWall(ids: string[]): void {
+    const inserts = this.topmost(ids, true).filter(isWallInsert);
+    if (!inserts.length) return;
+    const p = this.plan();
+    const walls = this.wallInserts.release(p, inserts);
+    // each goes to the list its wall is in, straight after the wall's own records, where it stands
+    for (const o of inserts) {
+      const wall = o.parent!;
+      const end = subtreeEnd(o);
+      const moved: Uint8Array[] = [];
+      for (let i = o.index; i <= end; i++) moved.push(i === o.index ? p.cur(i).slice() : p.cur(i));
+      setOwner(moved[0], wall.owner);
+      p.remove(o.index, end);
+      p.insert(subtreeEnd(wall) + 1, moved);
+    }
+    this.refitGroups(p, inserts);
+    this.commit(p, "objects", [...ids, ...walls.map(guidOf)]);
+  }
+
+  /** The straight wall beside `wall` (in its list) whose body the plan point `q` lies in, and where along it; null with none. */
+  private wallAround(wall: Rec, q: Pt): { wall: Rec; along: number } | null {
+    let best: { wall: Rec; along: number; off: number } | null = null;
+    for (const w of wall.parent?.children ?? []) {
+      if (w === wall || w.type !== WALL || !wallPlan(w)) continue;
+      const line = readWall(w.data);
+      if (!line) continue;
+      const length = pointGap(line.start, line.end);
+      if (!(length > 0)) continue;
+      const u = unitVec(line.start, line.end);
+      const along = (q.x - line.start.x) * u.x + (q.y - line.start.y) * u.y;
+      const off = Math.abs((q.y - line.start.y) * u.x - (q.x - line.start.x) * u.y);
+      if (along <= 0 || along >= length || off > line.thickness / 2 + 1) continue;
+      if (!best || off < best.off) best = { wall: w, along, off };
+    }
+    return best;
+  }
+
+  /** Moves a door, window or symbol set in a wall by (dx, dy): into another wall when that takes its origin off its own and into that one, else along its own by as much of the move as runs along it. */
+  private moveWallInsert(id: string, dx: number, dy: number): void {
+    const o = this.object(id);
     const wall = o.parent!;
-    if (!wallPlan(wall)) throw new Error("a door or window slides only along a straight wall yet");
-    const p = this.plan();
-    const g = this.wallLayout(p, wall);
-    const d = dx * g.u.x + dy * g.u.y;
-    if (Math.abs(d) < 1e-9) return;
-    const span = g.between.find((x) => x.o === o);
-    if (!span) throw new Error("a door or window at the end of its wall can't slide along it yet");
-    const lo = span.a0 - OPENING_TRIM;
-    const hi = span.a1 + OPENING_TRIM;
-    if (g.spans.some((x) => x !== span && x.a1 > lo && x.a0 < hi)) throw new Error("another door or window lies too near this one to tell their openings apart");
-    const tees = this.wallTees(p, wall).map((t) => {
-      const m = this.wallLayout(p, t.wall);
-      const a = m.points.filter((q) => m.pointSide(m.along(q)) === t.end).map(g.along);
-      return { a0: Math.min(...a), a1: Math.max(...a) };
-    });
-    if (tees.some((t) => t.a1 > lo && t.a0 < hi)) throw new Error("a wall meets this one too near the door or window to tell its opening apart");
-    // the opening, and how far the wall's other points leave it to go either way
-    const inOpening = (a: number): boolean => g.pointSide(a) === "between" && a >= lo && a <= hi;
-    let c0 = span.a0;
-    let c1 = span.a1;
-    let behind = -Infinity;
-    let ahead = Infinity;
-    let inner = 0;
-    for (const q of g.points) {
-      const a = g.along(q);
-      if (inOpening(a)) {
-        c0 = Math.min(c0, a);
-        c1 = Math.max(c1, a);
-        inner++;
-      } else if (a >= lo && a <= hi) {
-        throw new Error("a door or window this near the wall's end can't slide along it yet");
-      } else if (a < span.a0) behind = Math.max(behind, a);
-      else ahead = Math.min(ahead, a);
-    }
-    for (const x of [...g.spans.filter((s) => s !== span), ...tees]) {
-      if (x.a1 <= span.a0) behind = Math.max(behind, x.a1);
-      else ahead = Math.min(ahead, x.a0);
-    }
-    if (!(c0 + d > behind + OPENING_CLEAR && c1 + d < ahead - OPENING_CLEAR)) {
-      throw new Error("there's no room to slide it that far: it would reach the wall's end, another door or window, or a wall meeting this one");
-    }
-    const move = { x: g.u.x * d, y: g.u.y * d };
-    this.reshapeWall(p, wall, g.parts, (q) => (inOpening(g.along(q)) ? { x: q.x + move.x, y: q.y + move.y } : q));
-    this.translate(p, o, move.x, move.y);
-    this.refitGroups(p, [o]);
-    this.commit(p, "objects", [guidOf(o), guidOf(wall)]);
-    // the opening went whole: its points still lie between the ends (none taken for an end's)
-    const after = this.wallLayout(this.plan(), this.object(guidOf(wall)));
-    const moved = after.between.some((x) => x.o.index === this.object(guidOf(o)).index);
-    let left = 0;
-    for (const q of after.points) {
-      const a = after.along(q);
-      if (after.pointSide(a) === "between" && a >= c0 + d - WALL_END_TOLERANCE && a <= c1 + d + WALL_END_TOLERANCE) left++;
-    }
-    if (!moved || left !== inner) throw new Error("that would take the door or window too near the wall's end");
-  }
-
-  /**
-   * Gives `r` the attached records `own` (another object's, as they are) in place of its own: a
-   * record of a format both have takes own's values, and the formats only one has are added or
-   * dropped.
-   */
-  private adoptRecords(r: Rec, own: readonly Rec[]): void {
-    const p = this.plan();
-    const mine = r.children.slice(0, auxCount(r)).filter((c) => c.type === RECORD);
-    const formats = new Set(own.map((c) => recordFormat(c.data)));
-    for (const c of own) {
-      const at = mine.find((x) => recordFormat(x.data) === recordFormat(c.data));
-      if (at) p.set(at.index, concat([p.cur(at.index).subarray(0, 0x50), c.data.subarray(0x50)]));
-      else this.addAux(p, r, this.newAux(RECORD, c.data.subarray(0x50)), DROP_SHADOW);
-    }
-    this.commit(p, "objects", [guidOf(r)]);
-    // one at a time: each drop reads the aux list as the last left it
-    for (const c of mine) {
-      if (formats.has(recordFormat(c.data))) continue;
-      const q = this.plan();
-      if (this.dropRecord(q, this.object(guidOf(r)), recordFormat(c.data))) this.commit(q, "objects", [guidOf(r)]);
-    }
+    const place = this.wallInserts.place(id)!;
+    const line = readWall(wall.data)!;
+    const u = unitVec(line.start, line.end);
+    const from = { x: line.start.x + u.x * place.along - u.y * place.across, y: line.start.y + u.y * place.along + u.x * place.across };
+    const to = { x: from.x + dx, y: from.y + dy };
+    const off = Math.abs((to.y - line.start.y) * u.x - (to.x - line.start.x) * u.y);
+    const other = off > line.thickness / 2 + 1 ? this.wallAround(wall, to) : null;
+    if (other && o.type === PLUGIN) this.wallInserts.copyTo(id, guidOf(other.wall), other.along, true);
+    else this.wallInserts.slide(id, dx * u.x + dy * u.y);
   }
 
   /**
@@ -3946,6 +3816,9 @@ export class Session implements EditSession {
         for (const c of o.walk()) inside.add(c);
         continue;
       }
+      // a component Rodeo keeps as a mesh in its solid addition (wallInserts.ts): in that solid's own frame, which
+      // takes a move for it, so it is no part to reshape point by point
+      if ((o.type === MESH && o.parent?.type === SOLID) || o.parent?.type === MESH) continue;
       parts.push(o);
       // its group of bodies and its solid additions' bodies are aux records
       if (o.type === 0 || !o.parent || o.parent.children.indexOf(o) < auxCount(o.parent)) continue;
@@ -4657,13 +4530,15 @@ export class Session implements EditSession {
   }
 
   deleteObjects(ids: string[]): void {
-    const recs = this.topmost(ids);
+    const recs = this.topmost(ids, true);
     if (!recs.length) return;
     const p = this.plan();
+    // a door or window set in a wall leaves it whole: its hole closes and its break goes
+    const walls = this.wallInserts.release(p, recs.filter(isWallInsert));
     for (const r of recs) p.remove(r.index, subtreeEnd(r));
     this.refitGroups(p, recs);
     this.freeNames(p, recs);
-    this.commit(p, "objects", ids);
+    this.commit(p, "objects", [...ids, ...walls.map(guidOf)]);
   }
 
   /** Names only these subtrees use can be given again: nothing else names itself by them. */
@@ -4736,7 +4611,7 @@ export class Session implements EditSession {
         const p0 = this.plan();
         const ahead = (o: Rec): number => this.insertCorners(p0, o).reduce((m, q) => m + q.x * dx + q.y * dy, 0);
         const order = slides.map((o) => this.object(guidOf(o))).map((o) => ({ id: guidOf(o), at: ahead(o) }));
-        for (const { id } of order.sort((a, b) => b.at - a.at)) this.slideWallInsert(this.object(id), dx, dy);
+        for (const { id } of order.sort((a, b) => b.at - a.at)) this.moveWallInsert(id, dx, dy);
       });
       return;
     }
@@ -4870,7 +4745,36 @@ export class Session implements EditSession {
   }
 
   duplicateObjects(ids: string[], dx: number, dy: number): string[] {
-    const recs = this.topmost(ids);
+    const all = this.topmost(ids, true);
+    if (all.some(isWallInsert)) {
+      // a door or window set in a wall is copied along its wall, by as much of the offset as runs along it, or just clear of itself
+      return this.batch(() => {
+        const rest = all.filter((r) => !isWallInsert(r)).map(guidOf);
+        const out = rest.length ? this.duplicateObjects(rest, dx, dy) : [];
+        for (const id of all.filter(isWallInsert).map(guidOf)) {
+          const place = this.wallInserts.place(id)!;
+          const line = readWall(this.object(id).parent!.data)!;
+          const u = unitVec(line.start, line.end);
+          const d = dx * u.x + dy * u.y;
+          const width = place.hole ? place.hole.a1 - place.hole.a0 : 0;
+          const tries = Math.abs(d) > width ? [d] : [width + 300, -(width + 300)];
+          let made: string | null = null;
+          let why: unknown = null;
+          for (const step of tries) {
+            try {
+              made = this.wallInserts.copyTo(id, undefined, place.along + step, false);
+              break;
+            } catch (e) {
+              why = e;
+            }
+          }
+          if (!made) throw why;
+          out.push(made);
+        }
+        return out;
+      });
+    }
+    const recs = all;
     const p = this.plan();
     const out: string[] = [];
     const added = new Map<Rec, Uint8Array[]>();
@@ -6332,6 +6236,13 @@ export class Session implements EditSession {
   }
 
   groupObjects(ids: string[]): string {
+    if (ids.some((id) => isWallInsert(this.object(id)))) {
+      // a door or window leaves its wall to be grouped: the wall closes behind it
+      return this.batch(() => {
+        this.takeFromWall(ids);
+        return this.groupObjects(ids);
+      });
+    }
     const p = this.plan();
     const id = this.groupIn(p, ids);
     this.commit(p, "objects", [id]);

@@ -1,14 +1,11 @@
-// Door and Window tools (Building Shell): set a door or window in a straight wall by copying one the
-// drawing has, with its opening. Preferences chooses which (one per size and parameters, and per
-// style and thickness of the wall it is set in); a click on a wall of that style and thickness sets
-// the copy there, its middle at the point clicked (EditSession.insertInWall). Rodeo can't cut an
-// opening, so the wall is redrawn as a copy of the one the door or window is copied from, laid
-// along its line; a wall it can't redraw so (another style or thickness, a door in it already,
-// sloping, a cleaned-up joint) is refused, saying why. The copy faces as the copied one does in its
-// wall, from the wall's start to its end, and keeps its class, parameters and drawing. It is
-// selected afterwards (its parameters in Object Info), and the tool stays active for more.
+// Door and Window tools (Building Shell): a click on a straight wall sets a door or window in it, drawn from the tool's own
+// settings (Preferences: its configuration and size, and a window's sill), with its opening cut in the wall (doorWindow.ts).
+// The side clicked is the side it opens to. Create Similar Object copies a door's or window's settings into the tool.
 
-import type { ObjectInfo, Pt, WallInsertKind } from "../../core/index.ts";
+import type { ObjectInfo, Pt, RecordValue } from "../../core/index.ts";
+import { DOOR_CONFIGS, WINDOW_CONFIGS, type Pt as PlanPt } from "../doorWindowShapes.ts";
+import { buildFrom, DOOR, getterOf, type Kind } from "../doorWindowDraw.ts";
+import { placeInWall } from "../doorWindow.ts";
 import { attempt, setSelection } from "../commands.ts";
 import { pickObject } from "../hittest.ts";
 import { ACCENT } from "../renderer.ts";
@@ -17,31 +14,52 @@ import { store } from "../state.ts";
 import { toast } from "../toast.ts";
 import { toolPrefs } from "../toolPrefs.ts";
 import { BaseTool, strokeScreen, withPreview, type Painter, type PointerInfo, type ToolEnv } from "../tools.ts";
-import { formatLength } from "../units.ts";
+import { doorParams, windowParams } from "../doorWindowFields.ts";
 
 const WALL = 68;
+/** the arc of a casement or a swing, sampled for the hover preview */
+const ARC_STEPS = 24;
+
+/** the settings a new door or window is drawn with; the Preferences dialog changes them */
+interface Settings {
+  config: string;
+  width: number;
+  height: number;
+  /** a window's sill height above the wall's bottom, mm */
+  sill: number;
+}
+
+const DEFAULTS: Readonly<Record<Kind, Settings>> = {
+  Door: { config: "Swing Simple", width: 900, height: 2100, sill: 0 },
+  Window: { config: "Fixed Glass", width: 1200, height: 1200, sill: 900 },
+};
+
+const HINT: Readonly<Record<Kind, string>> = {
+  Door: "Click a wall to set a door in it · the side you click is the side it opens to · Preferences sets its size",
+  Window: "Click a wall to set a window in it · the side you click is the side it opens to · Preferences sets its size",
+};
 
 /** A wall's line on the plan, as the tool places along it. */
 interface WallLine {
   readonly start: Pt;
   readonly u: Pt;
-  readonly length: number;
+  readonly thickness: number;
 }
 
 export class WallInsertTool extends BaseTool {
   readonly cursor = "crosshair";
-  /** the door or window a new one copies (WallInsertKind.id), once one has been chosen */
-  private kind: string | null = null;
-  /** the wall under the pointer and the pointer on the plan */
-  private hover: { readonly wall: string; readonly at: Pt } | null = null;
+  private settings: Settings;
+  /** the wall under the pointer, the pointer on the plan, and which side of the wall it is on */
+  private hover: { readonly wall: string; readonly at: Pt; readonly flipped: boolean } | null = null;
 
   constructor(
     env: ToolEnv,
     readonly id: "door" | "window",
     /** the plug-in it sets: "Door" or "Window" */
-    private readonly plugin: string,
+    private readonly plugin: Kind,
   ) {
     super(env);
+    this.settings = { ...DEFAULTS[plugin] };
     // tools get no pointer-leave event, so the preview goes when the pointer leaves the canvas
     document.getElementById("canvas")?.addEventListener("pointerleave", () => {
       this.hover = null;
@@ -50,56 +68,68 @@ export class WallInsertTool extends BaseTool {
   }
 
   async preferences(): Promise<void> {
-    const kinds = this.kinds();
-    if (!kinds.length) return;
+    const s = this.settings;
     const v = await toolPrefs(
       `${this.plugin} Preferences`,
-      [{ kind: "choice", key: "kind", label: this.plugin, value: this.current()?.id ?? kinds[0].id, options: labelled(kinds) }],
-      `A new ${this.noun()} copies one the drawing has set in a wall, with its opening: it goes in walls of that style and thickness.`,
+      this.plugin === DOOR
+        ? [
+            { kind: "choice", key: "config", label: "Configuration", value: s.config, options: DOOR_CONFIGS.map((c) => ({ value: c, label: c })) },
+            { kind: "length", key: "width", label: "Width", value: s.width },
+            { kind: "length", key: "height", label: "Height", value: s.height },
+          ]
+        : [
+            { kind: "choice", key: "config", label: "Sash", value: s.config, options: WINDOW_CONFIGS.map((c) => ({ value: c, label: c })) },
+            { kind: "length", key: "width", label: "Width", value: s.width },
+            { kind: "length", key: "height", label: "Height", value: s.height },
+            { kind: "length", key: "sill", label: "Sill Height", value: s.sill },
+          ],
+      this.id === "door" ? "A new door is drawn with these settings, in any straight wall." : "A new window is drawn with these settings, in any straight wall.",
     );
-    if (v) this.kind = v.choice("kind");
+    if (!v) return;
+    this.settings = { config: v.choice("config"), width: v.num("width"), height: v.num("height"), sill: v.num("sill") };
   }
 
-  /** Create Similar Object: new ones copy one with this one's parameters, for walls of its wall's style and thickness. */
+  /** Create Similar Object: new ones take this door's or window's configuration and size. */
   takeFrom(obj: ObjectInfo): boolean {
     const doc = store.session?.doc;
     if (!doc) return false;
-    const params = (id: string): string => JSON.stringify(doc.records(id).find((r) => r.parametric)?.fields.map((f) => f.value) ?? []);
-    const wall = obj.parentId ? doc.wall(obj.parentId) : null;
-    const own = params(obj.id);
-    const kind = this.kinds().find(
-      (k) => k.id === obj.id || (wall !== null && k.style === wall.style && k.thickness.toFixed(2) === wall.thickness.toFixed(2) && params(k.id) === own),
-    );
-    if (kind) this.kind = kind.id;
-    return kind !== undefined;
+    const rec = doc.records(obj.id).find((r) => r.parametric && r.name === this.plugin);
+    if (!rec) return false;
+    const get = getterOf(this.plugin, Object.fromEntries(rec.fields.map((f) => [f.name, f.value])));
+    if (this.plugin === DOOR) {
+      const p = doorParams(get, 0);
+      this.settings = { ...this.settings, config: p.config, width: p.width, height: p.height };
+    } else {
+      const p = windowParams(get, 0);
+      this.settings = { ...this.settings, config: p.config, width: p.width, height: p.height, sill: p.sill };
+    }
+    return true;
   }
 
   hint(): string {
-    const k = this.current();
-    if (!k) return `This drawing has no ${this.noun()} set alone in a straight wall to copy`;
-    const wall = this.hover && this.lineOf(this.hover.wall);
-    if (this.hover && !wall) return `A ${this.noun()} like this goes in a ${this.wallLabel(k)} wall`;
-    return `Click a ${this.wallLabel(k)} wall where the ${this.noun()}'s middle goes · Preferences picks the ${this.noun()}`;
+    return HINT[this.plugin];
   }
 
   move(p: PointerInfo): void {
     const wall = this.wallAt(p.screen);
-    this.hover = wall ? { wall, at: p.pos } : null;
+    const line = wall ? this.lineOf(wall) : null;
+    this.hover = wall && line ? { wall, at: p.pos, flipped: this.rightOf(line, p.pos) } : null;
   }
 
   down(p: PointerInfo): void {
-    const k = this.current();
-    if (!k) {
-      toast(`This drawing has no ${this.noun()} set alone in a straight wall to copy.`, "info");
-      return;
-    }
     const wall = this.wallAt(p.screen);
     if (!wall) {
-      if (this.pickWith(p.screen, (o) => this.unit(o) !== null)) toast(`The ${this.plugin} tool sets a ${this.noun()} in a wall: click a wall.`, "info");
+      if (this.pickWith(p.screen, (o) => this.isPlugin(o))) toast(this.id === "door" ? "The Door tool sets a door in a wall: click a wall." : "The Window tool sets a window in a wall: click a wall.", "info");
       return;
     }
-    const r = attempt(`Insert ${this.plugin}`, (s) => s.insertInWall(k.id, wall, p.pos));
-    if (r) setSelection([r.value.insert]);
+    const line = this.lineOf(wall);
+    if (!line) {
+      toast(this.id === "door" ? "A door goes in a straight wall." : "A window goes in a straight wall.", "info");
+      return;
+    }
+    const facing = { flipped: this.rightOf(line, p.pos) };
+    const r = attempt(`Insert ${this.plugin}`, (s) => placeInWall(s, this.plugin, wall, p.pos, this.values(), facing));
+    if (r) setSelection([r.value]);
   }
 
   cancel(): void {
@@ -107,49 +137,63 @@ export class WallInsertTool extends BaseTool {
   }
 
   overlay(g: Painter): void {
-    const k = this.current();
     const hover = this.hover;
-    if (!k || !hover) return;
+    if (!hover) return;
     const line = this.lineOf(hover.wall);
     this.outline(g, hover.wall, line ? 0.5 : 0.2);
     if (!line) return;
-    // the copy's drawing box, its middle where the pointer lies along the wall
+    // the door or window as it would be drawn: its origin where the pointer lies along the wall, and its
+    // y turned to the side the pointer is on (the side it opens to)
+    const built = buildFrom(this.plugin, getterOf(this.plugin, this.values()), line.thickness);
     const t = (hover.at.x - line.start.x) * line.u.x + (hover.at.y - line.start.y) * line.u.y;
+    const sign = hover.flipped ? -1 : 1;
     const n = { x: -line.u.y, y: line.u.x };
-    const outline = k.outline.map((q) => ({
-      x: line.start.x + line.u.x * (t + q.x) + n.x * q.y,
-      y: line.start.y + line.u.y * (t + q.x) + n.y * q.y,
-    }));
-    withPreview(g, () => strokeScreen(g, outline, true));
+    const map = (q: PlanPt): Pt => ({
+      x: line.start.x + line.u.x * (t + q.x) + n.x * sign * q.y,
+      y: line.start.y + line.u.y * (t + q.x) + n.y * sign * q.y,
+    });
+    const { x0, x1 } = built.drawn.opening;
+    const half = line.thickness / 2;
+    withPreview(g, () => {
+      strokeScreen(g, [map({ x: x0, y: -half }), map({ x: x1, y: -half }), map({ x: x1, y: half }), map({ x: x0, y: half })], true);
+      for (const p of built.drawn.plan) {
+        if (p.arc) {
+          const a = p.arc;
+          const pts: PlanPt[] = [];
+          for (let k = 0; k <= ARC_STEPS; k++) {
+            const th = ((a.start + (a.sweep * k) / ARC_STEPS) * Math.PI) / 180;
+            pts.push({ x: a.centre.x + a.radius * Math.cos(th), y: a.centre.y + a.radius * Math.sin(th) });
+          }
+          strokeScreen(g, pts.map(map), false);
+        } else {
+          strokeScreen(g, p.points.map(map), p.closed);
+        }
+      }
+    });
   }
 
-  private noun(): string {
-    return this.plugin.toLowerCase();
+  /** the parameters a new one is placed with, from the settings */
+  private values(): Record<string, RecordValue> {
+    const s = this.settings;
+    if (this.plugin === DOOR) return { Config: s.config, DoorWidth: s.width, DoorHeight: s.height };
+    // Elevation is the head's height (ElevationSetAt "Head of Window"), so the sill is Elevation less the height
+    return { SashOperation: s.config, Width: s.width, Height: s.height, Elevation: s.sill + s.height, ElevationSetAt: "Head of Window" };
   }
 
-  private wallLabel(k: WallInsertKind): string {
-    return `${k.style ?? "unstyled"} ${formatLength(k.thickness, store.session?.doc.info.units)}`;
+  /** Whether the point lies on the right of the wall's direction (its y axis in plan, as the wall is drawn). */
+  private rightOf(line: WallLine, at: Pt): boolean {
+    const rx = at.x - line.start.x;
+    const ry = at.y - line.start.y;
+    return line.u.x * ry - line.u.y * rx < 0;
   }
 
-  /** The doors or windows a new one can copy. */
-  private kinds(): WallInsertKind[] {
-    return (store.session?.wallInsertKinds() ?? []).filter((k) => k.name === this.plugin);
-  }
-
-  /** The kind a new one copies: the one chosen, while the drawing still has it, else the first. */
-  private current(): WallInsertKind | null {
-    const kinds = this.kinds();
-    return kinds.find((k) => k.id === this.kind) ?? kinds[0] ?? null;
-  }
-
-  /** The line of `wallId` when it is a straight wall of the chosen kind's style and thickness, else null. */
+  /** The line of `wallId` when it is a straight wall, else null. */
   private lineOf(wallId: string): WallLine | null {
-    const k = this.current();
     const w = store.session?.doc.wall(wallId);
-    if (!k || !w || w.style !== k.style || Math.abs(w.thickness - k.thickness) > 1e-6) return null;
+    if (!w) return null;
     const length = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
     if (!(length > 0)) return null;
-    return { start: w.start, u: { x: (w.end.x - w.start.x) / length, y: (w.end.y - w.start.y) / length }, length };
+    return { start: w.start, u: { x: (w.end.x - w.start.x) / length, y: (w.end.y - w.start.y) / length }, thickness: w.thickness };
   }
 
   /** Strokes a wall's plan drawing in the accent, as the tool's hover shows it. */
@@ -181,21 +225,13 @@ export class WallInsertTool extends BaseTool {
     return isDerivedId(o.id) ? null : this.env.scene.unitOf(o, store.editGroupId);
   }
 
+  private isPlugin(o: ObjectInfo): boolean {
+    return store.session?.doc.records(o.id).some((r) => r.parametric && r.name === this.plugin) ?? false;
+  }
+
   private pickWith(screen: Pt, accept: (o: ObjectInfo) => boolean): ObjectInfo | null {
     const layerId = store.activeLayerId;
     if (!layerId) return null;
     return pickObject(this.env.scene, this.env.view, screen, [layerId], accept);
   }
-}
-
-/** Choices for Preferences: each kind's width and the wall it goes in, told apart by number when alike. */
-function labelled(kinds: readonly WallInsertKind[]): { value: string; label: string }[] {
-  const units = store.session?.doc.info.units;
-  const seen = new Map<string, number>();
-  return kinds.map((k) => {
-    const base = `${formatLength(k.width, units)} wide · in ${k.style ?? "unstyled"} ${formatLength(k.thickness, units)} walls (${k.count})`;
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    return { value: k.id, label: n > 1 ? `${base} #${n}` : base };
-  });
 }

@@ -79,28 +79,41 @@ These are refused, saying why:
 
 ### Door and Window
 
-The **Door** and **Window** tools set a door or window in a straight wall by copying one the drawing has set alone in a wall of that style and thickness. Click the wall where its middle goes. The pointer shows its outline along the wall, and Preferences picks which door or window (by size and the wall it goes in).
+The **Door** and **Window** tools set a door or window in a straight wall. Click the wall where its middle goes: the side of the wall you click is the side it opens to. The tool's **Preferences** hold what a new one is: a door's configuration (swing, bi-part, pocket, sliding, bi-fold, barn, overhead, revolving, a plain or cased opening), width and height; a window's sash (fixed, casement, awning, hopper, hung, sliding, pivot, louver), width, height and sill height. The drawing needs no door of its own to start from, and the wall can already hold others.
 
-Rodeo can't cut an opening yet, so the wall is redrawn as a copy of the one the door is copied from, laid along its line with the opening where you clicked. Its ends are cut as the wall's were, and its top and bottom, class, name and attached records stay its own (the door keeps its height above the bottom), so the walls joined to it don't move. The copy faces as the copied one does from its wall's start to its end.
+Rodeo cuts the opening through the wall: its plan drawing stops at the jambs, component by component, and its 3D has the hole. The door or window is a Vectorworks Door or Window object with Vectorworks' own parameters, so a schedule or a worksheet reads its width and height as it reads any other, and Rodeo draws it from them: the frame, the leaf and its swing, glazing, sashes, sill and trim in plan, and the same as solids in 3D.
 
-One undo step; the new door or window is selected afterwards.
+One undo step; the new door or window is selected afterwards, and the tool stays active for the next.
 
-These are refused, saying why:
+A click is refused, saying why, when the opening would reach the wall's end or another door's or window's opening.
 
-- a wall of another style or thickness
-- one holding a door, window or symbol already
-- a sloping wall
-- one with an end not cut straight across or a cleaned-up joint
-- a door that would reach the wall's end or a wall meeting its side
-- a top below the opening
+### Changing a door or window
 
-### Doors and windows in walls
+Select it (a click with the **Select** tool picks it out of its wall) and **Object Info** lists its parameters: a door's configuration, width, height, leaf, thicknesses, jamb, open angle, threshold, transom, sidelights and trims; a window's sash, width, height, elevation, jamb, sashes, columns and rows, sill and trims. A change draws it again and recuts the opening to the new size.
 
-A click with the **Select** tool picks a door, window or symbol out of the wall it is set in, as Vectorworks does (the wall tools still take the wall). Its parameters edit in Object Info as before.
+- **Move it** by dragging, nudging or **Move**: it slides along its wall, the wall closing where it stood and opening where it goes. Dragged onto another straight wall, it goes into that wall, which is cut, and the wall it left closes.
+- **Flip it** with Object Info's **Flip Side** (to the wall's other side) and **Flip Hinge** (end for end), **Modify › Flip in Wall**, or Flip Horizontal and Flip Vertical. A half turn does both. Other turns are refused: a door in a wall turns with its wall.
+- **Duplicate** copies it along the wall, by the offset or just clear of itself, with an opening of its own.
+- **Delete** removes it and closes the wall.
+- **Modify › Take Out of Wall** closes the wall and leaves the door or window standing beside it, a free object that can be turned, grouped or put on another layer. Grouping one that is in a wall takes it out first.
 
-Dragging it, nudging it or **Move** slides it along the wall with its opening: the drag runs along the wall's line, and the wall's drawing and 3D within 60 mm of the door's drawing go with it. It can't reach the wall's end, another door or window, or a wall meeting the side. One whose opening can't be told apart from a neighbour's (one within 60 mm) stays put, saying why.
+Each is one undo step.
 
-**Limits:** turning, deleting, duplicating or grouping one is refused: Rodeo can't cut or close an opening yet.
+Doors, windows and symbols Vectorworks set in walls move, flip, copy and delete the same way. Rodeo reads the opening from the wall as it is drawn, so it closes whatever Vectorworks cut there, finishes wrapped round the jambs included. A door or window Vectorworks drew keeps its drawing until you change one of its parameters; it is then drawn Rodeo's way, which is plainer.
+
+**Limits:**
+
+- Nothing Rodeo writes of this has been opened in Vectorworks. The wall's record is kept in step as far as its layout is known (the opening's entry moves, flips, goes or is added with the door); what Vectorworks does on opening such a wall isn't known.
+- Round walls take no doors or windows yet.
+- A wall's 3D is rebuilt component by component round the opening. A component Rodeo can't take apart there (its faces lean both along and across the wall, or it differs on the two sides of the opening) stays as it was, and a message says how many did; the plan drawing is right either way. A new door or window is refused when none of the wall's 3D can be cut for it. A deleted one goes anyway, and the wall then keeps the opening in 3D.
+- Some components of walls from Vectorworks can't be kept the way Vectorworks keeps them once Rodeo has changed them, and are kept as meshes inside the wall instead. They look the same and move with the wall, but stay as they are if the wall's end is later stretched or joined again.
+- Rodeo cuts square holes: a round window moved along its wall gets a square opening.
+- Rodeo cuts square: it doesn't wrap finishes round the jambs as Vectorworks can, and closing an opening removes the wraps it had.
+- An opening at the very end of a wall (a corner window) closes in 3D but stays open in the plan drawing.
+- Symbols set in walls slide and delete, but can't be flipped, copied along the wall or moved to another wall yet.
+- In a drawing where no wall has a door, window or symbol yet, a new opening is cut and drawn, but the wall's record gets no entry for it (Rodeo copies an entry from a wall with as many components; it can't yet write one from nothing). Rodeo's own walls keep no such record at all.
+- Of a door's and window's several hundred Vectorworks parameters, Rodeo draws from those listed above. Muntins, shutters, lintels, splays, hardware and ID tags are kept in the record and not drawn.
+- A transom's height uses the door's Top Panel Height field, since the 2023 layout has none of its own.
 
 ## Slabs, columns and structure
 
