@@ -11,7 +11,9 @@ import { attempt, setEditGroup, turnAbout } from "./commands.ts";
 import { followEdits, registerPluginDrivers, type PluginDriver, type PluginWidget } from "./ext.ts";
 import { pointInPolygon } from "./geom.ts";
 import { spaceOf } from "./planShapes.ts";
-import { layerScaleOf, SPACE_FORMAT, spacesOn, recordFormat } from "./spaces.ts";
+import { layerScaleOf, SPACE_FORMAT, spacesOn, recordFormat, type SpaceGroup } from "./spaces.ts";
+import { labelPoint } from "./space/draw.ts";
+import { F, frameOf, measured, nameOf, signedArea, spaceOf as spaceObjectOf } from "./space/model.ts";
 import { store } from "./state.ts";
 import { errorMessage, toast } from "./toast.ts";
 import { formatArea, parseLength } from "./units.ts";
@@ -71,29 +73,59 @@ export interface SpaceNode {
   readonly fill: Fill;
 }
 
-/** The spaces on the drawing's design layers. */
+const UNFILLED: Fill = { fillPattern: 0, fillFore: 0, fillBack: 0, fillOpacity: 100 };
+
+/** A Space object as a node: its parameters, its label point and the fill of its drawn polygon. */
+function objectNode(doc: VwxDocument, sp: SpaceGroup, layerId: string): SpaceNode | null {
+  const space = spaceObjectOf(doc, sp.obj.id);
+  if (!space) return null;
+  const frame = frameOf(doc, sp.obj.id);
+  const number = space.text(F.number).trim();
+  const given = nameOf(space);
+  const filled = doc.objects(layerId).find((o) => o.parentId === sp.obj.id && o.kind === "polygon" && !!o.attrs && o.attrs.fillPattern !== 0);
+  const a = filled?.attrs;
+  return {
+    id: sp.obj.id,
+    name: given && given !== "Space" ? given : number ? `Space ${number}` : "Space",
+    department: space.text(F.department).trim(),
+    order: space.num(F.matrixOrder),
+    area: measured(space, F.area, doc.info.units) || Math.abs(signedArea(sp.ring)),
+    at: frame.toWorld(labelPoint(space, sp.ring.map(frame.toLocal))),
+    ring: sp.ring,
+    layerId,
+    fill: a ? { fillPattern: a.fillPattern, fillFore: a.fillFore, fillBack: a.fillBack, fillOpacity: a.fillOpacity } : UNFILLED,
+  };
+}
+
+/** A grouped space as a node, from the group's boundary and its Space Data record. */
+function groupNode(doc: VwxDocument, sp: SpaceGroup, layerId: string): SpaceNode | null {
+  const figures = spaceOf(sp.ring);
+  if (!figures) return null;
+  const fields = doc.records(sp.obj.id).find((r) => r.name === SPACE_FORMAT)?.fields ?? [];
+  const value = (name: string): RecordValue | undefined => fields.find((f) => f.name === name)?.value;
+  const given = String(value("Space Name") ?? "").trim();
+  const a = sp.boundary.attrs;
+  return {
+    id: sp.obj.id,
+    name: given && given !== "Space" ? given : (sp.obj.name ?? "Space"),
+    department: String(value("Department") ?? "").trim(),
+    order: Number(value("Matrix Order")) || 0,
+    area: figures.area,
+    at: figures.labelAt,
+    ring: figures.outline,
+    layerId,
+    fill: a ? { fillPattern: a.fillPattern, fillFore: a.fillFore, fillBack: a.fillBack, fillOpacity: a.fillOpacity } : UNFILLED,
+  };
+}
+
+/** The spaces on the drawing's design layers, Space objects and grouped ones alike. */
 export function spaceNodes(doc: VwxDocument): SpaceNode[] {
   const out: SpaceNode[] = [];
   for (const layer of doc.layers()) {
     if (layer.kind !== "design") continue;
     for (const sp of spacesOn(layer.id)) {
-      const figures = spaceOf(sp.ring);
-      if (!figures) continue;
-      const fields = doc.records(sp.obj.id).find((r) => r.name === SPACE_FORMAT)?.fields ?? [];
-      const value = (name: string): RecordValue | undefined => fields.find((f) => f.name === name)?.value;
-      const given = String(value("Space Name") ?? "").trim();
-      const a = sp.boundary.attrs;
-      out.push({
-        id: sp.obj.id,
-        name: given && given !== "Space" ? given : (sp.obj.name ?? "Space"),
-        department: String(value("Department") ?? "").trim(),
-        order: Number(value("Matrix Order")) || 0,
-        area: figures.area,
-        at: figures.labelAt,
-        ring: figures.outline,
-        layerId: layer.id,
-        fill: a ? { fillPattern: a.fillPattern, fillFore: a.fillFore, fillBack: a.fillBack, fillOpacity: a.fillOpacity } : { fillPattern: 0, fillFore: 0, fillBack: 0, fillOpacity: 100 },
-      });
+      const node = sp.kind === "object" ? objectNode(doc, sp, layer.id) : groupNode(doc, sp, layer.id);
+      if (node) out.push(node);
     }
   }
   return out;

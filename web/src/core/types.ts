@@ -2,6 +2,7 @@
 // (src/app) and exporters (src/export). Coordinates are document units
 // (millimetres in VW metric files) with y pointing UP.
 
+import type { DataViz } from "./dataviz.ts";
 import type { VwxSink, WriteOptions, Written } from "./container.ts";
 
 export interface Pt {
@@ -1371,6 +1372,11 @@ export interface VwxDocument {
    * (objects of the sheet layer), by object id; null when none applies one.
    */
   viewportStyles(layerId: string): ReadonlyMap<string, StyleOverride> | null;
+  /**
+   * How visualisations the caller made (not read from the file: Rodeo's own view setting, such as
+   * colouring rooms) redraw a design layer's objects, by object id; null when none of them changes anything.
+   */
+  layerVizStyles(layerId: string, vizs: readonly DataViz[]): ReadonlyMap<string, StyleOverride> | null;
   /** 3D geometry of the design layers' objects (all layers; the viewer filters by visibility). */
   model3d(): Mesh3D[];
   /** The design layers' 3D model with its symbols kept, each defined once (see ModelTree); built on each call. */
@@ -1394,6 +1400,10 @@ export interface VwxDocument {
   heliodon(id: string): HeliodonSun | null;
   /** Plug-in parameters and attached records of an object, in file order (empty if none). */
   records(id: string): ObjectRecord[];
+  /** The name of a plug-in object's plug-in (its parameters' format: "Space", "Door"), without reading its parameters; null for any other object. */
+  pluginNameOf(id: string): string | null;
+  /** The drawing's data visualisations, in the file's order (empty when it has none). */
+  dataVizs(): readonly DataViz[];
   /** A path plug-in's path (a hardscape's outline, a plant line's run): the polyline or polygon in its path group, by id; null when it has none. */
   pluginPath(id: string): string | null;
   /** The heights an object spans in 3D, in its layer's frame (its elevation not added); null when it shows nothing in 3D. */
@@ -1824,6 +1834,13 @@ export interface EditSession {
    * as its matrix places them. One undo step.
    */
   setPluginDrawing(id: string, ids: readonly string[], keep?: number): void;
+  /**
+   * Gives plug-in object `id`, which has no path yet, the path `shapeId`: a polygon or polyline at
+   * the top level of its layer, drawn in the plug-in's own frame. It goes into a path group (a
+   * group marked `gtap`, FORMAT.md §7) inside the plug-in, where pluginPath finds it; reshaping
+   * it afterwards is setGeometry on that shape. What the plug-in draws already stays. One undo step.
+   */
+  setPluginPath(id: string, shapeId: string): void;
   /** the text style the class's texts follow as "Class Text Style": a text style's name index, 0 for none */
   setClassTextStyle(index: number, style: number): void;
 
@@ -1887,8 +1904,8 @@ export interface EditSession {
   setObjectLayer(ids: string[], layerId: string): void;
   /** Values set this way are the objects' own: groups they took from their class no longer do. */
   setAttributes(ids: string[], attrs: Partial<Attributes>): void;
-  /** Take an attribute group from the objects' classes, or (off) keep what they draw with as their own. */
-  setAttributesByClass(ids: string[], group: ByClassGroup, on: boolean): void;
+  /** Take an attribute group (or several, in one change) from the objects' classes, or (off) keep what they draw with as their own. */
+  setAttributesByClass(ids: string[], group: ByClassGroup | readonly ByClassGroup[], on: boolean): void;
   /**
    * Sets the markers at the first (start) and last (end) points of the lines, arcs, polygons and
    * polylines among `ids`: a marker shows, null hides one, an end left out stays as it is. Other

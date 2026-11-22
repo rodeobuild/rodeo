@@ -1,17 +1,20 @@
 // Space Planning's Space (spaces.ts): a room's boundary with its label, drawn Rectangle (a drag or two
 // clicks) or Polygon (each corner; a double-click, Enter or a click on the first corner closes it), or
-// found from walls, Inner Boundary (a click in a room the active layer's visible walls close) or Picked
-// Walls (click each wall, Enter makes the space within them). Esc cancels.
+// found from walls, Inner Boundary (a click in a room closed by the visible walls on the design layers at the
+// active layer's elevation) or Picked Walls (click each of those walls, Enter makes the space within them). Esc cancels. Spaces are Space objects;
+// the rooms found from walls keep their gross boundary and stay kept to their walls.
 
 import type { Pt } from "../../core/index.ts";
-import { attempt, setEditGroup, setSelection } from "../commands.ts";
+import { attempt, setSelection } from "../commands.ts";
 import { pointInPolygon } from "../geom.ts";
 import { pickObject } from "../hittest.ts";
-import { addSpaces, layerScaleOf, spacePreferences, WALL, wallsOn } from "../spaces.ts";
+import { addSpaces, layerScaleOf, spacePreferences, WALL, type SpacePath } from "../spaces.ts";
 import { store } from "../state.ts";
 import { toast } from "../toast.ts";
 import { modeForKey, type PointerInfo, type ToolModes } from "../tools.ts";
-import { ringArea, wallPolys } from "../wallPolys.ts";
+import { wallsAt } from "../space/refit.ts";
+import { wallRooms, type WallRoom } from "../space/walls.ts";
+import { ringArea } from "../wallPolys.ts";
 import { OutlineTool } from "./planning.ts";
 
 type WallMode = "inner" | "walls";
@@ -80,11 +83,13 @@ export class SpaceTool extends OutlineTool {
     return true;
   }
 
-  private add(ring: readonly Pt[]): void {
+  /** Makes a space of `ring`; a room the walls close (`room`) gives its gross boundary and is kept to its walls. */
+  private add(ring: readonly Pt[], room?: WallRoom): void {
     const layerId = store.activeLayerId;
     if (!layerId) return;
-    const r = attempt("Space", (s) => s.batch(() => addSpaces(s, [{ ring, layerId, classIndex: store.activeClassIndex, scale: layerScaleOf(layerId) }])));
-    if (r && r.value.length) setEditGroup(null, r.value);
+    const path: SpacePath = { ring, layerId, classIndex: store.activeClassIndex, scale: layerScaleOf(layerId), gross: room ? room.gross : null, auto: !!room };
+    const r = attempt("Space", (s) => s.batch(() => addSpaces(s, [path])));
+    if (r && r.value.length) setSelection(r.value);
     else if (r) toast("Draw a space with some area.", "info");
   }
 
@@ -92,11 +97,11 @@ export class SpaceTool extends OutlineTool {
     this.add(corners);
   }
 
-  private rooms(walls: string[]): Pt[][] {
+  private rooms(walls: string[]): WallRoom[] {
     const session = store.session;
     if (!session || !walls.length) return [];
     try {
-      return wallPolys(session.wallFootprints(walls), true);
+      return wallRooms(session, walls);
     } catch (e) {
       toast(`Space: ${(e as Error).message}`, "error");
       return [];
@@ -106,19 +111,26 @@ export class SpaceTool extends OutlineTool {
   private fromRoomAt(at: Pt): void {
     const layerId = store.activeLayerId;
     if (!layerId) return;
-    const visible = wallsOn(layerId).filter((id) => {
-      const obj = store.session?.doc.object(id);
+    // the walls a Space there would be kept to: those on the design layers at this layer's elevation
+    // (a Vectorworks drawing often keeps its spaces on a layer of their own), as far as they show
+    const doc = store.session?.doc;
+    const elevation = doc?.layers().find((l) => l.id === layerId)?.elevation ?? 0;
+    const visible = (doc ? wallsAt(doc, elevation) : []).filter((id) => {
+      const obj = doc?.object(id);
       return obj && this.env.scene.isObjectVisible(obj);
     });
-    const ring = this.rooms(visible).find((r) => pointInPolygon(at, r));
-    if (ring) this.add(ring);
+    const room = this.rooms(visible).find((r) => pointInPolygon(at, r.net));
+    if (room) this.add(room.net, room);
     else toast("No walls close a room there. Make sure they're joined.", "info");
   }
 
   private pickWall(p: PointerInfo): void {
     const layerId = store.activeLayerId;
     if (!layerId) return;
-    const wall = pickObject(this.env.scene, this.env.view, p.screen, [layerId], (o) => o.type === WALL);
+    const doc = store.session?.doc;
+    const elevation = doc?.layers().find((l) => l.id === layerId)?.elevation ?? 0;
+    const level = (doc?.layers() ?? []).filter((l) => l.kind === "design" && Math.abs((l.elevation ?? 0) - elevation) <= 1).map((l) => l.id);
+    const wall = pickObject(this.env.scene, this.env.view, p.screen, level.length ? level : [layerId], (o) => o.type === WALL);
     if (!wall) return;
     if (this.picked.has(wall.id)) this.picked.delete(wall.id);
     else this.picked.add(wall.id);
@@ -134,6 +146,7 @@ export class SpaceTool extends OutlineTool {
       return;
     }
     // the largest room they close, if they close several
-    this.add(rooms.reduce((a, b) => (ringArea(b) > ringArea(a) ? b : a)));
+    const room = rooms.reduce((a, b) => (ringArea(b.net) > ringArea(a.net) ? b : a));
+    this.add(room.net, room);
   }
 }

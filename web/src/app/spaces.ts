@@ -1,9 +1,9 @@
 // Space Planning's spaces, shared by the Space tool (tools/space.ts) and AEC > Space Planning's
-// commands: Create Spaces from Walls and from Polys, Update Spaces and Create Walls from Spaces.
-// Vectorworks makes Space objects, with room finishes, 3D volumes, zones and data tags; a space here is
-// a group named "Space …" of its boundary polygon and label, with its data in a Space Data record where
-// the drawing has record formats to make one from. Space objects a drawing already has aren't read
-// by these commands.
+// commands: Create Spaces from Walls and from Polys, Update Spaces, Create Walls from Spaces and
+// Convert to Space Objects. A space is a Vectorworks Space object (space/make.ts, drawn by
+// space/draw.ts, its data in its parameters), or, in drawings made before those, a group named
+// "Space …" of its boundary polygon and label with its data in a Space Data record; both kinds are
+// listed by spacesOn, and convert.ts turns the groups into objects.
 
 import type { EditSession, ObjectInfo, Pt, RecordFieldSpec, RecordValue } from "../core/index.ts";
 import { attempt, setSelection } from "./commands.ts";
@@ -16,21 +16,15 @@ import { toast } from "./toast.ts";
 import { toolPrefs, type PrefField, type PrefValues } from "./toolPrefs.ts";
 import { formatArea } from "./units.ts";
 import { ringArea, wallPolys } from "./wallPolys.ts";
-import type { Part } from "./tools/detailing.ts";
 import { wallLabel } from "./tools/wall.ts";
+import { convertSpaces, spaceObjectsOn } from "./space/convert.ts";
+import { drawSpace, labelPoint, reshapeSpace } from "./space/draw.ts";
+import { addSpace } from "./space/make.ts";
+import { cleanRing, F, frameOf, setSpaceValues, signedArea, spaceOf as spaceObjectOf } from "./space/model.ts";
+import { wallRooms, type WallRoom } from "./space/walls.ts";
 
 /** Vectorworks' wall object type */
 export const WALL = 68;
-const H_CENTRE = 2;
-const V_CENTRE = 3;
-/** the name's and the rest of a label's heights on paper, mm */
-const NAME_MM = 3.5;
-const LINE_MM = 2.5;
-/** not "Space", which is the name of Vectorworks' own plug-in format in drawings that have Space objects */
-export const SPACE_FORMAT = "Space Data";
-const FORMAT = SPACE_FORMAT;
-const SPACE_NAME = /^Space\b/;
-const AREA_TEXT = /(m²|sq ft|sq yd|sq mi)$/;
 /** how far a tee's end may be carried on to reach the wall it meets, past the wall's thickness, mm */
 const TEE_MARGIN = 2;
 
@@ -40,18 +34,23 @@ export interface SpaceSettings {
   /** an integer or letters: the next new space's number */
   next: string;
   increment: number;
-  spaceType: "Normal" | "Full Floor";
   name: string;
+  occupancy: string;
   occupantType: string;
   organization: string;
-  occupantName: string;
   proposedArea: string;
   department: string;
   showBoundary: boolean;
+  show3d: boolean;
   showName: boolean;
   showNumber: boolean;
   showArea: boolean;
   height: number;
+  floor: string;
+  base: string;
+  /** all four walls' finish */
+  walls: string;
+  ceiling: string;
 }
 
 export const spaceSettings: SpaceSettings = {
@@ -59,18 +58,22 @@ export const spaceSettings: SpaceSettings = {
   labelText: "",
   next: "1",
   increment: 1,
-  spaceType: "Normal",
   name: "Space",
+  occupancy: "",
   occupantType: "",
   organization: "",
-  occupantName: "",
   proposedArea: "",
   department: "",
   showBoundary: true,
+  show3d: true,
   showName: true,
   showNumber: true,
   showArea: true,
   height: 2438.4,
+  floor: "",
+  base: "",
+  walls: "",
+  ceiling: "",
 };
 
 /** A number or run of letters moved on by `by`: 9 to 10, Z to AA, z to aa. */
@@ -100,15 +103,19 @@ export function spacePrefFields(): PrefField[] {
     { kind: "text", key: "labelText", label: "Label Text", value: p.labelText },
     { kind: "text", key: "next", label: "Next Value (a number or letters)", value: p.next },
     { kind: "number", key: "increment", label: "Increment", value: p.increment, min: 1, max: 9999, integer: true },
-    { kind: "choice", key: "spaceType", label: "Space Type", value: p.spaceType, options: [{ value: "Normal", label: "Normal" }, { value: "Full Floor", label: "Full Floor" }] },
     { kind: "text", key: "name", label: "Space Name", value: p.name },
+    { kind: "text", key: "occupancy", label: "Occupancy", value: p.occupancy },
     { kind: "text", key: "occupantType", label: "Occupant Type", value: p.occupantType },
     { kind: "text", key: "organization", label: "Occup. Organization", value: p.organization },
-    { kind: "text", key: "occupantName", label: "Occupant Name", value: p.occupantName },
     { kind: "text", key: "proposedArea", label: "Proposed Area", value: p.proposedArea },
     { kind: "text", key: "department", label: "Department", value: p.department },
     { kind: "length", key: "height", label: "Height", value: p.height },
     { kind: "check", key: "showBoundary", label: "Show 2D Boundary", value: p.showBoundary },
+    { kind: "check", key: "show3d", label: "Show 3D Volume", value: p.show3d },
+    { kind: "text", key: "floor", label: "Floor Finish", value: p.floor },
+    { kind: "text", key: "base", label: "Base Finish", value: p.base },
+    { kind: "text", key: "walls", label: "Walls Finish", value: p.walls },
+    { kind: "text", key: "ceiling", label: "Ceiling Finish", value: p.ceiling },
     { kind: "check", key: "showName", label: "Label: Space Name", value: p.showName },
     { kind: "check", key: "showNumber", label: "Label: Space Number", value: p.showNumber },
     { kind: "check", key: "showArea", label: "Label: Area", value: p.showArea },
@@ -121,15 +128,19 @@ export function readSpacePrefs(v: PrefValues): void {
   p.labelText = v.choice("labelText");
   if (countable(v.choice("next").trim())) p.next = v.choice("next").trim();
   p.increment = v.num("increment");
-  p.spaceType = v.choice("spaceType") === "Full Floor" ? "Full Floor" : "Normal";
   p.name = v.choice("name");
+  p.occupancy = v.choice("occupancy");
   p.occupantType = v.choice("occupantType");
   p.organization = v.choice("organization");
-  p.occupantName = v.choice("occupantName");
   p.proposedArea = v.choice("proposedArea");
   p.department = v.choice("department");
   p.height = v.num("height");
   p.showBoundary = v.flag("showBoundary");
+  p.show3d = v.flag("show3d");
+  p.floor = v.choice("floor");
+  p.base = v.choice("base");
+  p.walls = v.choice("walls");
+  p.ceiling = v.choice("ceiling");
   p.showName = v.flag("showName");
   p.showNumber = v.flag("showNumber");
   p.showArea = v.flag("showArea");
@@ -139,7 +150,7 @@ export async function spacePreferences(): Promise<void> {
   const v = await toolPrefs(
     "Space Preferences",
     spacePrefFields(),
-    "A space is a group of its boundary and label. Its data goes in a Space Data record where the drawing can make one; room finishes, zones, data tags and 3D volumes aren't made.",
+    "A space is a Vectorworks Space object, with its data in its parameters. Its label shows the name and number together, then the area. Not yet tested in Vectorworks.",
   );
   if (v) readSpacePrefs(v);
 }
@@ -162,23 +173,6 @@ function figuresOf(ring: readonly Pt[]): SpaceFigures {
   return { area: ringArea(ring), perimeter, length: Math.max(across, up), width: Math.min(across, up) };
 }
 
-/** The label's lines at the centre of the space, from the top down. */
-function labelParts(at: Pt, number: string, area: string, scale: number, name: string): Part[] {
-  const p = spaceSettings;
-  const lines: { text: string; mm: number }[] = [
-    ...(p.showName && name ? [{ text: name, mm: NAME_MM }] : []),
-    ...(p.showNumber && number ? [{ text: number, mm: LINE_MM }] : []),
-    ...(p.showArea ? [{ text: area, mm: LINE_MM }] : []),
-  ];
-  const gaps = lines.map((l) => l.mm * scale * 1.3);
-  let y = at.y + gaps.reduce((a, g) => a + g, 0) / 2;
-  return lines.map((l, i): Part => {
-    const part: Part = { kind: "text", at: { x: at.x, y: y - gaps[i] / 2 }, text: l.text, height: l.mm * scale, hAlign: H_CENTRE, vAlign: V_CENTRE };
-    y -= gaps[i];
-    return part;
-  });
-}
-
 /** added after the first spaces were made: a record format from then gains them */
 const PLANNING_FIELDS: readonly RecordFieldSpec[] = [
   { name: "Department", kind: "text", value: "" },
@@ -187,7 +181,7 @@ const PLANNING_FIELDS: readonly RecordFieldSpec[] = [
 
 /** The Space Data record format, made if it's new and with the planning fields whatever it was. */
 export function recordFormat(s: EditSession): number {
-  const had = s.doc.recordFormats().find((f) => f.name === FORMAT);
+  const had = s.doc.recordFormats().find((f) => f.name === SPACE_FORMAT);
   if (had) {
     const fields = s.doc.recordFormatFields(had.format);
     if (fields && !PLANNING_FIELDS.every((f) => fields.some((x) => x.name === f.name))) {
@@ -198,7 +192,7 @@ export function recordFormat(s: EditSession): number {
   }
   const text = (name: string): RecordFieldSpec => ({ name, kind: "text", value: "" });
   const length = (name: string): RecordFieldSpec => ({ name, kind: "dimension", value: 0 });
-  return s.createRecordFormat(FORMAT, [
+  return s.createRecordFormat(SPACE_FORMAT, [
     text("Space Number"),
     text("Space Type"),
     text("Space Name"),
@@ -222,60 +216,59 @@ export interface SpacePath {
   readonly ring: readonly Pt[];
   readonly layerId: string;
   readonly classIndex: number;
+  /** the scale the space's text is drawn at, where the caller sets one (grouped spaces) */
   readonly scale: number;
   /** what the space preferences would give it, otherwise */
   readonly name?: string;
   readonly department?: string;
   readonly order?: number;
+  /** its gross boundary on the drawing, when walls give one */
+  readonly gross?: readonly Pt[] | null;
+  /** found from walls and kept to them (its net and gross boundaries follow the walls) */
+  readonly auto?: boolean;
 }
 
-/** Adds a space for each path, numbered on, in one step with whatever calls it; their groups' ids. */
+/** The space number a new space takes now. */
+const numberNow = (): string => (spaceSettings.numberType === "text" ? spaceSettings.labelText : spaceSettings.next);
+
+/**
+ * Adds a Space object for each path, numbered on, in the session's open batch; their ids. A path
+ * without an area is skipped.
+ */
 export function addSpaces(s: EditSession, paths: readonly SpacePath[]): string[] {
   const p = spaceSettings;
-  const used = new Set<string>();
-  for (const l of s.doc.layers()) for (const o of s.doc.objects(l.id)) if (o.name) used.add(o.name);
-  const nameFor = (number: string): string => {
-    const base = number ? `Space ${number}` : "Space";
-    let name = base;
-    for (let i = 2; used.has(name); i++) name = `${base}-${i}`;
-    used.add(name);
-    return name;
-  };
-  const format = recordFormat(s);
   const ids: string[] = [];
-  const values: { id: string; fields: Readonly<Record<string, RecordValue>> }[] = [];
-  const boundary = p.showBoundary ? store.drawAttrs : { ...store.drawAttrs, lineStyle: 0, fillPattern: 0 };
   for (const path of paths) {
-    const space = spaceOf(path.ring);
-    if (!space) continue;
-    const number = p.numberType === "text" ? p.labelText : p.next;
-    const figures = figuresOf(space.outline);
-    const made = [s.addObject(path.layerId, { kind: "polygon", points: space.outline, closed: true }, path.classIndex, boundary)];
-    for (const part of labelParts(space.labelAt, number, formatArea(space.area, units()), path.scale, path.name ?? p.name)) made.push(s.addObject(path.layerId, part as never, path.classIndex, store.drawAttrs));
-    const group = s.groupObjects(made);
-    s.setObjectName(group, nameFor(number));
-    ids.push(group);
-    values.push({
-      id: group,
-      fields: {
-        "Space Number": number,
-        "Space Type": p.spaceType,
-        "Space Name": path.name ?? p.name,
-        "Occupant Type": p.occupantType,
-        "Occup. Organization": p.organization,
-        "Occupant Name": p.occupantName,
-        "Proposed Area": p.proposedArea,
-        Department: path.department ?? p.department,
-        "Matrix Order": path.order ?? 0,
-        Height: p.height,
-        ...figureFields(figures),
-      },
-    });
+    const ring = cleanRing(path.ring);
+    if (ring.length < 3 || Math.abs(signedArea(ring)) < 1e-6) continue;
+    const proposed = p.proposedArea.replace(/,/g, "").trim();
+    const values: Record<string, RecordValue> = {
+      [F.number]: numberNow(),
+      [F.name]: path.name ?? p.name,
+      [F.occupancy]: p.occupancy,
+      [F.occupancyType]: p.occupantType,
+      // the department wins over the organization when both are set
+      [F.department]: path.department ?? (p.department || p.organization),
+      [F.matrixOrder]: path.order ?? 0,
+      [F.height]: p.height,
+      [F.showBoundary]: p.showBoundary,
+      [F.show3d]: p.show3d,
+      [F.showLabel]: p.showName || p.showNumber || p.showArea,
+      // the one Config measured: name and number together
+      [F.labelConfig]: "Name and Number",
+      [F.showArea]: p.showArea,
+      [F.autoBoundary]: path.auto ?? false,
+      [F.floorFinish]: p.floor,
+      [F.baseFinish]: p.base,
+      [F.northFinish]: p.walls,
+      [F.eastFinish]: p.walls,
+      [F.southFinish]: p.walls,
+      [F.westFinish]: p.walls,
+      [F.ceilingFinish]: p.ceiling,
+    };
+    if (proposed && Number.isFinite(Number(proposed))) values[F.proposedArea] = Number(proposed);
+    ids.push(addSpace(s, { ring, layerId: path.layerId, classIndex: path.classIndex, values, gross: path.gross, attrs: store.drawAttrs }));
     if (p.numberType === "increment") p.next = nextNumber(p.next, p.increment);
-  }
-  if (ids.length) {
-    s.attachRecord(ids, format);
-    s.setRecordFields(format, values);
   }
   return ids;
 }
@@ -294,36 +287,57 @@ export function wallsOn(layerId: string): string[] {
 
 // ---- reading spaces back ------------------------------------------------------------
 
+const SPACE_NAME = /^Space\b/;
+const AREA_TEXT = /(m²|sq ft|sq yd|sq mi)$/;
+/** not "Space", which is the name of Vectorworks' own plug-in format in drawings that have Space objects */
+export const SPACE_FORMAT = "Space Data";
+
+/**
+ * A space on a layer: a Space object (kind "object": obj is the plug-in, boundary its path, ring its
+ * boundary on the drawing, texts none) or a group the tool and commands made before Space objects
+ * (kind "group": obj the group, boundary its polygon, ring the same boundary, texts its labels).
+ */
 export interface SpaceGroup {
+  readonly kind: "object" | "group";
   readonly obj: ObjectInfo;
   readonly boundary: ObjectInfo;
   readonly ring: Pt[];
   readonly texts: readonly ObjectInfo[];
 }
 
-/** The spaces on a layer, from the groups the tool and commands make. */
+/** The spaces on a layer: Space objects, then grouped ones. */
 export function spacesOn(layerId: string): SpaceGroup[] {
   const doc = store.session?.doc;
   if (!doc) return [];
+  const out: SpaceGroup[] = spaceObjectsOn(doc, layerId);
   const objects = doc.objects(layerId);
-  const out: SpaceGroup[] = [];
   for (const obj of objects) {
     if (obj.kind !== "group" || obj.parentId || !obj.name || !SPACE_NAME.test(obj.name)) continue;
     const kids = objects.filter((k) => k.parentId === obj.id);
     const boundary = kids.find((k) => k.shape && closedOutline(k.shape));
     const ring = boundary?.shape ? closedOutline(boundary.shape) : null;
-    if (boundary && ring) out.push({ obj, boundary, ring, texts: kids.filter((k) => k.shape?.kind === "text") });
+    if (boundary && ring) out.push({ kind: "group", obj, boundary, ring, texts: kids.filter((k) => k.shape?.kind === "text") });
   }
   return out;
 }
 
 export const hasSpaces = (): boolean => !!store.session?.doc.layers().some((l) => spacesOn(l.id).length > 0);
 
-/** Re-measures a space's label and record from its boundary. */
+/** Where a space's label sits on the drawing: its label point, or a grouped space's centre. */
+function labelAt(sp: SpaceGroup): Pt | null {
+  if (sp.kind === "group") return spaceOf(sp.ring)?.labelAt ?? null;
+  const doc = store.session?.doc;
+  const model = doc ? spaceObjectOf(doc, sp.obj.id) : null;
+  if (!doc || !model) return null;
+  const frame = frameOf(doc, sp.obj.id);
+  return frame.toWorld(labelPoint(model, sp.ring.map(frame.toLocal)));
+}
+
+/** Re-measures a grouped space's label and record from its boundary. */
 function remeasure(s: EditSession, space: SpaceGroup, ring: readonly Pt[]): void {
   const area = formatArea(ringArea(ring), units());
   for (const t of space.texts) if (AREA_TEXT.test(t.shape?.text ?? "")) s.setText(t.id, area);
-  const format = s.doc.recordFormats().find((f) => f.name === FORMAT);
+  const format = s.doc.recordFormats().find((f) => f.name === SPACE_FORMAT);
   if (format && s.doc.records(space.obj.id).some((r) => r.format === format.format)) s.setRecordFields(format.format, [{ id: space.obj.id, fields: figureFields(figuresOf(ring)) }]);
 }
 
@@ -335,7 +349,7 @@ export async function updateSpacesDialog(): Promise<void> {
   const v = await toolPrefs(
     "Update Spaces",
     [{ kind: "choice", key: "which", label: "Update", value: "all", options: [{ value: "selected", label: "All selected spaces in the drawing" }, { value: "layer", label: "All spaces on the current layer" }, { value: "all", label: "All spaces in the document" }] }],
-    "Re-measures each space's area in its label and record from its boundary, for the spaces this app has made.",
+    "Redraws each Space object from its parameters and boundary, and re-measures the areas of grouped spaces in their labels and records, for the spaces this app has made.",
   );
   if (!v) return;
   const which = v.choice("which");
@@ -345,7 +359,14 @@ export async function updateSpacesDialog(): Promise<void> {
     toast("No spaces to update there.", "info");
     return;
   }
-  const r = attempt("Update Spaces", (s) => s.batch(() => chosen.forEach((sp) => remeasure(s, sp, sp.ring))));
+  const r = attempt("Update Spaces", (s) =>
+    s.batch(() =>
+      chosen.forEach((sp) => {
+        if (sp.kind === "object") drawSpace(s, sp.obj.id, { attrs: store.drawAttrs });
+        else remeasure(s, sp, sp.ring);
+      }),
+    ),
+  );
   if (r) toast(`Updated ${chosen.length} ${chosen.length === 1 ? "space" : "spaces"}.`, "info");
 }
 
@@ -358,6 +379,15 @@ const layerOptions = (): { value: string; label: string }[] =>
 export function areaUnit(): { readonly mm2: number; readonly name: string } {
   const name = formatArea(1e9, units()).split(" ").slice(1).join(" ");
   return { name, mm2: name === "sq ft" ? 304.8 ** 2 : name === "sq yd" ? 914.4 ** 2 : name === "sq mi" ? 1609344 ** 2 : 1e6 };
+}
+
+/**
+ * A Space object is reshaped to a room: its path takes the room's net boundary in the Space's own
+ * frame (keeping the path's kind), and it is drawn again with its gross boundary.
+ */
+function reshapeObject(s: EditSession, sp: SpaceGroup, room: WallRoom, fromWalls: boolean): void {
+  setSpaceValues(s, sp.obj.id, { [F.autoBoundary]: fromWalls });
+  reshapeSpace(s, sp.obj.id, room.net, { gross: room.gross, attrs: store.drawAttrs });
 }
 
 /** AEC > Space Planning > Create Spaces from Walls…: room or gross spaces; run again, spaces there are reshaped to the walls. */
@@ -377,53 +407,58 @@ export async function createSpacesFromWallsDialog(): Promise<void> {
       { kind: "number", key: "min", label: `Minimum area (${unit.name})`, value: 0, min: 0, max: 1e9 },
       { kind: "check", key: "selected", label: "Create Spaces from Selected Walls Only", value: false },
     ],
-    "Rooms are what walls joined at their corners close. Run it again after moving walls, and spaces already there are reshaped, keeping their data.",
+    "Rooms are what walls joined at their corners close. Run it again after moving walls, and spaces already there are reshaped, keeping their data. Name and number show together in a space's label.",
   );
   if (!v) return;
   const source = v.choice("source");
   const dest = v.choice("dest");
   const minimum = v.num("min") * unit.mm2;
+  const rooms = v.choice("kind") === "rooms";
   const walls = wallsOn(source).filter((id) => !v.flag("selected") || store.selection.has(id));
   if (!walls.length) {
     toast(v.flag("selected") ? "No walls selected on that layer." : "That layer has no walls.", "info");
     return;
   }
-  let rings: Pt[][];
+  let found: WallRoom[];
   try {
-    rings = wallPolys(session.wallFootprints(walls), v.choice("kind") === "rooms").filter((ring) => ringArea(ring) > minimum);
+    found = rooms ? wallRooms(session, walls) : wallPolys(session.wallFootprints(walls), false).map((net) => ({ net, gross: null }));
   } catch (e) {
     toast(`Create Spaces from Walls: ${(e as Error).message}`, "error");
     return;
   }
-  if (!rings.length) {
-    toast(v.choice("kind") === "rooms" ? "Those walls close no room big enough. Make sure they're joined." : "Those walls have no area to go round.", "info");
+  found = found.filter((room) => ringArea(room.net) > minimum);
+  if (!found.length) {
+    toast(rooms ? "Those walls close no room big enough. Make sure they're joined." : "Those walls have no area to go round.", "info");
     return;
   }
   const have = spacesOn(dest);
   const reshaped = new Set<SpaceGroup>();
-  const pairs = rings.map((ring) => {
+  const pairs = found.map((room) => {
     const sp = have.find((h) => {
       if (reshaped.has(h)) return false;
-      const at = spaceOf(h.ring)?.labelAt;
-      return at ? pointInPolygon(at, ring) : false;
+      const at = labelAt(h);
+      return at ? pointInPolygon(at, room.net) : false;
     });
     if (sp) reshaped.add(sp);
-    return { ring, sp };
+    return { room, sp };
   });
   const r = attempt("Create Spaces from Walls", (s) =>
     s.batch(() => {
-      for (const { ring, sp } of pairs) {
+      for (const { room, sp } of pairs) {
         if (!sp) continue;
-        s.replaceObjects([sp.boundary.id], [{ kind: "polygon", points: ring, closed: true }]);
-        remeasure(s, sp, ring);
+        if (sp.kind === "object") reshapeObject(s, sp, room, rooms);
+        else {
+          s.replaceObjects([sp.boundary.id], [{ kind: "polygon", points: room.net, closed: true }]);
+          remeasure(s, sp, room.net);
+        }
       }
-      const fresh = pairs.filter((p) => !p.sp).map((p): SpacePath => ({ ring: p.ring, layerId: dest, classIndex: store.activeClassIndex, scale: layerScaleOf(dest) }));
+      const fresh = pairs.filter((p) => !p.sp).map((p): SpacePath => ({ ring: p.room.net, layerId: dest, classIndex: store.activeClassIndex, scale: layerScaleOf(dest), gross: p.room.gross, auto: rooms }));
       return addSpaces(s, fresh);
     }),
   );
   if (!r) return;
   setSelection(r.value);
-  const total = rings.reduce((a, ring) => a + ringArea(ring), 0);
+  const total = found.reduce((a, room) => a + ringArea(room.net), 0);
   toast(`${r.value.length} new ${r.value.length === 1 ? "space" : "spaces"}${reshaped.size ? `, ${reshaped.size} reshaped` : ""}: ${formatArea(total, units())} in all.`, "info");
 }
 
@@ -532,4 +567,27 @@ export async function createWallsFromSpacesDialog(): Promise<void> {
   if (!r) return;
   setSelection(r.value);
   toast(`Made ${r.value.length} ${r.value.length === 1 ? "wall" : "walls"}.`, "info");
+}
+
+// ---- convert grouped spaces ------------------------------------------------------------
+
+/** The grouped spaces on the drawing's design layers. */
+const groupedSpaces = (): SpaceGroup[] => (store.session?.doc.layers() ?? []).filter((l) => l.kind === "design").flatMap((l) => spacesOn(l.id)).filter((sp) => sp.kind === "group");
+
+/** Whether the drawing has a grouped space to convert. */
+export const canConvertSpaces = (): boolean => groupedSpaces().length > 0;
+
+/**
+ * AEC > Space Planning > Convert to Space Objects: the grouped spaces selected, or all of them when
+ * none is selected, become Space objects in their places, in one undo step.
+ */
+export function convertToSpaceObjects(): void {
+  const all = groupedSpaces();
+  const selected = all.filter((sp) => store.selection.has(sp.obj.id));
+  const chosen = selected.length ? selected : all;
+  if (!chosen.length) return;
+  const r = attempt("Convert to Space Objects", (s) => s.batch(() => convertSpaces(s, chosen, store.drawAttrs)));
+  if (!r) return;
+  setSelection(r.value);
+  toast(`Converted ${r.value.length} ${r.value.length === 1 ? "space" : "spaces"} to Space objects.`, "info");
 }

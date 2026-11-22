@@ -60,7 +60,7 @@ import {
   viewportLists,
   viewportScale,
 } from "./geometry.ts";
-import { ALL_OBJECTS, type DataViz, MATERIAL, OBJECT_STYLE, type VizStyle, readDataViz, viewportDataViz, vizMatches } from "./dataviz.ts";
+import { ALL_OBJECTS, type DataViz, MATERIAL, OBJECT_STYLE, type VizStyle, fieldText, readDataViz, viewportDataViz, vizFieldValue, vizMatches } from "./dataviz.ts";
 import { FONT_LIST, readFontList } from "./fonts.ts";
 import { mirrorMarkers, readMarkers } from "./markers.ts";
 import { readLayerView } from "./layerView.ts";
@@ -1660,7 +1660,7 @@ export class Model implements VwxDocument {
         for (const c of objectChildren(parent)) {
           if (onViewportSheet(c)) continue;
           const o = idx.objects.get(guidOf(c));
-          const s = o?.shape ? this.vizStyle(vizs, o, unknown) : null;
+          const s = o?.shape ? (this.fieldStyle(vizs, o, unknown) ?? this.vizStyle(vizs, o, unknown)) : null;
           if (s) out.set(o!.id, s);
           visit(c);
         }
@@ -1702,6 +1702,21 @@ export class Model implements VwxDocument {
     this.vizs ??= readDataViz(this.recs);
     const vizs = guids.map((g) => this.vizs!.get(g)).filter((v): v is DataViz => !!v);
     if (vizs.length === 0) return null;
+    return this.stylesOf(vizs, layers);
+  }
+
+  /**
+   * How visualisations the caller made, not read from the file, redraw the objects of one design
+   * layer (a Rodeo view setting, such as colouring rooms). A plug-in decides for everything it draws,
+   * as on a sheet. Null when none of them changes anything.
+   */
+  layerVizStyles(layerId: string, vizs: readonly DataViz[]): ReadonlyMap<string, StyleOverride> | null {
+    const layer = this.layerRec(layerId);
+    if (!layer || vizs.length === 0) return null;
+    return this.stylesOf(vizs, [layer]);
+  }
+
+  private stylesOf(vizs: readonly DataViz[], layers: readonly Rec[]): Map<string, StyleOverride> | null {
     const idx = this.index();
     const out = new Map<string, StyleOverride>();
     for (const layer of layers) {
@@ -1717,7 +1732,8 @@ export class Model implements VwxDocument {
         let s = own.get(o.id);
         if (s !== undefined) return s;
         const parent = o.parentId ? idx.objects.get(o.parentId) : undefined;
-        s = handed(parent) ?? (parent && this.insidePlugin(parent) ? null : this.vizStyle(vizs, o, on));
+        // a by-field visualisation takes the objects that carry its field before what they are handed
+        s = this.fieldStyle(vizs, o, on) ?? handed(parent) ?? (parent && this.insidePlugin(parent) ? null : this.vizStyle(vizs, o, on));
         own.set(o.id, s);
         return s;
       };
@@ -1737,18 +1753,63 @@ export class Model implements VwxDocument {
     return false;
   }
 
-  /** What the first of `vizs` that `o` itself matches does to it; `on` names its layer and story. */
+  /** What the first of `vizs` that `o` itself matches does to it; `on` names its layer and story. By-field ones are left to fieldStyle. */
   private vizStyle(vizs: readonly DataViz[], o: ObjectInfo, on: { layer: string; story: string | null }): StyleOverride | null {
     const r = this.index().recs.get(o.id);
     const subject = { plugin: r ? this.pluginName(r) : null, ...on, className: o.className, type: o.type };
     for (const v of vizs) {
-      if (!vizMatches(v.criteria, subject)) continue;
+      if (v.field || !vizMatches(v.criteria, subject)) continue;
       const key =
         v.by === "C" ? o.className : v.by === OBJECT_STYLE ? r && this.objectStyle(o.id) : v.by === MATERIAL ? r && this.materialOf(r) : ALL_OBJECTS;
       const style = key ? v.values.get(key) : undefined;
       const change = style && this.overrideOf(style, o.attrs?.fillPattern ?? 0);
       // one that changes nothing openvwx draws leaves the object to the next
       if (change && Object.keys(change).length > 0) return change;
+    }
+    return null;
+  }
+
+  /**
+   * What the first by-field visualisation in `vizs` does to `o`: it takes the value of its field on
+   * the object's own records (its record format's field, as text), and the criteria are tested on the
+   * plug-in the object sits in (a Space's finish lines are tested as Space objects). Null when none
+   * of them has a value for `o`.
+   */
+  private fieldStyle(vizs: readonly DataViz[], o: ObjectInfo, on: { layer: string; story: string | null }): StyleOverride | null {
+    if (!vizs.some((v) => v.field)) return null;
+    const r = this.index().recs.get(o.id);
+    if (!r) return null;
+    const subject = { plugin: this.pluginAbove(o), ...on, className: o.className, type: o.type, value: (record: string, field: string) => this.fieldTextOf(r, record, field) };
+    for (const v of vizs) {
+      if (!v.field || !vizMatches(v.criteria, subject)) continue;
+      const style = v.values.get(vizFieldValue(v, subject) ?? "");
+      const change = style && this.overrideOf(style, o.attrs?.fillPattern ?? 0);
+      if (change && Object.keys(change).length > 0) return change;
+    }
+    return null;
+  }
+
+  /** The text of a field of `r`'s attached record of format `record`, or null (no such record, field, or value). */
+  private fieldTextOf(r: Rec, record: string, field: string): string | null {
+    for (const c of r.children) {
+      if (c.type !== RECORD) continue;
+      const format = recordFormat(c.data);
+      if (this.names.get(format) !== record) continue;
+      const fmt = this.formatDef(format);
+      const f = fmt && readValues(c.data, fmt)?.find((x) => x.name === field);
+      if (f) return fieldText(f.value);
+    }
+    return null;
+  }
+
+  /** The plug-in an object is, or the one it sits in (its name), or null. */
+  private pluginAbove(o: ObjectInfo): string | null {
+    const idx = this.index();
+    for (let p: ObjectInfo | undefined = o; p; p = p.parentId ? idx.objects.get(p.parentId) : undefined) {
+      if (p.type === PLUGIN) {
+        const r = idx.recs.get(p.id);
+        return r ? this.pluginName(r) : null;
+      }
     }
     return null;
   }
@@ -1905,6 +1966,15 @@ export class Model implements VwxDocument {
   records(id: string): ObjectRecord[] {
     const r = this.rec(id);
     return r ? this.recordsOf(r) : [];
+  }
+
+  pluginNameOf(id: string): string | null {
+    const r = this.rec(id);
+    return r ? this.pluginName(r) : null;
+  }
+
+  dataVizs(): readonly DataViz[] {
+    return [...(this.vizs ??= readDataViz(this.recs)).values()];
   }
 
   pluginPath(id: string): string | null {

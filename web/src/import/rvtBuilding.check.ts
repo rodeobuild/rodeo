@@ -14,6 +14,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as rvt from "../../vendor/rvt-rs/rvt.js";
 import { revitDrawing } from "../app/revitImport.ts";
+import { allSpaces, F } from "../app/space/model.ts";
 import { openVwx } from "../core/index.ts";
 import type { BuildingModel } from "./building.ts";
 import { entourage, revitBuilding, standInCar, standInPerson } from "./rvtBuilding.ts";
@@ -106,6 +107,8 @@ const ents: RvtEntity[] = [
     ifc_type: "IFCSPACE",
     name: "Room-1005",
     storey_index: 0,
+    // Revit's room parameters: the number and the name, apart
+    property_set: { name: "Revit", properties: [text("RoomNumber", "101"), text("RoomName", "Office")] },
     location_feet: [10, 6, 0],
     extrusion: {
       width_feet: 20,
@@ -217,10 +220,15 @@ check(!!door && near(door.at.y, 0) && near(door.at.x, 1524) && near(door.width, 
 check((door?.bodies.length ?? 0) > 0, "and drawn by its own body");
 
 check(m.objects.length === 1 && m.objects[0].storey === 1 && m.categories[m.objects[0].category].name === "Furniture", "the table is an object of Furniture on Level 2");
-const room = m.drawing.find((d) => d.shape.kind === "polygon");
-const label = m.drawing.find((d) => d.shape.kind === "text");
-check(room?.shape.kind === "polygon" && room.shape.points.length === 6, "the room is its L-shaped outline, not its box");
-check(label?.shape.kind === "text" && label.shape.text === "Office 101", "and its name");
+const room = m.rooms?.[0];
+check(m.rooms?.length === 1 && room?.storey === 0 && room.outline.length === 6, "the room is a room on Level 1 with its L-shaped outline, not its box");
+check(room?.name === "Office" && room.number === "101", `its name and number, from Revit's room parameters (${room?.name}, ${room?.number})`);
+check(!!room && near(room.height, 9 * FT, 0.01), `its height from its extrusion, 9 ft (${room?.height})`);
+check(!!room && room.properties.Revit?.some((p) => p.name === "RoomName") && room.properties.Pset_SpaceCommon?.[0]?.name === "Reference", "its properties kept, its IFC set's too");
+check(m.drawing.length === 0, "and no 2D drawing stands in for it");
+// without the room's own parameters, the whole room tag text is its name
+const bare = revitBuilding({ model: { ...model, entities: model.entities.map((e) => (e.name === "Room-1005" ? { ...e, property_set: null } : e)) } as RvtModel, diagnostics: {}, glb }, "Test House.rvt");
+check(bare.rooms?.[0]?.name === "Office 101" && bare.rooms[0].number === "", `without them the room's name is its whole text (${bare.rooms?.[0]?.name}, "${bare.rooms?.[0]?.number}")`);
 
 const props = north?.properties ?? {};
 const revit = Object.fromEntries((props.Revit ?? []).map((p) => [p.name, p]));
@@ -246,7 +254,8 @@ check(layers.length === 2 && layers.every((l) => l.story !== null), `a design la
 const objects = layers.map((l) => doc.objects(l.id).filter((o) => !o.parentId));
 const kinds = objects.map((list) => list.map((o) => o.typeName).sort());
 check(kinds[0].filter((k) => k === "wall").length === 2, `Level 1 holds both walls (${kinds[0].join(", ")})`);
-check(kinds[0].includes("extrude") && kinds[0].includes("text") && kinds[0].includes("polygon"), "the floor as an extrude, the room as a polygon and text");
+check(kinds[0].includes("extrude") && made.written.rooms === 1 && allSpaces(doc).length === 1, "the floor as an extrude, the room as a Space object");
+check(allSpaces(doc)[0]?.text(F.name) === "Office" && allSpaces(doc)[0]?.text(F.number) === "101", "the Space holds the room's name and number");
 check(kinds[1].length === 1, `Level 2 holds the table (${kinds[1].join(", ")})`);
 const classes = new Set(doc.classes().map((c) => c.name));
 check(["Walls", "Floors", "Doors", "Rooms", "Furniture"].every((c) => classes.has(c)), "a class per category");
@@ -413,8 +422,8 @@ if (samples) {
       const w = d.written;
       const elements = w.walls + w.slabs + w.openings + w.objects;
       check(
-        back.stories().length === w.layers.length && walls === w.walls && withRecords >= elements && Object.keys(w.failed).length === 0,
-        `${name}: ${w.layers.length} levels, ${w.walls} walls, ${w.slabs} floors, ${w.openings} doors and windows, ${w.objects} others (${w.symbols} symbols), ${w.drawing} 2D; ${withRecords} with records; ` +
+        back.stories().length === w.layers.length && walls === w.walls && allSpaces(back).length === w.rooms && withRecords >= elements && Object.keys(w.failed).length === 0,
+        `${name}: ${w.layers.length} levels, ${w.walls} walls, ${w.slabs} floors, ${w.openings} doors and windows, ${w.objects} others (${w.symbols} symbols), ${w.drawing} 2D, ${w.rooms} rooms; ${withRecords} with records; ` +
           `read ${Math.round(t1 - t0)} ms, made ${Math.round(t2 - t1)} ms, ${(d.bytes.length / 1048576).toFixed(1)} MB${Object.keys(w.failed).length ? `; failed ${JSON.stringify(w.failed)}` : ""}`,
       );
     } catch (err) {

@@ -35,6 +35,22 @@ export const RELEASES: readonly Release[] = [
     "door",
   ),
   release(
+    "2026-11-23T00:00:00Z",
+    "space-objects",
+    "Rooms are Space objects, with finishes and a 3D volume",
+    `A room is now the same Space object Vectorworks makes, so Rodeo reads the rooms in your Vectorworks drawings and shows their data in Object Info.
+- Object Info shows a Space's name, number, occupancy, department, heights, net and gross area, perimeter, volume and its floor, base, wall and ceiling finishes, and edits them.
+- The Space tool and the Space Planning commands make Space objects. A room found from walls follows them: move a wall and the room reshapes, its areas with it, in the same undo step.
+- Show 3D Volume draws the room's volume in 3D.
+- A room's label can show its area, dimensions, occupancy and volume, and Label Fields… adds finishes and other fields. The label follows the data.
+- AEC › Space Planning › Colour Spaces… colours rooms in plan and 3D by occupancy, department, name or finish.
+- Convert to Space Objects turns the grouped spaces of earlier Rodeo drawings into Space objects, keeping their data.
+- Rooms in a Revit model come in as Space objects, and Export IFC writes each Space as an IfcSpace with its areas, volume and finishes.
+- Finish plans that colour by a record field, as Vectorworks 2025 and 2026 drawings have them, now show on sheets.
+- Not yet opened in Vectorworks. The guide's Architecture page lists the limits.`,
+    "walls",
+  ),
+  release(
     "2026-11-23T12:00:00Z",
     "vectorworks-2018-2019",
     "Vectorworks 2018 and 2019 drawings open",

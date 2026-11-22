@@ -10,6 +10,8 @@
 
 import { type Attributes, type EditSession, type FieldKind, MAX_FIELD_NAME, type MeshElement, type NewShape, type PlainWallSpec, type Pt, type RecordFieldSpec, type RecordValue } from "../core/index.ts";
 import type { Body, BuildingModel, Placement, Property, PropertySets, Rgb, Slab } from "../import/building.ts";
+import { addSpace } from "./space/make.ts";
+import { F } from "./space/model.ts";
 
 export interface BuildingWritten {
   /** the design layer of each storey */
@@ -22,6 +24,8 @@ export interface BuildingWritten {
   symbols: number;
   /** 2D objects */
   drawing: number;
+  /** rooms, each a Space object */
+  rooms: number;
   /** what couldn't be made, by kind (plural), with how many */
   failed: Record<string, number>;
 }
@@ -77,7 +81,7 @@ export function writeBuilding(s: EditSession, model: BuildingModel, progress?: (
 
     // a record format per property set, its fields every property any element gives it
     const formats = new Map<string, { index: number; kinds: Map<string, Property["kind"]>; names: Map<string, string> }>();
-    const elements = [...model.walls, ...model.slabs, ...model.openings, ...model.objects];
+    const elements = [...model.walls, ...model.slabs, ...model.openings, ...model.objects, ...(model.rooms ?? [])];
     const fieldsOf = new Map<string, Map<string, Property["kind"]>>();
     for (const e of elements)
       for (const [set, props] of Object.entries(e.properties)) {
@@ -345,10 +349,50 @@ export function writeBuilding(s: EditSession, model: BuildingModel, progress?: (
       }
     }
 
+    // a room is a Space object on its storey's layer, its outline its boundary; its volume is off, as a
+    // room's would hide the model in 3D; its label is its name and number, with no fill
+    progress?.("Making the rooms");
+    let rooms = 0;
+    for (const r of model.rooms ?? []) {
+      try {
+        const values: Record<string, RecordValue> = { [F.name]: r.name, [F.show3d]: false, [F.showLabel]: true, [F.autoBoundary]: false };
+        // a room with no number is left unnumbered (the format's default is "1")
+        values[F.number] = r.number;
+        if (r.height > 0) values[F.height] = r.height;
+        for (const [field, names] of ROOM_TEXTS) {
+          const text = roomText(r.properties, names);
+          if (text === undefined) continue;
+          for (const f of field) values[f] = text;
+        }
+        const id = addSpace(s, { ring: r.outline, layerId: layerOf(r.storey), classIndex: classOf(r.category), values, attrs: { fillPattern: 0 } });
+        carry(id, r.properties);
+        rooms++;
+      } catch {
+        fail("rooms");
+      }
+    }
+
     progress?.("Attaching the parameters");
     if (records.length) s.attachRecords(records);
-    return { layers, walls, slabs, openings, objects, symbols, drawing, failed };
+    return { layers, walls, slabs, openings, objects, symbols, drawing, rooms, failed };
   });
+}
+
+/** Revit's room parameters that Vectorworks' Space parameters take as they are, and the Space fields each goes to. */
+const ROOM_TEXTS: readonly [readonly string[], readonly string[]][] = [
+  [[F.department], ["Department"]],
+  [[F.occupancy], ["Occupancy"]],
+  [[F.floorFinish], ["Floor Finish"]],
+  [[F.baseFinish], ["Base Finish"]],
+  [[F.northFinish, F.eastFinish, F.southFinish, F.westFinish], ["Wall Finish"]],
+  [[F.ceilingFinish], ["Ceiling Finish"]],
+];
+
+/** The first non-empty text of a room's parameters under one of `names`, in any of its property sets. */
+function roomText(sets: PropertySets, names: readonly string[]): string | undefined {
+  for (const props of Object.values(sets))
+    for (const p of props) if (names.includes(p.name) && p.kind === "text" && typeof p.value === "string" && p.value.trim()) return p.value.trim();
+  return undefined;
 }
 
 /** Where an element's own frame lies: its origin and turn, and whether its own x runs backwards (a flipped door). */

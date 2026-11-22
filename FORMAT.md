@@ -1844,6 +1844,145 @@ material (+0x88 of a polygon or polyline, §6), its annotations untouched. A
 solid colour given to a tile-filled piece becomes the ground the tile is
 drawn on; the tile stays.
 
+**By a record field.** A visualisation's `by` may also be the name of a data
+record format, with the field of that format in the visualisation's field [3]:
+`Space_Finish` and `FinishKey`, `Countertop 2D Edge` and `Edge Type` (the 2025
+and 2026 demos; none in 2023 or 2024). Its values are that field's text, and
+it restyles each object that carries a record of the format: the finish lines
+inside Space plug-ins (§7.5), not the Spaces, whose own `Floor Key` is always
+among their lines' keys (28 of 28 in 2026). A choice field holds its value,
+then a NUL and its list; the value is the text before the first NUL, and an
+empty one is no value. The visualisation's criteria are tested on the plug-in
+the object sits in. Not settled: fields [13] (2 for a by-field visualisation,
+4 by class, material or style, 0 for every object), [15] and [16] (1 for
+by-field), and criteria tests of field 0x348 (`space_wall`, `space_floor`,
+`space_base`, `space_ceiling`), which openvwx doesn't read. openvwx applies
+these in sheet viewports as it does the others (261 more objects restyled on
+the 2026 demo's sheets, none changed on 2023's). Its Colour Spaces view
+setting makes visualisations of the same shape in memory, by a Space
+parameter, and writes none.
+
+### 7.5 Space objects
+
+A room is a plug-in object (86) whose parameters (48) are of the format
+`Space`. Measured on the public Dover Dam demo of each year from 2023 to 2026:
+28 Spaces a file, 14 on each of two design layers of their own, the walls on
+other layers of the same elevation. Everything here is from those 112 objects;
+no other sample holds one.
+
+**The format.** 369 fields in 2023, 376 in 2024, 377 in 2025 and 2026. No
+field is ever removed. New ones go in ahead of the last two (`__NEW`,
+`space_cw_uniq_id`): `Project`, `Site`, `Flat`, `NetElevTopBoundNum`,
+`NetElevBottomBoundNum`, `GrossElevTopBoundNum` and `GrossElevBottomBoundNum`
+in 2024, `NumberingStyleCombination` in 2025. Eleven change type in 2024:
+`Area`, `Gross Area`, `MeasuredNetAreaNum`, `SubtractionAreaNum`,
+`Glazing Area Num` and `Window Area Num` from number (3) to area (21),
+`Volume` and `Gross Volume` to volume (22), and `11_NameDisplay`,
+`Occ Type Disp` and `11_OccupantDisplay` from text (4) to static text (14).
+The format's default record holds the settings of the last Space placed, the
+file's own class names and class indices among them. web/src/app/space/fieldTable.ts
+lists all 377 with their types and the 2026 file's defaults.
+
+Many parameters are kept twice, once plainly and once with an `11_` prefix
+(`Number` and `11_Number`, `Extrusion Height` and `11_Net Height`,
+`Show 3D Detail` and `11_Show 3D Detail`); the pairs agree wherever both are
+set. The parameters a reader needs:
+
+| Parameter | Holds |
+|---|---|
+| `11_NameDisplay` | the room's name as Vectorworks shows it: the choice of its name popup `11_Name`, or the text `11_Space Name Cust` where the popup says `Custom` (all 112: 14 custom, 98 the popup's). The plain `Name` is that name on 16, 8, 7 and 28 of the 28 by year and another room's on the rest |
+| `Number` | the room's number (`NumberIncrementingValue` and `11_Number` repeat it) |
+| `11_OccupantDisplay` | what it is used as (`Residential`), as shown: the popup `11_Occupant`'s choice, or `11_Occupant Custom` where that says `Custom` (all 112). The plain `Occupancy` is the same in 2023 to 2025 and differs on all 28 in 2026 |
+| `Occupancy Type`, `Space Type` | `Space Type` is `Room` in all 112 |
+| `Area`, `Gross Area`, `Volume`, `Gross Volume` | in 2023 plain numbers in the drawing's own area and volume units (square and cubic feet in the demo); from 2024 mm² and mm³. The field's type says which |
+| `Perim`, `Gross Perim` | mm |
+| `Length`, `Width` | metres; `11_Length` and `11_Width` the same in mm. The sides of the smallest rectangle round the net boundary on 20 of the 28 in 2023; larger on the rest by 57 mm or more, not settled |
+| `Extrusion Height` (`11_Net Height`) | the clear height, mm; `Volume` is `Area` times it |
+| `Floor2Floor Height` (`11_Gross Height`), `Finish Floor Elev` | mm; `Gross Volume` is 0 where the first is 0 |
+| `NetElevBottomBoundNum`, `NetElevTopBoundNum` (2024 on) | the heights its 3D volume spans, mm (28 of 28 and 27 of 28) |
+| `Floor Finish`, `Base Material`, `North`/`East`/`South`/`West Wall Finish`, `Ceiling Material`, `Finish Remarks` | finishes, text; empty in 2023 and 2024, filled in 2025 and 2026 |
+| `Floor Key`, `Base Key`, `North Key` … `Ceiling Key` | each finish's key on a schedule (`FL-2T`); `Finish Floor`, `Finish WallN` … hold both as `[FL-2T] Terrazzo …` |
+| `Auto-Boundary` (`11_Auto-Boundary`: `Auto Boundary` or `Manual`) | whether the boundary is kept to the walls round it |
+| `Show Poly`, `Boundary2DClass` | the plan boundary shown, and the class it takes its fill and pen from (five occupancy classes in the demo, solid fills) |
+| `Show 3D Detail`, `Boundary3DClass` | the 3D volume shown, and its class; `GraphicAttr_3DBound_Class` is that class's index |
+| `11_Gross Definition` | `Wall Centerlines` in all 112 |
+| `Config`, `Show Area`, `Show Dims`, `Show Occupancy`, `Show Volume`, `11_Display Stamp` | the label: `Config` is `Name and Number` and `11_Display Stamp` and every `Show` flag false in all 112, whose labels are Data Tags (below) |
+| `ControlPoint01X`/`Y` (`03` the same) | a point from the insertion point that lies inside the room on 24, 24, 25 and 28 of the 28 by year: likely the label's handle. `02` and `04` to `06` hold one constant, `07` to `09` zero |
+| `Matrix Order` | its place in an adjacency matrix |
+| `space_cw_uniq_id` | a UUID as text, its own; it is not the object's id and nothing else in the file holds it |
+
+openvwx reads the shown name and occupancy, falling back to the plain ones,
+and sets one as a custom one: the plain parameter, the shown text, the custom
+text and `Custom` in the popup.
+
+There is no parameter named Department. openvwx reads the occupant
+organisation's name (`GSA_Occ_Org_Name`, empty in all 112) as a room's
+department.
+
+**What a Space holds.** In its aux list: records tagged `psew` (about 1,000
+bytes), `OrWC` (about 2,250), `nbSO` (390 to 420), `frWC` and `IhPO` (2026),
+several TDMD dictionaries, a 124, its parameters, and two polylines (21), open,
+unfilled, in the Space's class. The polylines are its boundaries on the
+drawing, the gross one first and the net one second: the second's area is
+`Area` and its length `Perim` on 27 of the 2023 file's 28 and the first's is
+`Gross Area` on the same 27 (in 2026, where every Space's gross figures equal
+its net ones, both are on 26). On the one or two left over each year the
+stored area is 0.2 % to 1.8 % less than the net polyline's, and no subtraction
+parameter (`SubtractionAreaNum`, `SubtractionArea1` to `4`, `11_Net_Modi`)
+holds the difference: not settled. One 2023 Space's `Volume` is 1.42 times
+its `Area` by its `Extrusion Height`. None of the tagged records has been
+read, and none holds another object's id: nothing stored ties a Space to the
+walls round it.
+
+Where a Space is kept to its walls (`Auto-Boundary`, 19 of 28 in 2023) its net
+boundary runs along the walls' inner faces and steps out into the walls in
+places, as at door openings: the rooms openvwx finds from the same walls'
+outlines (wallPolys) have the stored net area to 0.01 % in the rooms without
+such steps (8 of the 19) and are 1 % to 7 % smaller in 10 more, with 4 to 13
+corners where the stored boundary has 8 to 34 (the last holds several of
+openvwx's rooms). What the steps follow isn't settled (57 mm past the wall's
+face on the ones looked at).
+
+Then its groups, each marked by an 84-byte aux record (as §7's path and
+profile groups are, tags stored backwards):
+
+| Tag | Group |
+|---|---|
+| `gtap` | the path group: one polyline, the boundary as drawn or found, in the plug-in's frame. It is the net boundary on 19 of 28 in 2023 and 26 of 28 in 2026; on the 2023 Spaces kept to walls whose net and gross boundaries differ it lies between the two (15.9 m² for a net of 15.6 and a gross of 17.4) |
+| `ghps` | one polyline, the same outline as the path's |
+| `GSps` | what it shows: a group tagged `D2ps` (sp2D) holding a filled polygon in the `Boundary2DClass` class, and one tagged `D3ps` (sp3D) holding extrudes between its net heights and 3D loci |
+| `FRps` (2025 on) | groups tagged `PBUS` of lines and polygons along the boundary's sides: its finishes drawn in plan. Each line carries a data record of the format `Space_Finish` whose `FinishKey` field is the finish's key (837 such records in the 2026 file's 33 Space plug-ins), which the file's finish visualisations colour them by (§7.4) |
+| `gles`, `gorp` | on a few (§7) |
+
+The plug-in is never turned (0° on all 112). Its insertion point is a corner
+of the path on 25 of 28 in 2023 and on none in 2025: no rule found.
+
+**Labels.** No Space holds text. The room names and numbers on the plans are
+Data Tag plug-in objects (400 in the 2023 file), their text in their own
+groups, and nothing in a tag or a Space names the other (searched for each
+Space's id and unique id as ASCII, UTF-16 and bytes).
+
+**What openvwx does.** It reads any Space's parameters, and takes the net
+polyline as its boundary where it has one, else the path. Drawing one again (a
+parameter or the boundary changed) replaces its `ghps`, `GSps` and `FRps`
+groups with its own drawing: the boundary as a polygon in the
+`Boundary2DClass` class, a prism between `Finish Floor Elev` and that plus
+`Extrusion Height` in the `Boundary3DClass` class when `Show 3D Detail` is
+set, and a label of text when `11_Display Stamp` is set. The measured
+parameters of a Space Vectorworks made stand as they are until its boundary
+moves (its volumes follow a height that is changed); then the path and both
+aux polylines take the new boundary and the figures are measured from it, the
+`11_` texts with them. The tagged aux records and every other parameter are
+left as they were. A Space it makes is the object, its parameters (a format
+made from fieldTable.ts for the saving version when the drawing has none), a
+path group of the 84-byte `gtap` record and one polygon, and that drawing; it
+has none of the tagged aux records or aux polylines. It keeps a room to its
+walls by where the room is, taking the walls on design layers at the Space's
+layer's elevation, and reshapes one only when the room its walls close has
+changed. The label's extra fields are openvwx's own: a data record of the
+format `Space Label` attached to the Space, its `Fields` text the parameter
+names. Untested in Vectorworks.
+
 ## 8. Open questions
 
 * Data visualisations by object type codes other than 0x1fd (slabs), and

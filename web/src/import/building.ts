@@ -24,6 +24,8 @@ export interface BuildingModel {
   objects: BuildingObject[];
   /** 2D drawing on a storey's plan, each shape with its own pen, fill and line type over its class's when given */
   drawing: { storey: number; category: number; shape: NewShape; attrs?: Partial<Attributes> }[];
+  /** rooms (a Revit room, an IFC space): each one a Space object on its storey, with its properties */
+  rooms?: Room[];
   /** what was left out, by kind (plural: "stairs without a body"), with how many */
   skipped: Record<string, number>;
   /** what the reader said it approximated or couldn't read */
@@ -154,4 +156,16 @@ export interface Opening extends Element, Typed {
 
 export interface BuildingObject extends Element, Typed {
   bodies: Body[];
+}
+
+/** A room: its outline in plan at its storey's floor, its name and number (either may be ""), and its clear height, mm (0 when the file gives none). */
+export interface Room {
+  storey: number;
+  category: number;
+  /** its outline in plan, mm, counter-clockwise or not */
+  outline: Pt[];
+  name: string;
+  number: string;
+  height: number;
+  properties: PropertySets;
 }

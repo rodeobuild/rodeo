@@ -4,7 +4,7 @@
 // (features/index.ts imports them all before the app starts); the editor calls
 // these hooks at fixed points, so a feature never edits the editor's files.
 
-import type { BBox, ChangeEvent, EditSession, ObjectInfo, ObjectRecord, Pt, RecordValue, VwxDocument } from "../core/index.ts";
+import type { BBox, ChangeEvent, EditSession, FieldKind, ObjectInfo, ObjectRecord, Pt, RecordValue, VwxDocument } from "../core/index.ts";
 import type { Palettes, PaletteSpec } from "./dock.ts";
 import type { Row } from "./menu.ts";
 import type { Scene } from "./scene.ts";
@@ -168,6 +168,11 @@ export interface PluginDriver {
   label(field: string): string | undefined;
   /** whether a parameter is only shown (static text the script sets) */
   readOnly(field: string): boolean;
+  /**
+   * What Object Info shows for a parameter that is only shown, when that isn't its value as it is
+   * (one kept in another unit than the drawing's, or without one); undefined to show the value.
+   */
+  display?(field: string, value: RecordValue, kind: FieldKind): string | undefined;
   /** a popup's or radio button's choices: the value kept and the name shown; undefined for other fields */
   choices(field: string): readonly { readonly value: string; readonly label: string }[] | undefined;
   /**

@@ -27,6 +27,7 @@ import { graysOthers, snapsToOthers, store } from "./state.ts";
 import { hiddenObjects } from "./hiddenObjects.ts";
 import { lockedObjects } from "./lockedObjects.ts";
 import { buildGeom, type Geom } from "./shapes.ts";
+import { activeColouring, designLayerStyles } from "./space/colour.ts";
 
 /** Vectorworks' object types: a wall, and the plug-in objects and symbols set in one */
 const WALL_TYPE = 68;
@@ -118,6 +119,8 @@ export class Scene {
   /** world-unit dash arrays keyed by "style@layerScale"; null = draw solid */
   private readonly dashes = new Map<string, readonly number[] | null>();
   private readonly images = new Map<string, ImageEntry>();
+  /** a design layer's Colour Spaces styles, kept while the document and the colouring are the ones they were made from */
+  private readonly designStyles = new Map<string, { readonly active: unknown; readonly styles: ReadonlyMap<string, StyleOverride> | null }>();
   /** fill resources (hatches, tiles, gradients) by name index, read when first drawn */
   private fills: Map<number, FillResource> | null = null;
   private rev = 0;
@@ -166,6 +169,7 @@ export class Scene {
     this.classVis.clear();
     this.tops.clear();
     this.dashes.clear();
+    this.designStyles.clear();
   }
 
   /** Drops what was kept for layers the document no longer has. */
@@ -276,6 +280,17 @@ export class Scene {
   /** How data visualisations redraw a sheet's cached viewport drawings, by object id. */
   viewportStyles(layerId: string): ReadonlyMap<string, StyleOverride> | null {
     return this.doc ? this.doc.viewportStyles(layerId) : null;
+  }
+
+  /** How the Colour Spaces view setting colours a design layer's objects, or null when it is off. */
+  designLayerStyles(layerId: string): ReadonlyMap<string, StyleOverride> | null {
+    if (!this.doc) return null;
+    const active = activeColouring(this.doc);
+    const hit = this.designStyles.get(layerId);
+    if (hit && hit.active === active) return hit.styles;
+    const styles = designLayerStyles(this.doc, layerId);
+    this.designStyles.set(layerId, { active, styles });
+    return styles;
   }
 
   /** The hatch a fill pattern selects (negative: -name index), or null when it is not a hatch. */

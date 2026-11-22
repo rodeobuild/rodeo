@@ -5,6 +5,9 @@
 // back with web-ifc: the storeys' elevations, each property set's name, values and IFC types, the
 // link from each set to its element, the storey each element sits in, each entity's attribute
 // count, and the height of each element's geometry.
+// Two rooms (Space objects) too: one with its volume shown, its meshes from the 3D view, and one with
+// its volume off, a prism of its boundary. Each is an IfcSpace aggregated under its storey, with its
+// quantities, planned area and coverings as property sets.
 // The session builds the layers, their elevations and the objects. A blank drawing has no mesh or
 // record format to copy settings from, so the 3D faces and the records are supplied to exportIfc
 // by a document that delegates everything else to the session.
@@ -16,6 +19,8 @@ import type { IfcAPI } from "web-ifc";
 import { blankDrawing } from "../core/blank.ts";
 import { openVwx } from "../core/index.ts";
 import type { Mesh3D, ObjectRecord, VwxDocument } from "../core/types.ts";
+import { addSpace } from "../app/space/make.ts";
+import { F } from "../app/space/model.ts";
 import { exportIfc, ifcGuid } from "./ifc.ts";
 
 let failures = 0;
@@ -35,6 +40,36 @@ const [door, panel] = s.addObjects(upper, [
   { kind: "rect", x0: 1000, y0: 0, x1: 2000, y1: 100 },
 ]);
 const [slab] = s.addObjects(ground, [{ kind: "rect", x0: 0, y0: 0, x1: 4000, y1: 3000 }]);
+// a kitchen, 12 m² and 2.4 m high, with its volume shown, its floor 100 mm above its layer, and finishes; a hall, 2 m², up on the upper layer with its volume off
+s.batch(() =>
+  addSpace(s, {
+    ring: [{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 0, y: 3000 }],
+    layerId: ground,
+    values: {
+      [F.name]: "Kitchen",
+      [F.number]: "101",
+      [F.height]: 2400,
+      [F.floorElevation]: 100,
+      [F.show3d]: true,
+      [F.showLabel]: true,
+      [F.proposedArea]: 11, // a plain number in a metric drawing: square metres
+      [F.floorFinish]: "Oak",
+      [F.northFinish]: "Paint",
+      [F.eastFinish]: "Paint",
+      [F.southFinish]: "Tile",
+      [F.westFinish]: "Paint",
+      [F.ceilingFinish]: "Plaster",
+      [F.baseFinish]: "Timber",
+    },
+  }),
+);
+s.batch(() =>
+  addSpace(s, {
+    ring: [{ x: 4500, y: 0 }, { x: 6500, y: 0 }, { x: 6500, y: 1000 }, { x: 4500, y: 1000 }],
+    layerId: upper,
+    values: { [F.name]: "Hall", [F.number]: "", [F.height]: 2000, [F.show3d]: false, [F.showLabel]: false },
+  }),
+);
 
 /** A box's 12 triangles (9 floats each), from its min and max corners, mm. */
 function box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): Float32Array {
@@ -103,7 +138,8 @@ const recordsOf = new Map<string, ObjectRecord[]>([
 // the session's own answers, except for the meshes and records it can't make on a blank drawing
 const doc = new Proxy(s.doc, {
   get(target, key) {
-    if (key === "model3d") return () => meshes;
+    // the 3D view's meshes of the rooms (made by the session) with the objects' own
+    if (key === "model3d") return () => [...meshes, ...target.model3d()];
     if (key === "records") return (id: string) => recordsOf.get(id) ?? target.records(id);
     const v = Reflect.get(target, key, target);
     return typeof v === "function" ? v.bind(target) : v;
@@ -200,17 +236,17 @@ try {
     });
     sets.set(id, { name: String(val(set.Name)), props });
   }
-  check(sets.size === 2, `${sets.size} property sets (one per record with a named field)`);
+  check(sets.size === 7, `${sets.size} property sets: one per record with a named field (2), each room's Space record and Pset_SpaceCommon (4), its covering set (1)`);
 
   // links: each set to its element
   const rels = idsOf(lib.IFCRELDEFINESBYPROPERTIES);
-  check(rels.length === sets.size, "one IFCRELDEFINESBYPROPERTIES per set");
+  check(rels.length === sets.size + 2, "one IFCRELDEFINESBYPROPERTIES per set, and one for each room's quantities");
   const linked = new Map<string, number>();
   for (const id of rels) {
     const rel = api.GetLine(model, id);
     const elements = (rel.RelatedObjects as unknown[]).map((e) => val(e) as number);
     const set = val(rel.RelatingPropertyDefinition) as number;
-    check(elements.length === 1 && sets.has(set), `relation #${id} links one element to a property set`);
+    check(elements.length === 1 && (sets.has(set) || entityOf(set) === "IFCELEMENTQUANTITY"), `relation #${id} links one element to a property set`);
     linked.set(sets.get(set)?.name ?? "?", elements[0]);
   }
 
@@ -259,13 +295,98 @@ try {
       geo.delete();
     }
   });
-  const near = (a: number | undefined, b: number): boolean => a !== undefined && Math.abs(a - b) < 1e-3;
+  const near = (a: number | undefined, b: number, eps = 1e-3): boolean => a !== undefined && Math.abs(a - b) < eps;
   const doorH = heights.get(door9);
   const finishH = heights.get(finish9);
   check(!!doorH && near(doorH[0], 3.0) && near(doorH[1], 3.3), `door's geometry from 3.0 m to 3.3 m (${doorH?.map((h) => h.toFixed(3)).join(" to ")})`);
   check(!!finishH && near(finishH[0], 3.0) && near(finishH[1], 3.05), `panel's geometry from 3.0 m to 3.05 m (${finishH?.map((h) => h.toFixed(3)).join(" to ")})`);
   const slabH = [...heights.entries()].find(([id]) => storeyOf.get(id) === "Design Layer-1");
   check(!!slabH && near(slabH[1][0], 0) && near(slabH[1][1], 0.2), `slab on the ground storey from 0 to 0.2 m (${slabH?.[1].map((h) => h.toFixed(3)).join(" to ")})`);
+  // rooms: each an IfcSpace, aggregated under its storey and not contained in it
+  const spaceIds = idsOf(lib.IFCSPACE);
+  check(spaceIds.length === 2, `two IFCSPACE entities (${spaceIds.length})`);
+  const storeyOfSpace = new Map<number, string>();
+  for (const id of idsOf(lib.IFCRELAGGREGATES)) {
+    const rel = api.GetLine(model, id);
+    const parent = val(rel.RelatingObject) as number;
+    if (entityOf(parent) !== "IFCBUILDINGSTOREY") continue;
+    for (const e of rel.RelatedObjects as unknown[]) storeyOfSpace.set(val(e) as number, String(val(api.GetLine(model, parent).Name)));
+  }
+  const contained = new Set<number>();
+  for (const id of idsOf(lib.IFCRELCONTAINEDINSPATIALSTRUCTURE)) for (const e of api.GetLine(model, id).RelatedElements as unknown[]) contained.add(val(e) as number);
+  check(spaceIds.every((id) => storeyOfSpace.has(id) && !contained.has(id)), "each space is aggregated under its storey, not contained in it");
+  const kid = spaceIds.find((id) => String(val(api.GetLine(model, id).LongName)) === "Kitchen");
+  const hid = spaceIds.find((id) => String(val(api.GetLine(model, id).LongName)) === "Hall");
+  check(kid !== undefined && hid !== undefined, "a Kitchen and a Hall");
+  if (kid === undefined || hid === undefined) throw new Error("no spaces to check");
+  const kl = api.GetLine(model, kid);
+  const hl = api.GetLine(model, hid);
+  check(String(val(kl.Name)) === "101" && String(val(kl.LongName)) === "Kitchen", `the kitchen's Name is its number, its LongName its name (${String(val(kl.Name))}, ${String(val(kl.LongName))})`);
+  check(String(val(hl.Name)) === "Hall" && String(val(hl.LongName)) === "Hall", "the hall, with no number, is named by its name");
+  check(String(val(kl.CompositionType)) === "ELEMENT" && String(val(kl.PredefinedType)) === "SPACE" && near(val(kl.ElevationWithFlooring) as number, 100, 1e-3), `element, a space, its floor at 100 mm (${String(val(kl.CompositionType))}, ${String(val(kl.PredefinedType))}, ${String(val(kl.ElevationWithFlooring))})`);
+  check(storeyOfSpace.get(kid) === "Design Layer-1" && storeyOfSpace.get(hid) === "Upper", "the kitchen under Design Layer-1, the hall under Upper");
+
+  // each element's property sets and quantities by name, from the relations that define them
+  const propsOf = (id: number): Record<string, Record<string, unknown>> => {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const rid of idsOf(lib.IFCRELDEFINESBYPROPERTIES)) {
+      const rel = api.GetLine(model, rid);
+      if (!(rel.RelatedObjects as unknown[]).some((e) => val(e) === id)) continue;
+      const def = api.GetLine(model, val(rel.RelatingPropertyDefinition) as number);
+      const name = String(val(def.Name));
+      const values: Record<string, unknown> = {};
+      if (entityOf(def.expressID) === "IFCELEMENTQUANTITY") {
+        for (const q of def.Quantities as unknown[]) {
+          const quantity = api.GetLine(model, val(q) as number);
+          values[String(val(quantity.Name))] = val(quantity.AreaValue ?? quantity.LengthValue ?? quantity.VolumeValue);
+        }
+      } else {
+        for (const p of def.HasProperties as unknown[]) {
+          const single = api.GetLine(model, val(p) as number);
+          values[String(val(single.Name))] = val(single.NominalValue);
+        }
+      }
+      out[name] = values;
+    }
+    return out;
+  };
+  const kp = propsOf(kid);
+  const hp = propsOf(hid);
+  const kq = (kp.Qto_SpaceBaseQuantities ?? {}) as Record<string, number>;
+  const hq = (hp.Qto_SpaceBaseQuantities ?? {}) as Record<string, number>;
+  const common = kp.Pset_SpaceCommon ?? {};
+  check(common.Reference === "101" && common.IsExternal === false && near(common.NetPlannedArea as number, 11, 1e-6), `Pset_SpaceCommon: its reference, not external, its planned net area 11 m² (${JSON.stringify(common)})`);
+  check(near(kq.NetFloorArea, 12, 1e-6) && near(kq.GrossFloorArea, 12, 1e-6) && near(kq.NetPerimeter, 14000) && near(kq.GrossPerimeter, 14000), `quantities: 12 m² net and gross, 14 m of perimeter (${JSON.stringify(kq)})`);
+  check(near(kq.NetVolume, 28.8, 1e-6) && near(kq.GrossVolume, 0) && near(kq.Height, 2400), `quantities: 28.8 m³ net, no gross volume, 2400 mm high (${kq.NetVolume}, ${kq.GrossVolume}, ${kq.Height})`);
+  const covering = kp.Pset_SpaceCoveringRequirements ?? {};
+  check(covering.FloorCovering === "Oak" && covering.WallCovering === "Paint, Tile" && covering.CeilingCovering === "Plaster" && covering.SkirtingBoardCovering === "Timber", `coverings: the floor, the wall finishes where they differ, the ceiling and the base (${JSON.stringify(covering)})`);
+  check(near(hq.NetFloorArea, 2, 1e-6) && near(hq.Height, 2000) && !hp.Pset_SpaceCoveringRequirements && !hp.Pset_SpaceCommon?.NetPlannedArea, "the hall: 2 m² and 2000 mm high, with no coverings or planned area");
+  check(kp.Space?.Name === "Kitchen" && kp.Space?.Number === "101", "a Space's own parameters are its property set too");
+
+  // geometry: the kitchen's volume from its meshes at 0.1 to 2.5 m; the hall's prism from 3.0 to 5.0 m
+  // a space is not among the meshes web-ifc streams, so its geometry is read element by element
+  const flatHeights = (id: number): [number, number] | undefined => {
+    const fm = api.GetFlatMesh(model, id);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < fm.geometries.size(); i++) {
+      const pg = fm.geometries.get(i);
+      const geo = api.GetGeometry(model, pg.geometryExpressID);
+      const v = api.GetVertexArray(geo.GetVertexData(), geo.GetVertexDataSize());
+      const t = pg.flatTransformation;
+      for (let k = 0; k < v.length; k += 6) {
+        const y = t[1] * v[k] + t[5] * v[k + 1] + t[9] * v[k + 2] + t[13];
+        lo = Math.min(lo, y);
+        hi = Math.max(hi, y);
+      }
+      geo.delete();
+    }
+    return lo <= hi ? [lo, hi] : undefined;
+  };
+  const kh = flatHeights(kid);
+  const hh = flatHeights(hid);
+  check(!!kh && near(kh[0], 0.1) && near(kh[1], 2.5), `the kitchen's volume, from its floor to its ceiling (${kh?.map((h) => h.toFixed(3)).join(" to ")})`);
+  check(!!hh && near(hh[0], 3.0) && near(hh[1], 5.0), `the hall's prism, from its storey's floor to 2 m up (${hh?.map((h) => h.toFixed(3)).join(" to ")})`);
 } finally {
   api.CloseModel(model);
 }

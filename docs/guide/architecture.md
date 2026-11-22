@@ -210,16 +210,49 @@ Object Info changes the angle, rise and run, levels and cuts, and shows its area
 
 ### Space
 
-With the **Space** tool (Space Planning tool set), draw a room as a rectangle or polygon, click inside walls, or pick the walls round it. Its name, number and area are labelled, the numbers counting on.
+A room is a Space object, the same object Vectorworks makes. Rodeo reads the Spaces in a Vectorworks drawing and makes its own with the **Space** tool (Space Planning tool set):
+
+- **Rectangle** and **Polygon** draw the room's boundary.
+- **Inner Boundary** makes a room where you click inside walls.
+- **Picked Walls** makes one from the walls you click, on Enter.
+
+A room found from walls follows them: move, add or delete a wall round it and the room reshapes in the same undo step, its areas with it. The walls are those on any design layer at the same elevation, so spaces can sit on a layer of their own.
+
+Select a Space and **Object Info** shows its data in groups:
+
+- **Space**: Name, Number, Occupancy, Department, Description, Remarks.
+- **Size**: Area and Gross Area, their perimeters and volumes, and the room's dimensions, worked out from the boundary. Net is to the walls' faces, gross to their centre lines.
+- **Heights**: Height (floor to ceiling), Floor to Floor Height and Finish Floor Elevation.
+- **Finishes**: floor, base, each wall and ceiling, each with a key for a finish schedule.
+- **Boundary**: Follow Walls, Show 2D Boundary and the class its fill and pen come from.
+- **3D**: Show 3D Volume draws the room's volume in 3D, see-through unless its Volume Class says otherwise.
+- **Label**: Show Label, and check boxes for the area, dimensions, occupancy, volume and proposed area. **Label Fields…** adds finishes, keys, department and other fields as lines. The label follows the data.
+
+Everything else Vectorworks keeps on a Space is under Other Parameters. The Reshape tool moves a room's corners; a room reshaped by hand stops following its walls until you turn Follow Walls back on.
 
 **AEC › Space Planning** has:
 
-- **Create Spaces from Walls** finds every room, or the gross floor, and run again reshapes them to moved walls.
+- **Create Spaces from Walls** finds every room, or the gross floor. Run again, it reshapes the rooms already there.
 - **Create Spaces from Polys** converts shapes.
 - **Create Walls from Spaces** makes exterior and interior walls in the styles you choose.
-- **Update Spaces** re-measures them.
+- **Update Spaces** draws them again from their data.
+- **Convert to Space Objects** turns the grouped spaces of drawings made in earlier versions of Rodeo into Space objects, keeping their data and links.
+- **Colour Spaces…** colours rooms in plan and 3D by Occupancy, Department, Space Type, Name or a finish, or by one of the drawing's own finish visualisations.
 
-**Limits:** a space is a group with its data in a record, not a Vectorworks Space object, and has no finishes or 3D volume.
+Rooms in a Revit model come in as Space objects, and **Export IFC** writes each as an IfcSpace with its areas, volume and finishes.
+
+**Limits:**
+
+- Nothing Rodeo writes has been opened in Vectorworks. A new Space has its parameters, boundary and drawing, but not the other records Vectorworks keeps on one.
+- A Space made by Vectorworks looks as Vectorworks drew it until you change it. Then Rodeo draws its boundary and volume, and Vectorworks' finish lines and shading go.
+- Its areas stay as Vectorworks measured them until its boundary moves.
+- A room found from walls stops at the walls' faces. Vectorworks steps into door openings, so its net areas are 1 % to 7 % larger in rooms with doors. Columns aren't left out.
+- The gross boundary is to wall centre lines only.
+- Vectorworks has no Department field on a Space. Rodeo keeps it in the occupant organisation's name.
+- Room labels in Vectorworks drawings are separate Data Tags that Rodeo can't tie to their Space, so they don't follow an edit. Turn on Show Label for one that does.
+- Label Fields are Rodeo's own: they are kept in a Space Label record, which Vectorworks will show as data but not draw.
+- Colour Spaces is a view setting for this session. It isn't saved in the file.
+- Curved room edges are straight runs. There are no zones, area modifiers or space styles.
 
 ### Adjacency tools
 
@@ -238,7 +271,6 @@ All of them follow the spaces as you move them, in the same undo step, and a lin
 
 **Limits:**
 
-- The adjacency tools read Rodeo's spaces, not Vectorworks' own Space objects.
 - Imported spaces are squares in rows.
 - Link length is centre to centre.
 - The score's unit and Row Spacing 0 files are this app's reading of the help.

@@ -5,14 +5,15 @@
 // only its box was) and its thickness across it, a floor's is its outline. Walls and floors become
 // Rodeo's walls and slabs from those; everything else (and a wall or floor rvt-rs gives a body
 // of another shape: curved, tapered, sloped) takes its body from rvt-rs's glTF, which draws each
-// element's as rvt-rs's IFC export does. Rooms become their outline and name in plan. What rvt-rs
+// element's as rvt-rs's IFC export does. Rooms become rooms (outline, number, name, height and
+// properties; app/buildingWrite.ts makes them Space objects). What rvt-rs
 // couldn't decode is drawn as the element's box, see-through, and the notes say how many. An RPC
 // tree, person or car (Revit's photo entourage, which keeps no geometry for it) is drawn as a plain
 // trunk and crown, figure or car body filling its box instead, so a site's trees don't hide the
 // building in 3D.
 
 import type { Pt } from "../core/types.ts";
-import type { Body, BuildingModel, BuildingObject, Category, Component, Material, Opening, Property, PropertySets, Rgb, Slab, Wall } from "./building.ts";
+import type { Body, BuildingModel, BuildingObject, Category, Component, Material, Opening, Property, PropertySets, Rgb, Room, Slab, Wall } from "./building.ts";
 import { parseGltf } from "./mesh.ts";
 import type { RvtEntity, RvtPropertySet, RvtRead, RvtValue } from "./rvtModel.ts";
 
@@ -155,7 +156,7 @@ export function revitBuilding(read: RvtRead, fileName: string): BuildingModel {
   /** each opening's host as rvt-rs gives it, an entity index */
   const hostOf: (number | undefined)[] = [];
   const objects: BuildingObject[] = [];
-  const drawing: BuildingModel["drawing"] = [];
+  const rooms: Room[] = [];
   let boxes = 0;
   const standIns = { tree: 0, person: 0, vehicle: 0 };
   const flights = ents.some((e) => e.ifc_type === "IFCSTAIRFLIGHT");
@@ -231,9 +232,8 @@ export function revitBuilding(read: RvtRead, fileName: string): BuildingModel {
             { x: box.x0, y: box.y1 },
           ];
       if (outline) {
-        const name = roomName(e, extraSets.get(i));
-        drawing.push({ storey: base.storey, category: base.category, shape: { kind: "polygon", points: outline, closed: true } });
-        if (name) drawing.push({ storey: base.storey, category: base.category, shape: { kind: "text", at: placed(0, 0), text: name, height: 250 } });
+        const { number, name } = roomNames(e, extraSets.get(i));
+        rooms.push({ storey: base.storey, category: base.category, outline, name, number, height: ex && ex.height_feet > 0 ? ex.height_feet * FT : 0, properties: base.properties });
       } else skip("rooms without an outline");
       return;
     }
@@ -357,7 +357,8 @@ export function revitBuilding(read: RvtRead, fileName: string): BuildingModel {
     slabs,
     openings,
     objects,
-    drawing,
+    drawing: [],
+    rooms,
     skipped,
     notes,
   };
@@ -497,11 +498,22 @@ function planBox(bodies: readonly Body[]): { x0: number; y0: number; x1: number;
   return x1 > x0 && y1 > y0 ? { x0, y0, x1, y1 } : null;
 }
 
-/** A room's name and number, as Revit shows them in a room tag. */
-function roomName(e: RvtEntity, sets: RvtPropertySet[] | undefined): string {
-  const ref = sets?.flatMap((s) => s.properties).find((p) => p.name === "Reference")?.value.value;
-  if (typeof ref === "string" && ref.trim()) return ref.trim();
-  return splitName(e.name ?? "")[1];
+/**
+ * A room's number and name: Revit's RoomNumber and RoomName parameters, each on its own when both are
+ * there; else the whole text Revit shows in a room tag (the IFC Reference "Master Bedroom 206", or the
+ * element's name) as the name, with no number.
+ */
+function roomNames(e: RvtEntity, sets: RvtPropertySet[] | undefined): { number: string; name: string } {
+  const text = (p: { name: string; value: { value: unknown } }[] | undefined, field: string): string => {
+    const v = p?.find((x) => x.name === field)?.value.value;
+    return typeof v === "string" ? v.trim() : "";
+  };
+  const own = e.property_set?.properties;
+  const number = text(own, "RoomNumber");
+  const name = text(own, "RoomName");
+  if (number && name) return { number, name };
+  const reference = text(sets?.flatMap((s) => s.properties), "Reference");
+  return { number: "", name: reference || name || number || splitName(e.name ?? "")[1] };
 }
 
 /** RPC entourage: Revit's photo trees, people and cars, which carry no geometry ("M_RPC" in metric

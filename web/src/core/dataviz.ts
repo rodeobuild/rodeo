@@ -23,6 +23,12 @@
 //
 // A viewport lists the ones it applies in a TDMD record of kind "cSCV": key 2
 // holds their GUIDs, 16 bytes each in the order the string writes them.
+//
+// A by-field visualisation has as its "by" the name of a record format (for
+// example "Space_Finish", "Countertop 2D Edge") and names the field of that
+// format it reads in [3] ("FinishKey", "Edge Type"). Its values are that field's
+// text. It applies to each object that carries a record of that format, and a
+// value a visualisation has no entry for leaves the object as drawn.
 
 import { u16, u32 } from "./bytes.ts";
 import type { Rec } from "./records.ts";
@@ -36,6 +42,7 @@ const VALUE_NODE = 0;
 const F_GUID = 0;
 const F_NAME = 1;
 const F_BY = 2;
+const F_FIELD = 3;
 const F_CRITERIA = 14;
 const V_ENABLED = 1;
 const V_VALUE = 3;
@@ -72,6 +79,8 @@ export const ALL_OBJECTS = "<All Objects>";
 /** DataViz.by for values by material and by object style. */
 export const MATERIAL = "MATERIAL";
 export const OBJECT_STYLE = "OSTYLE";
+/** DataViz.by for values by class. */
+export const CLASS = "C";
 
 /** What a visualisation's tests look at. */
 export type VizField = "plugin" | "layer" | "class" | "story" | "type";
@@ -98,12 +107,17 @@ export interface VizStyle {
 export interface DataViz {
   guid: string;
   name: string;
-  /** what the values are: "" every object, "C" class name, "MATERIAL", "OSTYLE" (object style) */
+  /**
+   * what the values are: "" every object, "C" class name, "MATERIAL", "OSTYLE" (object style), or
+   * the name of a record format for a by-field visualisation (then `field` is set)
+   */
   by: string;
   /** null matches every object */
   criteria: VizCriteria | null;
   /** the enabled values, by value */
   values: Map<string, VizStyle>;
+  /** a by-field visualisation's record format and the field of it that holds the value */
+  field?: { record: string; field: string };
 }
 
 interface Node {
@@ -120,12 +134,15 @@ export function readDataViz(recs: Iterable<Rec>): Map<string, DataViz> {
     const root = readNode(r.data, ROOT, r.data.length);
     for (const n of root?.kids[0]?.kids ?? []) {
       if (n.kind !== VIZ_NODE || n.fields.length <= F_CRITERIA) continue;
+      const by = text(n.fields[F_BY]);
+      const field = text(n.fields[F_FIELD]);
       const viz: DataViz = {
         guid: text(n.fields[F_GUID]),
         name: text(n.fields[F_NAME]),
-        by: text(n.fields[F_BY]),
+        by,
         criteria: readCriteria(n.fields[F_CRITERIA]),
         values: new Map(),
+        ...(by !== "" && by !== CLASS && by !== MATERIAL && by !== OBJECT_STYLE && field !== "" ? { field: { record: by, field } } : {}),
       };
       for (const v of n.kids) {
         if (v.kind !== VALUE_NODE || v.fields.length <= V_LINE_TYPE || v.fields[V_ENABLED][0] !== 1) continue;
@@ -135,6 +152,45 @@ export function readDataViz(recs: Iterable<Rec>): Map<string, DataViz> {
     }
   }
   return out;
+}
+
+/**
+ * Twelve light, clearly different fills for by-field visualisations made in memory (fieldViz), in the
+ * order their values are given colours. Light enough that the drawing's lines still read on them.
+ */
+export const FIELD_COLOURS: readonly string[] = [
+  "#a6cee3",
+  "#b2df8a",
+  "#fdbf6f",
+  "#cab2d6",
+  "#ffff99",
+  "#fb9a99",
+  "#8dd3c7",
+  "#ffed6f",
+  "#bebada",
+  "#fccde5",
+  "#d9d9d9",
+  "#80b1d3",
+];
+
+/**
+ * A visualisation made in memory that colours objects by one record field: one solid fill per
+ * distinct value, in sorted value order and repeating after the twelve colours. An empty value has
+ * no entry, so an object with it stays as drawn. `plugin` ("" for any object) limits it to the
+ * plug-in objects of that name; the fields of those records are read from the objects themselves.
+ */
+export function fieldViz(name: string, plugin: string, record: string, field: string, values: readonly string[]): DataViz {
+  const distinct = [...new Set(values.filter((v) => v !== ""))].sort();
+  const entries = new Map<string, VizStyle>();
+  distinct.forEach((v, i) => entries.set(v, { fill: { kind: "solid", color: FIELD_COLOURS[i % FIELD_COLOURS.length] } }));
+  return {
+    guid: `local:${record}.${field}`,
+    name,
+    by: record,
+    criteria: plugin === "" ? null : { test: "plugin", value: plugin },
+    values: entries,
+    field: { record, field },
+  };
 }
 
 /** GUIDs of the visualisations a viewport applies, in its order. */
@@ -163,6 +219,25 @@ export interface VizSubject {
   story: string | null;
   className: string;
   type: number;
+  /** the text of a field of the object's record (format name, field name); null when it has none */
+  value?: (record: string, field: string) => string | null;
+}
+
+/** The value a by-field visualisation takes on an object: its field's text, or null (no field, or none for this object). */
+export function vizFieldValue(v: DataViz, o: VizSubject): string | null {
+  return v.field && o.value ? o.value(v.field.record, v.field.field) : null;
+}
+
+/**
+ * A record field's value as a visualisation value: its text, or null when it is empty. A choice
+ * field stores its current value before the first NUL and its list after it (the value is the part
+ * before the NUL), so only that part is taken.
+ */
+export function fieldText(value: unknown): string | null {
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value !== "string") return null;
+  const t = value.split("\0")[0];
+  return t === "" ? null : t;
 }
 
 export function vizMatches(c: VizCriteria | null, o: VizSubject): boolean {

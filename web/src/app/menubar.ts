@@ -172,7 +172,8 @@ import { conduitSizingDialog } from "./conduitSizing.ts";
 import { canCreatePipingRuns, createPipingRuns } from "./tools/piping.ts";
 import { canMakeVegetationLine, vegetationLineDialog } from "./vegetationLine.ts";
 import { importAdjacencyMatrixDialog } from "./adjacencyImport.ts";
-import { canCreateSpacesFromPolys, createSpacesFromPolys, createSpacesFromWallsDialog, createWallsFromSpacesDialog, hasSpaces, updateSpacesDialog } from "./spaces.ts";
+import { colourSpacesDialog, hasSpaceObjects } from "./space/colour.ts";
+import { canConvertSpaces, canCreateSpacesFromPolys, convertToSpaceObjects, createSpacesFromPolys, createSpacesFromWallsDialog, createWallsFromSpacesDialog, hasSpaces, updateSpacesDialog } from "./spaces.ts";
 import { canPlaceStations, stationOnPolylineDialog } from "./stationOnPolyline.ts";
 import { canPickUpRedline, canRestoreRedline, pickUpRedlines, restoreRedlines } from "./redlines.ts";
 import { canMakePillar, pillarDialog } from "./pillar.ts";
@@ -1075,6 +1076,8 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
             { label: "Create Spaces from Walls…", enabled: hasDoc, run: () => void createSpacesFromWallsDialog() },
             { label: "Create Walls from Spaces…", why: whyIn("Make spaces first: AEC › Space Planning › Create Spaces from Polys"), enabled: hasSpaces, run: () => void createWallsFromSpacesDialog() },
             { label: "Update Spaces…", why: whyIn("Make spaces first: AEC › Space Planning › Create Spaces from Polys"), enabled: hasSpaces, run: () => void updateSpacesDialog() },
+            { label: "Convert to Space Objects", why: whyIn("This drawing has no spaces made as groups"), enabled: canConvertSpaces, run: () => convertToSpaceObjects() },
+            { label: "Colour Spaces…", why: whyIn("This drawing has no Space objects"), enabled: hasSpaceObjects, run: () => void colourSpacesDialog() },
             { label: "Import Adjacency Matrix…", enabled: hasDoc, run: () => void importAdjacencyMatrixDialog() },
           ],
         },

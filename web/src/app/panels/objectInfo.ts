@@ -1640,7 +1640,7 @@ function fieldControl(ctx: RecordCtx, f: RecordField): HTMLElement {
     return true;
   };
   // a length worked out is shown in the drawing's units
-  if (driver?.readOnly(f.name)) return readOnly(f.kind === "dimension" && Number.isFinite(Number(f.value)) ? formatLength(Number(f.value), doc.info.units) : String(f.value));
+  if (driver?.readOnly(f.name)) return readOnly(driver.display?.(f.name, f.value, f.kind) ?? (f.kind === "dimension" && Number.isFinite(Number(f.value)) ? formatLength(Number(f.value), doc.info.units) : String(f.value)));
   const choices = driver?.choices(f.name);
   if (choices?.length) {
     const current = String(f.value);

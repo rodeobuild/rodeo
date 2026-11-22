@@ -2443,6 +2443,23 @@ export class Session implements EditSession {
     this.commit(p, "objects", [id, ...recs.map((o) => o.guid)]);
   }
 
+  setPluginPath(id: string, shapeId: string): void {
+    const r = this.object(id);
+    if (r.type !== PLUGIN) throw new Error(`${r.typeName} is not a plug-in object`);
+    if (objectChildren(r).some(isPathGroup)) throw new Error("this plug-in object has a path already: reshape it");
+    const shape = this.object(shapeId);
+    if (shape.type !== 5 && shape.type !== 21) throw new Error("a plug-in's path is a polygon or a polyline");
+    this.batch(() => {
+      const group = this.groupObjects([shapeId]);
+      const p = this.plan();
+      // the 84-byte record that marks a path group: a header and its tag, as stored
+      this.addAux(p, this.object(group), this.newAux(AUX_RECORD, new Uint8Array([0x67, 0x74, 0x61, 0x70])));
+      this.commit(p, "objects", [group]);
+      // in with what it holds already, all of which stays
+      this.setPluginDrawing(id, [group], Number.MAX_SAFE_INTEGER);
+    });
+  }
+
   slabTemplates(): SlabTemplate[] {
     if (this.slabKinds?.recs !== this.doc.recs) this.slabKinds = { recs: this.doc.recs, list: this.findSlabTemplates() };
     return this.slabKinds.list;
@@ -5963,14 +5980,17 @@ export class Session implements EditSession {
   }
 
   /** Takes an attribute group from the objects' classes, or gives them the values they draw with. */
-  setAttributesByClass(ids: string[], group: ByClassGroup, on: boolean): void {
+  setAttributesByClass(ids: string[], group: ByClassGroup | readonly ByClassGroup[], on: boolean): void {
+    const groups: readonly ByClassGroup[] = typeof group === "string" ? [group] : group;
     const p = this.plan();
     for (const id of new Set(ids)) {
       for (const r of withFaces(this.object(id))) {
         if (r.data.length < ATTR_END) continue;
         const d = p.mut(r.index);
-        if (on) setU16(d, BY_CLASS, u16(d, BY_CLASS) | BY_CLASS_BITS[group]);
-        else writeAttrs(d, this.classGroups(r, BY_CLASS_KEYS[group]));
+        for (const g of groups) {
+          if (on) setU16(d, BY_CLASS, u16(d, BY_CLASS) | BY_CLASS_BITS[g]);
+          else writeAttrs(d, this.classGroups(r, BY_CLASS_KEYS[g]));
+        }
       }
     }
     this.commit(p, "objects", ids);

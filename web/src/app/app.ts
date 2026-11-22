@@ -125,6 +125,9 @@ import { HvacStraightDuctTool, HvacElbowTool, HvacFlexDuctTool, HvacVerticalDuct
 import { GisStakeTool, GraticuleTool, GreatCircleTool, SurveyPointTool } from "./tools/gis.ts";
 import { AdjacencyMatrixTool, AdjacencyScoreTool, SpaceLinkTool, StackingDiagramTool } from "./tools/adjacency.ts";
 import { SpaceTool } from "./tools/space.ts";
+import { onColouringChange, spaceColours } from "./space/colour.ts";
+import "./space/driver.ts";
+import "./space/follow.ts";
 import { QuarterArcTool } from "./tools/quarterArc.ts";
 import { RoadCurvedTool, RoadPolyTool, RoadStraightTool, RoadTeeTool } from "./tools/roads.ts";
 import { RopeStanchionTool, StageDeckTool, StagePlugTool, StageRampTool, StageStepsTool } from "./tools/stage.ts";
@@ -1100,6 +1103,10 @@ export class App {
     });
     // hiding or showing objects builds the 3D again without them, or with them
     onHiddenChange(() => {
+      this.stale3d = true;
+      if (this.seen3d) this.update3d();
+    });
+    onColouringChange(() => {
       this.stale3d = true;
       if (this.seen3d) this.update3d();
     });
@@ -2433,7 +2440,10 @@ export class App {
     // hidden objects aren't in it (View > Hide Selected Objects)
     const hidden = hiddenObjects();
     const model = session.doc.model3d();
-    const meshes = hidden.size ? model.filter((m) => !hidden.has(m.objectId)) : model;
+    const shown = hidden.size ? model.filter((m) => !hidden.has(m.objectId)) : model;
+    // rooms coloured by a field (AEC > Space Planning > Colour Spaces) take that colour in 3D too
+    const roomColours = spaceColours(session.doc);
+    const meshes = roomColours.size ? shown.map((m) => (roomColours.has(m.objectId) ? { ...m, color: roomColours.get(m.objectId)! } : m)) : shown;
     try {
       this.view3d.setModel(meshes, session.doc.resources());
     } catch (err) {

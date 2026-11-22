@@ -15,6 +15,7 @@ import { blankDrawing } from "../core/blank.ts";
 import { openVwx } from "../core/index.ts";
 import type { BuildingModel } from "../import/building.ts";
 import { writeBuilding } from "./buildingWrite.ts";
+import { allSpaces, F, measured } from "./space/model.ts";
 
 let failures = 0;
 function check(ok: boolean, what: string): void {
@@ -261,6 +262,64 @@ check(doc.classes().find((c) => c.name === "Walls")?.visibility === "visible", "
   const made = writeBuilding(t, floors);
   const extrudes = t.doc.layers().flatMap((l) => t.doc.objects(l.id)).filter((o) => !o.parentId && o.typeName === "extrude");
   check(made.slabs === 2 && made.failed.floors === 1 && extrudes.length === 2, `a bad floor in a group costs only itself (${made.slabs} made, ${JSON.stringify(made.failed)}, ${extrudes.length} extrudes)`);
+}
+
+// rooms: a Space object each, on its storey's layer, its outline its boundary, its name, number, height
+// and finishes, its label drawn, no volume shown, its properties kept as records
+{
+  const rect = (x: number, y: number, w: number, h: number) => [
+    { x, y },
+    { x: x + w, y },
+    { x: x + w, y: y + h },
+    { x, y: y + h },
+  ];
+  const rooms: BuildingModel = {
+    ...model,
+    categories: [...model.categories, { name: "Rooms" }],
+    walls: [],
+    slabs: [],
+    openings: [],
+    objects: [],
+    drawing: [],
+    rooms: [
+      {
+        storey: 0,
+        category: 4,
+        outline: rect(0, 0, 4000, 3000),
+        name: "Kitchen",
+        number: "101",
+        height: 2400,
+        properties: {
+          Revit: [
+            { name: "Department", kind: "text", value: "Estates" },
+            { name: "Floor Finish", kind: "text", value: "Oak" },
+            { name: "Wall Finish", kind: "text", value: "Paint" },
+            { name: "Area", kind: "area", value: 12e6 },
+          ],
+        },
+      },
+      { storey: 1, category: 4, outline: rect(0, 0, 2000, 2000), name: "Hall", number: "", height: 0, properties: {} },
+    ],
+  };
+  const rs = openVwx(blankDrawing("mm"));
+  const rw = writeBuilding(rs, rooms);
+  check(rw.rooms === 2 && Object.keys(rw.failed).length === 0, `two rooms are made as Space objects (${rw.rooms}, ${JSON.stringify(rw.failed)})`);
+  const rdoc = openVwx(rs.doc.toBytes()).doc;
+  const spaces = allSpaces(rdoc);
+  const kitchen = spaces.find((x) => x.text(F.name) === "Kitchen");
+  const hall = spaces.find((x) => x.text(F.name) === "Hall");
+  check(spaces.length === 2 && !!kitchen && !!hall, `both are Space objects once saved and opened (${spaces.length})`);
+  check(kitchen?.text(F.number) === "101" && near(kitchen?.num(F.height), 2400), `the kitchen's number and height (${kitchen?.text(F.number)}, ${kitchen?.num(F.height)})`);
+  check(!!kitchen && near(measured(kitchen, F.area, "Millimeters"), 12e6) && near(measured(hall!, F.area, "Millimeters"), 4e6), "areas of 12 m² and 4 m² from their outlines");
+  const floorOf = (id: string) => rdoc.layers().find((l) => l.id === rdoc.object(id)?.layerId)?.elevation;
+  check(!!kitchen && near(floorOf(kitchen.id), 0) && !!hall && near(floorOf(hall.id), 3000), "each on its storey's layer");
+  const labels = (id: string) => rdoc.objects(rdoc.object(id)!.layerId).filter((o) => o.parentId === id && o.shape?.kind === "text").map((o) => (o.shape?.kind === "text" ? o.shape.text : ""));
+  check(!!kitchen && labels(kitchen.id).includes("Kitchen") && labels(kitchen.id).includes("101"), `the label is drawn (${kitchen ? labels(kitchen.id).join(", ") : ""})`);
+  check(!!kitchen && rdoc.heightsOf(kitchen.id) === null && !!hall && rdoc.heightsOf(hall.id) === null, "no volume shown in 3D");
+  check(kitchen?.flag(F.showLabel) === true && kitchen?.flag(F.autoBoundary) === false, "its label is on and it isn't kept to walls");
+  check(kitchen?.text(F.department) === "Estates" && kitchen?.text(F.floorFinish) === "Oak" && [F.northFinish, F.eastFinish, F.southFinish, F.westFinish].every((f) => kitchen?.text(f) === "Paint"), "its department and finishes from Revit's parameters");
+  const recs = kitchen ? rdoc.records(kitchen.id).flatMap((r) => r.fields) : [];
+  check(recs.some((f) => f.name === "Department" && f.value === "Estates") && recs.some((f) => f.name === "Area (m²)" && near(f.value as number, 12)), "its room data kept as records, the area in m²");
 }
 
 console.log(failures ? `\n${failures} failed` : "\nall ok");

@@ -29,6 +29,7 @@ const SKIP = [
   /\.worker\.ts$/,
   /^admin\//,
   /^export\//,
+  /^app\/space\/fieldTable\.ts$/,
   /^convert\/cli\.ts$/,
   /^features\/mcp\//,
   /^features\/news\/banners\.ts$/,

@@ -736,7 +736,8 @@ export class Renderer {
         else this.drawViewport(vp, layerAlpha, move);
       }
       // what the other viewports draw from their caches is restyled by their data visualisations
-      const styles = layer.kind === "sheet" ? (scene.viewportStyles(layer.id) ?? undefined) : undefined;
+      // a design layer's objects take the Colour Spaces view setting, if it is on
+      const styles = layer.kind === "sheet" ? (scene.viewportStyles(layer.id) ?? undefined) : layer.kind === "design" ? (scene.designLayerStyles(layer.id) ?? undefined) : undefined;
       const { objects, boxes } = scene.cullIndex(layer.id);
       for (let i = 0; i < objects.length; i++) {
         const k = 4 * i;
