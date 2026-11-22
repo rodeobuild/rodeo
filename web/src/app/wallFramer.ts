@@ -3,8 +3,8 @@
 // round their doors and windows, by each wall class's options. A framing model is a set of design
 // layers named after it: "<name>" holds the framing in 3D, "<name> Plan" the framing plan (the
 // bottom plates and the uprights, the top plates left off) and "<name> Diagram" each wall's framing
-// in elevation; Frame TakeOff and Frame Wall Info worksheets list them where the drawing has a
-// worksheet to copy them from. Framing a model again redraws its layers.
+// in elevation; Frame TakeOff and Frame Wall Info worksheets list them. Framing a model again
+// redraws its layers.
 
 import type { EditSession, LayerInfo, NewShape, NewSheetCell, Pt } from "../core/index.ts";
 import { attempt } from "./commands.ts";
@@ -333,12 +333,11 @@ export async function wallFramerDialog(): Promise<void> {
     return;
   }
   const scale = chosen[0].scale || 1;
-  const sheets = output.sheets && s.doc.resources().some((r) => r.kind === "worksheet");
   const made = attempt("Wall Framer", (e) =>
     e.batch(() => {
       if (output.three) draw3D(e, frames, scale, output.model);
       if (output.two) draw2D(e, frames, scale, output.model);
-      if (sheets) worksheets(e, frames, output.model);
+      if (output.sheets) worksheets(e, frames, output.model);
     }),
   );
   if (!made) return;
@@ -347,6 +346,5 @@ export async function wallFramerDialog(): Promise<void> {
   const openings = frames.reduce((n, f) => n + f.wall.openings.length, 0);
   const parts = [`Framed ${frames.length} wall${frames.length === 1 ? "" : "s"}: ${studs} studs${openings ? `, round ${openings === 1 ? "1 door or window" : `${openings} doors and windows`}` : ""}.`];
   if (refused.length) parts.push(`${refused.length} too small to frame ${refused.length === 1 ? "was" : "were"} left out.`);
-  if (output.sheets && !sheets) parts.push("This drawing has no worksheet to copy one from, so there are no worksheets.");
   toast(parts.join(" "), "info");
 }

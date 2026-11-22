@@ -448,11 +448,6 @@ export async function generatePaperwork(): Promise<void> {
     ...(settings.cuts ? [colorCutSheet(COLOR_CUT_LIST, list, settings.cutsByPosition, paper)] : []),
   ];
   const notes: string[] = [];
-  const canSheets = session.doc.resources().some((r) => r.kind === "worksheet");
-  if (sheets.length && !canSheets) {
-    notes.push("This drawing has no worksheet to make others from, so the schedules and reports aren't made: Paperwork… shows them and exports them as CSV.");
-    sheets.length = 0;
-  }
   let magic: { name: string; parts: ReturnType<typeof magicSheetParts>["parts"] } | null = null;
   if (settings.magic) {
     const members = settings.magicBy === "area" ? list.filter((f) => f.focus !== null) : list;

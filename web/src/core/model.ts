@@ -84,7 +84,11 @@ import {
   readWorksheet,
   readWorksheetContents,
   readWorksheetImage,
+  DATABASE_BLOCK,
 } from "./worksheet.ts";
+import { databaseRowProblem, formulaCheck, readLive, type DatabaseRowSpec, type WorksheetLive } from "./worksheetLive.ts";
+import { objectIndex as databaseIndex, type ObjectIndex as DatabaseIndex } from "./formula/database.ts";
+import type { ParseContext } from "./formula/text.ts";
 import type {
   Affine,
   Attributes,
@@ -918,6 +922,7 @@ export class Model implements VwxDocument {
   symbols = new Map<number, Rec>();
   /** worksheets (type 18) by name index */
   worksheets = new Map<number, Rec>();
+  private liveIndex: { datas: Uint8Array[]; index: DatabaseIndex } | null = null;
   private palette: string[] = [];
   private colorTable: string[] = [];
   private colorNames: string[] = [];
@@ -1675,6 +1680,61 @@ export class Model implements VwxDocument {
   worksheetContents(index: number): WorksheetContents | null {
     const rec = this.worksheets.get(index);
     return rec ? readWorksheetContents(rec, this.names, this.meta.units) : null;
+  }
+
+  /** The drawing's objects as database rows search them, read once per state of the drawing. */
+  databaseIndex(): DatabaseIndex {
+    if (this.liveIndex?.datas !== this.datas) this.liveIndex = { datas: this.datas, index: databaseIndex(this) };
+    return this.liveIndex.index;
+  }
+
+  /** What a typed formula's names mean in this drawing: name-table indices (a layer's own for a layer name) and record formats' fields. */
+  formulaContext(): ParseContext {
+    const byName = new Map<string, number>();
+    for (const l of this.layerRecs) if (l.nameIndex) byName.set(this.layerName(l), l.nameIndex);
+    for (const [i, n] of this.names) byName.set(n, i);
+    return {
+      nameIndex: (name) => byName.get(name) ?? 0,
+      field: (rec, field) => {
+        const index = byName.get(rec);
+        const def = index ? this.formatDef(index) : null;
+        const f = def?.fields.find((x) => x.name === field);
+        return f ? { type: f.type, offset: f.off } : null;
+      },
+    };
+  }
+
+  checkWorksheetFormula(text: string, row: number, col: number): { error: string } | { why: string | null } {
+    return formulaCheck(text, this.formulaContext(), { row, col });
+  }
+
+  databaseRowProblem(index: number, row: number, spec: DatabaseRowSpec): string | null {
+    const rec = this.worksheets.get(index);
+    return rec ? databaseRowProblem(rec.data, row, spec, this.formulaContext(), this.databaseIndex()) : "no such worksheet";
+  }
+
+  formulaRecords(): { name: string; plugin: boolean; fields: string[] }[] {
+    const out: { name: string; plugin: boolean; fields: string[] }[] = [];
+    for (const r of this.recs) {
+      if (r.type !== RECORD_FORMAT || !r.nameIndex) continue;
+      const def = this.formatDef(r.nameIndex);
+      const name = this.names.get(r.nameIndex);
+      if (def && name !== undefined) out.push({ name, plugin: def.parametric, fields: def.fields.map((f) => f.name) });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  hasLiveWorksheets(): boolean {
+    for (const rec of this.worksheets.values()) {
+      if (rec.children.some((c) => c.type === DATABASE_BLOCK)) return true;
+      if (readWorksheetContents(rec, this.names)?.cells.some((c) => c.kind === "formula")) return true;
+    }
+    return false;
+  }
+
+  worksheetLive(index: number, kept?: ReadonlyMap<string, string>): WorksheetLive | null {
+    const rec = this.worksheets.get(index);
+    return rec ? readLive(rec, this.databaseIndex(), kept) : null;
   }
 
   worksheetRows(index: number): string[][] | null {

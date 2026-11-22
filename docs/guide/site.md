@@ -207,7 +207,7 @@ It's drawn as plain objects in a group, so to change one, place it again.
 
 ### Station on Polyline…
 
-**AEC › Roads › Station on Polyline…** stakes the selected line every 100' (30.48 m) and at a partial interval, each labeled with its station. It can draw each circular curve's data and tangent guide lines, or list them in a worksheet (made from one the drawing already has).
+**AEC › Roads › Station on Polyline…** stakes the selected line every 100' (30.48 m) and at a partial interval, each labeled with its station. It can draw each circular curve's data and tangent guide lines, or list them in a worksheet (made from one the drawing already has, or Rodeo's own when it has none).
 
 The stakes are the Stake tool's default look as grouped 2D objects, not site-model stakes.
 

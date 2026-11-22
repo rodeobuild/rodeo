@@ -144,14 +144,56 @@
   min-width: 32px;
 }
 
+/* a database row's header line: its column formulas, in the entry bar's monospace */
 .ws-grid tr.db td {
   background: var(--fill);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.ws-grid tr.db th {
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.ws-mark {
+  margin-left: 4px;
   color: var(--text-2);
+}
+
+/* its lines: as the worksheet shows them, read-only and muted */
+.ws-grid tr.sub td,
+.ws-grid tr.sub th {
+  color: var(--text-2);
+  cursor: default;
+}
+
+.ws-grid tr.sub th {
+  font-weight: 400;
+}
+
+.ws-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.ws-note {
+  margin: 6px 0 0;
+  font-size: 11px;
 }
 
 .ws-hint {
   min-height: 1.4em;
+  max-width: none;
   margin: 6px 0 0;
+}
+
+.ws-dialog .muted,
+.ws-db-dialog .muted {
+  max-width: none;
 }
 
 .ws-hint.error {
@@ -161,4 +203,94 @@
 .ws-empty {
   margin: 0;
   padding: 16px;
+}
+
+/* Database Row…: the objects, criteria and one line per column, in the dialog's own boxes */
+.menu-dialog.ws-db-dialog {
+  width: min(680px, 100%);
+}
+
+.ws-db-label {
+  margin: 10px 0 4px;
+  color: var(--text-2);
+}
+
+.ws-db-objects {
+  width: 100%;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.ws-db-field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.ws-db-field:focus,
+.ws-db-objects:focus,
+.ws-db-add:focus,
+.ws-db-sort:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface-active);
+}
+
+.ws-db-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
+.ws-db-col {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 150px 120px auto auto;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.ws-db-name {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: right;
+}
+
+.ws-db-add,
+.ws-db-sort {
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.ws-db-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .ws-db-col {
+    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr);
+  }
 }

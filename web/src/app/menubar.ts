@@ -217,6 +217,7 @@ import { arcIntoSegmentsDialog, canArcIntoSegments, canEvenDivide, canLineIntoSe
 import { rulersShown, toggleRulers } from "./rulers.ts";
 import { canEditWorksheet, editWorksheet } from "./worksheetEditor.ts";
 import { createReportDialog } from "./createReport.ts";
+import { canPlaceWorksheet, canRecalculate, createScheduleDialog, recalculateWorksheetsNow, worksheetOnDrawingDialog } from "./schedulesDialog.ts";
 import { isTitleBlock } from "./titleBlockData.ts";
 import { titleBlockManager } from "./titleBlockManager.ts";
 import { canCreateRecordFormat, editRecordFormatRows, newRecordFormat } from "./recordFormatEditor.ts";
@@ -1148,8 +1149,11 @@ function menuDefinitions(deps: MenuDeps): MenuDef[] {
           enabled: hasDoc,
           items: [
             { label: "Create Report…", enabled: hasDoc, run: () => void createReportDialog() },
+            { label: "Create Schedule…", enabled: hasDoc, run: () => void createScheduleDialog() },
+            { label: "Worksheet on Drawing…", why: need.worksheet, enabled: canPlaceWorksheet, run: () => void worksheetOnDrawingDialog() },
             { label: "Create Sheet List…", enabled: canCreateSheetList, run: () => void createSheetList() },
             { label: "Edit Worksheet…", why: need.worksheet, enabled: canEditWorksheet, run: () => void editWorksheet() },
+            { label: "Recalculate Worksheets", why: whyIn("Put a formula or a database row in a worksheet first"), enabled: canRecalculate, run: recalculateWorksheetsNow },
           ],
         },
         {

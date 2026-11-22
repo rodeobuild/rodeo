@@ -1,14 +1,12 @@
 // Tools > Reports > Plant Schedule, Existing Tree Schedule and Landscape Quantities: what a drawing's
-// Landmark objects hold (scheduleRows.ts), as a worksheet made from one the drawing has, as Create
-// Report makes one, or in a drawing with none a CSV file.
+// Landmark objects hold (scheduleRows.ts), as a worksheet, as Create Report makes one.
 
 import type { NewSheetCell, VwxDocument } from "../../core/index.ts";
 import { attempt } from "../../app/commands.ts";
-import { downloadBlob } from "../../app/fileio.ts";
 import { store } from "../../app/state.ts";
 import { toast } from "../../app/toast.ts";
 import { editWorksheet } from "../../app/worksheetEditor.ts";
-import { scheduleCsv, type Schedule } from "./scheduleRows.ts";
+import type { Schedule } from "./scheduleRows.ts";
 
 /** The first of the title, "Title 2" and so on that no resource or layer has. */
 function freeName(doc: VwxDocument, title: string): string {
@@ -19,19 +17,13 @@ function freeName(doc: VwxDocument, title: string): string {
   }
 }
 
-/** Makes the schedule a worksheet and opens it, or downloads it as CSV in a drawing without one. */
+/** Makes the schedule a worksheet and opens it. */
 export function makeSchedule(build: (doc: VwxDocument) => Schedule): void {
   const doc = store.session?.doc;
   if (!doc) return;
   const s = build(doc);
   if (!s.rows.length) {
     toast(`This drawing has nothing for a ${s.title.toLowerCase()}.`, "info");
-    return;
-  }
-  if (!doc.resources().some((r) => r.kind === "worksheet")) {
-    const base = (store.fileName || "Drawing").replace(/\.[^.]+$/, "");
-    downloadBlob(`${base} ${s.title}.csv`, new Blob([scheduleCsv(s)], { type: "text/csv" }));
-    toast(`${s.title} saved as a CSV file: this drawing has no worksheet to make one from.`, "info");
     return;
   }
   const head: NewSheetCell[] = s.head.map((value) => ({ value, bold: true, align: "center" }));

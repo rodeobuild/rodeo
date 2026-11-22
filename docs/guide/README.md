@@ -24,7 +24,7 @@ How to use Rodeo, the drawing and 3D modelling app at [rodeo.build](https://rode
 
 ## Documents
 
-- [Sheets, viewports and worksheets](sheets.md): viewports and data visualisation, worksheets and reports, title blocks and section lines.
+- [Sheets, viewports and worksheets](sheets.md): viewports and data visualisation, worksheets, schedules that follow the drawing and reports, title blocks and section lines.
 
 ## Disciplines
 

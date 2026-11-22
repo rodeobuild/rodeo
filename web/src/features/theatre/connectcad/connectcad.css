@@ -114,15 +114,6 @@
   margin: 8px 0 4px;
 }
 
-.ccad-report th,
-.ccad-report td {
-  white-space: nowrap;
-}
-
-.ccad-report .ccad-gap td {
-  height: 12px;
-}
-
 /* a row dragged to reorder (Rack Equipment Columns) */
 .ccad-table tr.ccad-drag {
   cursor: grab;

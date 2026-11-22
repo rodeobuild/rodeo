@@ -3,9 +3,10 @@
 // New… for an entry of one's own, Move Up and Move Dn) and edited there, and Format… choosing a
 // text block or a worksheet. A text block is placed by clicking the top left and bottom right
 // corners of its area, its entries wrapped to that width as the text is drawn, a long title's
-// continued lines indented under it; a worksheet is made from one the drawing has and opened in
-// the worksheet editor. Vectorworks doesn't say what else Format sets, so it takes a heading and
-// the text's size; Rodeo can't place a worksheet on the drawing itself.
+// continued lines indented under it; a worksheet is made (from Rodeo's own template when the drawing
+// has none) and opened in the worksheet editor. Vectorworks doesn't say what else Format sets, so it
+// takes a heading and the text's size; the worksheet isn't placed on the drawing (Worksheet on
+// Drawing… does that).
 
 import type { NewSheetCell, Pt, VwxDocument } from "../core/index.ts";
 import { attempt, setEditGroup } from "./commands.ts";
@@ -117,7 +118,7 @@ export function sheetListRows(entries: readonly SheetEntry[], heading: string): 
 }
 
 /** The Sheet List Index Preferences: Format… in the dialog. */
-async function formatDialog(canSheet: boolean): Promise<void> {
+async function formatDialog(): Promise<void> {
   const v = await toolPrefs(
     "Sheet List Index Preferences",
     [
@@ -125,16 +126,16 @@ async function formatDialog(canSheet: boolean): Promise<void> {
         kind: "choice",
         key: "as",
         label: "Create as",
-        value: canSheet ? format.as : "text",
+        value: format.as,
         options: [
           { value: "text", label: "Text Block" },
-          ...(canSheet ? [{ value: "worksheet", label: "Worksheet" }] : []),
+          { value: "worksheet", label: "Worksheet" },
         ],
       },
       { kind: "text", key: "heading", label: "Heading", value: format.heading },
       { kind: "number", key: "size", label: "Text Size", value: format.size, min: 1, max: 200, unit: "pt" },
     ],
-    canSheet ? "A text block is placed by two clicks; a worksheet opens in the worksheet editor." : "A worksheet is made from one the drawing has, and this drawing has none yet.",
+    "A text block is placed by two clicks; a worksheet opens in the worksheet editor.",
   );
   if (!v) return;
   format.as = v.choice("as") === "worksheet" ? "worksheet" : "text";
@@ -154,7 +155,7 @@ async function newEntry(): Promise<SheetEntry | null> {
 }
 
 /** The Create Sheet List dialog; the proposed entries, or null when cancelled. */
-async function sheetListDialog(doc: VwxDocument, canSheet: boolean): Promise<SheetEntry[] | null> {
+async function sheetListDialog(doc: VwxDocument): Promise<SheetEntry[] | null> {
   const available = titleBlockEntries(doc);
   const proposed: SheetEntry[] = [];
   const label = (e: SheetEntry): string => [e.no, e.title].filter(Boolean).join("  ") || "(blank)";
@@ -240,7 +241,7 @@ async function sheetListDialog(doc: VwxDocument, canSheet: boolean): Promise<She
     }),
     button("Move Up", () => move(-1)),
     button("Move Dn", () => move(1)),
-    button("Format…", () => formatDialog(canSheet)),
+    button("Format…", () => formatDialog()),
   );
   return showDialog<SheetEntry[]>({
     title: "Create Sheet List",
@@ -291,10 +292,9 @@ const box = (a: Pt, b: Pt): Pt[] => [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y 
 export async function createSheetList(): Promise<void> {
   const doc = store.session?.doc;
   if (!doc || !store.activeLayerId) return;
-  const canSheet = doc.resources().some((r) => r.kind === "worksheet");
-  const entries = await sheetListDialog(doc, canSheet);
+  const entries = await sheetListDialog(doc);
   if (!entries) return;
-  if (format.as === "worksheet" && canSheet) {
+  if (format.as === "worksheet") {
     const made = attempt("Create Sheet List", (s) => s.createWorksheet({ name: freeName(s.doc), widths: [72, 288], rowHeight: 14, rows: sheetListRows(entries, format.heading) }));
     if (!made) return;
     toast(`Sheet list: ${entries.length} ${entries.length === 1 ? "sheet" : "sheets"} in a worksheet.`, "info");

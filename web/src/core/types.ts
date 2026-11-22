@@ -262,6 +262,9 @@ export interface WorksheetContents {
   cells: SheetCell[];
 }
 
+export type { DatabaseColumnSpec, DatabaseRowSpec, LiveColumn, LiveDatabaseRow, LiveFormula, WorksheetLive } from "./worksheetLive.ts";
+import type { DatabaseRowSpec, WorksheetLive } from "./worksheetLive.ts";
+
 /** A cell of a worksheet made anew (createWorksheet): its value and how it shows. */
 export interface NewSheetCell {
   /** a number makes a number cell, a string a text cell */
@@ -1363,6 +1366,27 @@ export interface VwxDocument {
    */
   worksheetRows(index: number): string[][] | null;
   /**
+   * A worksheet's formula cells and database rows as text, each with why Rodeo doesn't work it out when it
+   * doesn't; null when there's no such worksheet or it can't be read. `kept` are the formulas Rodeo holds
+   * for it because they can't be saved as Vectorworks formulas ("row,col", 0-based, to "=…").
+   */
+  worksheetLive(index: number, kept?: ReadonlyMap<string, string>): WorksheetLive | null;
+  /**
+   * How a formula typed into plain cell (row, col) would be saved: `error` when it isn't a formula Rodeo can
+   * work out; else `why` is null when it is saved as a Vectorworks formula, or says what stops that (it is
+   * then saved as its value, and Rodeo holds the formula). A formula that comes to text is held so too.
+   */
+  checkWorksheetFormula(text: string, row: number, col: number): { error: string } | { why: string | null };
+  /** Why `spec` can't be made a database row at `row` of worksheet `index`, or null when it can. */
+  databaseRowProblem(index: number, row: number, spec: DatabaseRowSpec): string | null;
+  /**
+   * The records a worksheet formula can name, each with its fields: the data record formats and the
+   * plug-ins' parameter formats (plug-ins marked `plugin`), by name.
+   */
+  formulaRecords(): { name: string; plugin: boolean; fields: string[] }[];
+  /** True when a worksheet holds a database row or a formula cell: something recalculateWorksheets works out. */
+  hasLiveWorksheets(): boolean;
+  /**
    * Plan viewports on a sheet layer, with the design layers they draw, or the design-layer
    * viewports on a design layer, with the layers they show.
    */
@@ -2305,9 +2329,43 @@ export interface EditSession {
   /**
    * Makes a worksheet of plain rows (Tools > Reports > Create Report), copying the settings Rodeo
    * doesn't know (its window, its defaults) and a plain cell's format from worksheet `from`, or
-   * the drawing's first. Throws when the drawing has no worksheet. Returns its name index.
+   * the drawing's first; a drawing with none gets Rodeo's own (worksheetNew.ts). Returns its name index.
    */
   createWorksheet(sheet: NewWorksheet, from?: number): number;
+  /**
+   * Sets a plain row's cell to a formula ("=A1*2", "=COUNT((R IN ['Door']))") and works it out. Where
+   * Vectorworks' tokens for it are known and it comes to a number, the cell becomes a formula cell.
+   * Otherwise the cell is saved as the value it comes to and `kept` is true: the caller holds the
+   * formula's text (and passes it back in `kept` to worksheetLive and recalculateWorksheets), so Rodeo
+   * goes on working it out. Throws a FormulaError for text that isn't a formula.
+   */
+  setWorksheetFormula(index: number, row: number, col: number, text: string, kept?: ReadonlyMap<string, string>): { kept: boolean };
+  /**
+   * Makes worksheet row `row` (0-based; a plain row with no cells, or a database row) a database row: one
+   * line per object that meets `spec`'s criteria, each column showing its formula for that object. Its
+   * lines are worked out at once. Throws a FormulaError naming what Vectorworks' tokens aren't known for.
+   */
+  setDatabaseRow(index: number, row: number, spec: DatabaseRowSpec): void;
+  /** Adds `count` empty rows before worksheet row `at` (0-based; the row count adds them at the end). */
+  insertWorksheetRows(index: number, at: number, count: number): void;
+  /** Deletes `count` rows from worksheet row `at`; a database row goes with its lines. One row always stays. */
+  deleteWorksheetRows(index: number, at: number, count: number): void;
+  /** Adds `count` empty columns before column `at` (0-based). */
+  insertWorksheetColumns(index: number, at: number, count: number): void;
+  /** Deletes `count` columns from column `at`. One column always stays. */
+  deleteWorksheetColumns(index: number, at: number, count: number): void;
+  /**
+   * Works out every worksheet's formulas and database rows again from the drawing (or only those of
+   * `only`), and writes the values that changed into the worksheets, with the worksheets on sheets resized
+   * to their new lines. `kept` holds, by worksheet, the formulas Rodeo keeps the text of. Returns how many
+   * worksheets changed; nothing is recorded when none did.
+   */
+  recalculateWorksheets(kept?: ReadonlyMap<number, ReadonlyMap<string, string>>, only?: readonly number[]): number;
+  /**
+   * Shows worksheet `index` on a layer (a sheet layer, usually): its top left corner at `at` (mm), a
+   * point of the worksheet drawn `scale` / 72 inch. Returns the new object's id.
+   */
+  placeWorksheet(index: number, layerId: string, at: Pt, scale?: number): string;
   /** Copy a symbol definition under a new name, beside it in its folder. Returns the copy's index. */
   duplicateSymbol(index: number, name: string): number;
   /** Delete a symbol definition that is placed nowhere and named by no other record. */

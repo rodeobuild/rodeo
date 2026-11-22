@@ -45,32 +45,42 @@ import type { BBox, NewWorksheet, SheetCell, WorksheetContents } from "./types.t
 export const WORKSHEET = 18;
 export const WORKSHEET_IMAGE = 56;
 export const DATABASE_BLOCK = 60;
-const DATABASE_ORDER = 61;
+export const DATABASE_ORDER = 61;
+/** a database block's child listing the objects of its subrows */
+export const DATABASE_OBJECTS = 124;
 
-const SHEET_COUNTS = 0xc0;
-const SHEET_TABLE = 0x22a;
-const BLOCK_COUNTS = 0x8c;
-const BLOCK_TABLE = 0x98;
+export const SHEET_COUNTS = 0xc0;
+export const SHEET_TABLE = 0x22a;
+export const BLOCK_COUNTS = 0x8c;
+export const BLOCK_TABLE = 0x98;
 
-const ROW_PLAIN = 2;
-const ROW_DATABASE = 4;
+export const ROW_PLAIN = 2;
+export const ROW_DATABASE = 4;
+export const ROW_SUBROW = 3;
 const COLUMN = 1;
 
-const FORMAT_SIZE = 0x6a;
+export const FORMAT_SIZE = 0x6a;
 /** bytes of cached result between a worksheet cell's length and its text or tokens */
-const RESULT_SIZE = 34;
+export const RESULT_SIZE = 34;
 
-const KIND_TEXT = 0;
-const KIND_FORMULA = 1;
-const KIND_NUMBER = 2;
-const RESULT_REAL = 0;
-const RESULT_TEXT = 5;
-const RESULT_INT = 7;
+export const KIND_TEXT = 0;
+export const KIND_FORMULA = 1;
+export const KIND_NUMBER = 2;
+export const RESULT_REAL = 0;
+export const RESULT_TEXT = 5;
+export const RESULT_INT = 7;
 
-const IMAGE_BOUNDS = 0x68;
+export const IMAGE_BOUNDS = 0x68;
 const IMAGE_SHEET = 0x8c;
 export const IMAGE_FRAME = 0x90;
 const IMAGE_SCALE = 0xb0;
+
+/**
+ * Worksheet +0x8c: bit 0x20 is set on every worksheet that a worksheet image shows on a layer (38 of 38
+ * in the public demos) and clear on those none shows (4 of 4).
+ */
+export const SHEET_PLACED = 0x8c;
+export const SHEET_PLACED_BIT = 0x20;
 
 /** Millimetres per point at image scale 1. */
 export const MM_PER_POINT = 25.4 / 72;
@@ -115,14 +125,14 @@ export interface WorksheetImage {
   scale: number;
 }
 
-interface Grid {
+export interface Grid {
   d: Uint8Array;
   cols: number;
   rows: number;
   table: number;
 }
 
-function gridAt(d: Uint8Array, counts: number, table: number): Grid | null {
+export function gridAt(d: Uint8Array, counts: number, table: number): Grid | null {
   if (counts + 4 > d.length) return null;
   const cols = u16(d, counts);
   const rows = u16(d, counts + 2);
@@ -134,16 +144,16 @@ function gridAt(d: Uint8Array, counts: number, table: number): Grid | null {
 }
 
 /** Byte offset of entry i's item, or null when empty. */
-function itemAt(g: Grid, i: number): number | null {
+export function itemAt(g: Grid, i: number): number | null {
   const off = u32(g.d, g.table + 8 * i + 4);
   return off ? g.table - 8 + off : null;
 }
 
-function rowAt(g: Grid, r: number): number | null {
+export function rowAt(g: Grid, r: number): number | null {
   return itemAt(g, g.cols + r * (g.cols + 1));
 }
 
-function cellAt(g: Grid, r: number, c: number): number | null {
+export function cellAt(g: Grid, r: number, c: number): number | null {
   const p = itemAt(g, g.cols + r * (g.cols + 1) + 1 + c);
   return p !== null && p + FORMAT_SIZE + 6 <= g.d.length ? p : null;
 }
@@ -235,7 +245,7 @@ function plain(v: number, places: number): string {
  * A cached number as its cell's number format shows it, in the document's units.
  * `accuracy` is decimal places, or for fractions the power of two of the denominator.
  */
-function formatNumber(v: number, format: number, accuracy: number, units: string): string {
+export function formatNumber(v: number, format: number, accuracy: number, units: string): string {
   const u = units.toLowerCase();
   const feet = u.includes("feet") || u.includes("foot");
   const imperial = feet || u.includes("inch");
@@ -419,7 +429,7 @@ const NUMBER_TOKEN = 0x065a;
 const END_TOKEN = 0x0690;
 
 /** v as an 80-bit x87 extended float: 64-bit mantissa with its integer bit, then sign and exponent. */
-function extended(v: number): Uint8Array {
+export function extended(v: number): Uint8Array {
   const out = new Uint8Array(10);
   if (v === 0) return out;
   const bits = new DataView(new Float64Array([v]).buffer);
@@ -642,4 +652,19 @@ export function readWorksheetImage(d: Uint8Array): WorksheetImage | null {
   const scale = f64(d, IMAGE_SCALE);
   if (!bounds || !box || !(scale > 0 && scale < 1e6)) return null;
   return { box, bounds, worksheet: u32(d, IMAGE_SHEET), scale };
+}
+
+/**
+ * Writes a worksheet image's place into its record: its top left corner (mm), the size of the whole
+ * grid (mm), the worksheet's name index and the scale. Bounds and frame are the same box.
+ */
+export function writeWorksheetImage(d: Uint8Array, worksheet: number, topLeft: { x: number; y: number }, width: number, height: number, scale: number): void {
+  for (const at of [IMAGE_BOUNDS, IMAGE_FRAME]) {
+    setF64(d, at, topLeft.y);
+    setF64(d, at + 8, topLeft.x);
+    setF64(d, at + 16, topLeft.y - height);
+    setF64(d, at + 24, topLeft.x + width);
+  }
+  setU32(d, IMAGE_SHEET, worksheet);
+  setF64(d, IMAGE_SCALE, scale);
 }

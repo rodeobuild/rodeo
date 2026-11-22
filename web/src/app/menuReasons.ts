@@ -27,7 +27,7 @@ export const STEP = {
   designLayer: "Make a design layer active first",
   cloud: "Save to the cloud first: File › Save to Cloud…",
   recordFormat: "Make a record format first: Tools › Records › New Record Format…",
-  worksheet: "Make a worksheet first: Tools › Reports › Create Report…",
+  worksheet: "Make a worksheet first: Tools › Reports › Create Schedule… or Create Report…",
   siteModel: "Make a site model first: AEC › Terrain › Site Model from Source Data…",
 } as const;
 

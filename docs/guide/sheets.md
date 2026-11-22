@@ -1,6 +1,6 @@
 # Sheets, viewports and worksheets
 
-This page covers viewports on sheets and their data visualisations, worksheets and reports, and the title block borders and section lines placed on sheets.
+This page covers viewports on sheets and their data visualisations, worksheets, schedules and reports, and the title block borders and section lines placed on sheets.
 
 ## Viewports
 
@@ -103,24 +103,60 @@ Fills can be none, solid, a pattern or a hatch; pens none, solid or a line type.
 
 ### Worksheets on sheets
 
-Schedules placed on sheets (door, window and steel schedules, drawing lists) are drawn from their cached cell values: database rows expanded and sorted, merged cells, fills, bold headers, and dimensions, areas and counts formatted as the worksheet says. They can be moved.
+Schedules placed on sheets (door, window and steel schedules, drawing lists) are drawn from the values their worksheets hold: database rows expanded and sorted, merged cells, fills, bold headers, and dimensions, areas and counts formatted as the worksheet says. They can be moved. When a worksheet's values change, every place it is shown redraws and resizes to its new lines, its top left corner staying put.
+
+### Schedules that follow the drawing
+
+A worksheet's formulas and database rows are worked out again after each change to the drawing, as part of that change, so one undo takes back both. Widen a door and its line in the door schedule shows the new width; place another door and it gets a line; delete one and its line goes. On a big drawing (some tens of thousands of objects) this waits for a pause in the editing. **Tools › Reports › Recalculate Worksheets** does it at once.
+
+Schedules made in Vectorworks follow the drawing too, where Rodeo can read what they ask for (see the limits under Edit Worksheet…). What it can't work out keeps the values the file holds.
+
+### Create Schedule…
+
+**Tools › Reports › Create Schedule…** makes a door, window, room or room finish schedule in one step: a worksheet with a title, a row of headings and a database row that lists every door or window set to show on schedules, or every room. It works in a drawing that has no worksheet yet.
+
+- A door schedule shows each door's mark, width, height, thickness, type, leaf, material, head, jamb and threshold details, manufacturer, model and notes.
+- A window schedule shows mark, width, height, glazing, head, jamb and sill details, manufacturer, model and description.
+- A room schedule shows each Space's number, name, type, department, area, perimeter and clear height. The name is the one the Space shows.
+- A room finish schedule shows number, name, the floor, base, four wall and ceiling finishes, and remarks.
+
+Columns the drawing's objects don't have are left out, and the message says which. The schedule is sorted by mark or number. Choose **Place on** to put it on a sheet or design layer straight away; it then opens in the worksheet editor, where its columns can be changed.
+
+**Limits:** it reads doors, windows and Spaces as Vectorworks' own Door, Window and Space objects keep them, and a schedule can be made once the drawing has one of them. Rooms kept the older way (groups with a Space Data record) get a room schedule of number, name, department, area and height, and no finish schedule.
+
+### Worksheet on Drawing…
+
+**Tools › Reports › Worksheet on Drawing…** shows a worksheet on a layer and selects it. On a sheet layer it goes at the top left of the page; on a design layer it is drawn at the layer's scale, at the top left of the window.
 
 ### Edit Worksheet…
 
-A worksheet's text and number cells can be edited in a grid. Open it with **Tools › Reports › Edit Worksheet…**, a worksheet's Resources tile, or a double-click on it on a sheet. The changes go in together as one undo step.
+A worksheet is edited in a grid. Open it with **Tools › Reports › Edit Worksheet…**, a worksheet's Resources tile, or a double-click on it on a sheet.
 
-**Limits:** formula cells and database rows show their last results, read-only.
+Pick a cell and type in the bar above the grid: a number, text, or a formula starting with `=`. Cell entries go into the drawing together on **Done**, as one undo step. The buttons above the grid add and delete rows and columns, and change the drawing at once.
 
-### Create Report…
+Formulas are written as in Vectorworks: `=B2*C2`, `=SUM(D2..D9)`, `=IF((C7<100), 100, C7)`, `='Door Schedule':B4` for another worksheet's cell, `=COUNT((R IN ['Door']))` for how many objects meet criteria. Rodeo works out `+ − × ÷ ^`, comparisons, cell references and ranges, and SUM, AVERAGE, MIN, MAX, ROUND, INT, ABS, SQRT, the trigonometry functions, IF, CONCAT and VALUE.
 
-**Tools › Reports › Create Report…** makes a new worksheet listing objects from the selection, the active layer, or the visible or all design layers, optionally only those meeting Custom Selection's criteria.
+A **database row** shows one line for each object that meets its criteria. Its own line in the grid shows each column's formula, with its lines under it. Double-click it, or pick an empty row and press **Database Row…**, to set what it lists and its columns:
 
-It has the columns chosen: type, name, class, layer, area, perimeter, length and their record and plug-in fields. It is sorted and optionally summarized with counts and sums.
+- **Objects** picks the objects with a record, or type the criteria as Vectorworks writes them: `=DATABASE(((R IN ['Door']) & ('Door'.'OnSched'=TRUE)))`. Rodeo follows `R IN ['Record']`, `PON='Plug-in name'`, `L='Layer'` and `'Record'.'Field'=value` or `<>value`, joined with `&` (and) and `|` (or).
+- Each column has a formula, most often a field (`='Door'.'Width'`, from **Add field…**), or `=COUNT`, `=IF(…)`, `=CONCAT(…)` or one field times another.
+- **Sort** orders the lines by a column. **Summarize** gives one line to the objects that agree in a column (with `=COUNT` beside it, a count of each kind). **Sum** adds a column's numbers up on summarized lines.
 
 **Limits:**
 
-- It holds the values as they are now (formulas can't be written yet).
-- It is made from a worksheet the drawing has, so a drawing with none can't have one yet.
+- Some formulas can't be saved as Vectorworks formulas, because the file's codes for them aren't known: `+ − ÷ ^ < >`, FALSE, a cell reference, a range, SUM and the other maths functions. Rodeo still works such a formula out and keeps it with the drawing, but saves the cell as the value it comes to, so Vectorworks shows the value and not the formula. The same goes for a formula in a plain cell that comes to text. The editor says so when you pick the cell.
+- A database row is saved as Vectorworks keeps one, so its criteria and columns can only use what can be saved: no `+`, no criteria by type, class, symbol or name, no column sorted descending.
+- Not worked out, and shown as the file holds them: OBJECTDATA and the other functions that measure an object (AREA, LENGTH and VOLUME in a column among them), popup fields whose choices are numbered, the criteria switches of 2025 and 2026 files, and room areas given as whole numbers in some Vectorworks schedules.
+- Cell formats, borders, fills and merged cells can't be set here; a new database column shows numbers plainly unless a schedule set its format.
+- Nothing Rodeo writes here has been opened in Vectorworks yet.
+
+### Create Report…
+
+**Tools › Reports › Create Report…** makes a new worksheet listing objects from the selection, the active layer, or the visible or all design layers, optionally only those meeting Custom Selection's criteria. It works in a new drawing too.
+
+It has the columns chosen: type, name, class, layer, area, perimeter, length and their record and plug-in fields. It is sorted and optionally summarized with counts and sums.
+
+**Limits:** it holds the values as they are now. For a list that follows the drawing, use Create Schedule…, or a database row in the worksheet editor.
 
 ### Create Sheet List…
 

@@ -150,14 +150,12 @@ export async function stationOnPolylineDialog(): Promise<void> {
   const stations = stationsAlong(path, shape.closed, partial);
   const pieces: Part[][] = stations.map((st) => markerParts(stake(st.at, null, [stationName(st.along, metric)], look)));
   const found = curves === "none" ? [] : curvesOf(shape, path);
-  // a worksheet is made from one the drawing has; without one the data is drawn instead
-  const noSheet = curves === "table" && found.length > 0 && !s.doc.resources().some((r) => r.kind === "worksheet");
-  if (curves === "labels" || noSheet) found.forEach((c, i) => pieces.push(curveParts(c, i + 1, scale, metric)));
+  if (curves === "labels") found.forEach((c, i) => pieces.push(curveParts(c, i + 1, scale, metric)));
   addPieces("Station on Polyline", pieces);
-  const sheet = curves === "table" && found.length > 0 && !noSheet ? curveSheet(found, metric) : null;
+  const sheet = curves === "table" && found.length > 0 ? curveSheet(found, metric) : null;
   const of = found.length ? `, ${found.length} ${found.length === 1 ? "curve" : "curves"}` : curves === "none" ? "" : ", no circular curves";
   toast(
-    `${stations.length} ${stations.length === 1 ? "station" : "stations"} over ${formatLength(total, units)}${of}${sheet !== null ? ", listed in a worksheet" : ""}.${noSheet ? " This drawing has no worksheet to make one from, so the curve data is drawn at the curves." : ""}`,
+    `${stations.length} ${stations.length === 1 ? "station" : "stations"} over ${formatLength(total, units)}${of}${sheet !== null ? ", listed in a worksheet" : ""}.`,
     "info",
   );
 }

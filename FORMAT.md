@@ -502,7 +502,7 @@ and drops an entry nothing else uses. Names are unique across the table.
 | 47 | record format (data record definition) | §7.3 | confirmed |
 | 48 | record (data attached to an object; a plug-in's parameters) | §7.3 | confirmed (every record in the four demo years reads) |
 | 56 | worksheet image (a worksheet placed on a sheet) | §7.2 | confirmed |
-| 60 / 61 | worksheet database block / its sort order | §7.2 | confirmed |
+| 60 / 61 | worksheet database block / its sort order (under a block, a type-124 record lists its objects) | §7.2 | confirmed |
 | 63 | dimension | always 848 bytes. +0x68 bbox: its drawing and its two measured points; the points stored `(y, x)` at +0x9e / +0xa6 and +0xae / +0xb6, the second further along the line than the first; +0xbe f64 how far the dimension line lies from the first point along the left-hand normal (-u.y, u.x) of +0xc6 / +0xce, the unit direction `u` it runs in, `(y, x)` (a horizontal or vertical one keeps x or y there whatever way its points lie; an aligned one, theirs); +0xe6 f64 and +0x10e f64 sizes that follow the dimension standard (76.2 and 135.47 in most demo dimensions), +0xee to +0x10d an empty box (±DBL_MAX). No flag for constrained against aligned was found in the record or its aux. Aux: 76 (a 121-byte one holding an id in every dimension; in 2024 and later often a nested 63 too; 110 record data). A plain linear one's children: an extension line from each point (starting a gap off it, on the side the dimension line is, a point on the line counting as the negative side, and running past the line), the dimension line's run past each extension line (before the first along `u`, after the second), the dimension line itself foot to foot (the only one with markers, 125), then a group holding its value text. See **Linear dimensions** below | confirmed (the Dover Dam demos 2023, 2024 and 2026: the dimension line lies where the points, offset and direction put it in 742 of 746, 3,312 of 3,316 and 7,617 of 7,631 dimensions; the text reads along `u` in 99 %, and is the length in the document's units in 94 %; the box is the drawing's and the points' in all but 1 % (those, the drawing's alone); the whole drawing matches that layout in 470 of 492 and 3,902 of 3,944 plain linear dimensions in 2023 and 2026, the rest having extension lines dragged off their points) |
 | 54 / 92 | symbol library / folder | | likely |
 | 55 | name table | §3 | confirmed |
@@ -1685,39 +1685,134 @@ laid out the same way:
 | Part | Layout |
 |---|---|
 | counts | u16 columns, u16 rows (worksheet +0xc0, block +0x8c) |
-| table | from worksheet +0x22a or block +0x98: 8-byte entries `u32 flags, u32 offset` (from the table start − 8): one per column, then per row its header and one per cell (offset 0 = empty), then one whose offset is the record's end |
-| column | u16 1, u16 width (points), u16 left |
-| row | u16 kind (2 plain, 4 database, 3 database subrow), u16 height (points), u16 top, u16; a database row goes on with u32 the name index of its block, u16 subrow count, u32 criteria length, the criteria |
+| table | from worksheet +0x22a or block +0x98: 8-byte entries `u32 flags, u32 offset` (from the table start − 8): one per column, then per row its header and one per cell (offset 0 = empty), then one whose offset is the record's end. The items follow the table in the entries' order with nothing between them (all 48 sample worksheets: laid out again from their items they are the same bytes) |
+| column | u16 1, u16 width (points), u16 left (the widths before it added up) |
+| row | u16 kind (2 plain, 4 database, 3 database subrow), u16 height (points), u16 top, u16; a row's top is the top of the row before plus its height plus the heights of its subrows when it is a database row (all 48). A database row goes on with u32 the name index of its block, u16 subrow count, u32 criteria length in bytes, the criteria (a formula, below) |
 | cell format | +0x02 u8 alignment (0 general, 1 left, 2 right, 3 centre); +0x06 u16 font size; +0x08 u16 style (1 bold, 2 italic); +0x0a u8 number format (0 general, 5 dimension, 11 area, …); +0x0b u8 accuracy (decimal places, or fractions of 1/2ⁿ inch); +0x0d u8 wrap; +0x11 u8 merged, then u16 top, bottom, left, right (1-based); +0x1b u8 filled, +0x1c u16 fill colour |
-| worksheet cell value | at +0x6a: u8 kind (0 text, 1 formula, 2 number), u8, u32 length, 34 bytes of cached result (u8 0 = f64, 7 = i32, value at +2), then the text (UTF-16; an empty cell keeps 2 zero bytes), the number or the formula tokens |
-| number cell | its tail is 14 bytes: u16 0x065a, the value as an 80-bit x87 extended float, u16 0x0690 (all 33 in the sample rebuild byte for byte) |
-| block cell value | at +0x6a: u8 kind (5 text: u32 characters then UTF-16; 0 f64; 7 i32) |
+| worksheet cell value | at +0x6a: u8 kind (0 text, 1 formula, 2 number), u8 (uninitialised: it differs between copies of one worksheet), u32 length, 34 bytes of cached result, then the text (UTF-16; an empty cell keeps 2 zero bytes), the number or the formula's tokens |
+| cached result | u8 kind: 0 = f64 at +2, 7 = i32 at +2, 5 = text. A formula cell holds no text: for kind 5 the f64 at +2 is a number (below) and the text is nowhere in the cell. The bytes after the first 10 are uninitialised |
+| number cell | its tail is 14 bytes: u16 0x065a, the value as an 80-bit x87 extended float, u16 0x0690 (all 33 in the sample rebuild byte for byte): a formula of one number |
+| block cell value | at +0x6a: u8 kind (5 text: u32 characters, UTF-16, then 2 uninitialised bytes; 0 f64; 7 i32), u8 uninitialised. Six cells of kind 4 in the 2026 demo are not decoded |
 
-A block's type-61 child lists its subrows in display order: u32 count + 1,
-then u16 1-based subrow numbers. Cached numbers are in document units.
+**Formulas.** A formula cell and a database row's criteria hold the same
+thing: u16 tokens, ending 0x0690, in postfix order (operands, then the
+operator) except that a function's token comes before its arguments. Read from
+the 384 formulas and criteria of the public demo files (2023 to 2026), which
+decode and encode back to their own bytes (`formula/corpus.check.ts`):
 
-A worksheet image (56) on a sheet shows the grid with database header rows
+| Token | Payload | Meaning |
+|---|---|---|
+| 0x065a | 10 bytes, 80-bit float | a number |
+| 0x0295 | i32 | a whole number |
+| 0x065b | u32 name index, UTF-16 zero-ended | 'text'. The index is the name table's for that text (a layer's own for a layer name) in 110 of 137 with a name there; 27 hold 0 though the text is a name |
+| 0x0695 | u32 0, UTF-16z | 'text' naming an option, first in a function's arguments ('gross', 'finish') |
+| 0x0696 | u32 0, UTF-16z | 'text' after the 2026 keyword 0x0348 |
+| 0x029b | UTF-16z | a bare word with wildcards in criteria (EF_*) |
+| 0x0291 | | TRUE |
+| 0x029c / 0x029d | u32 name index of the record format, UTF-16z | a record's name, bare / in quotes |
+| 0x029e / 0x029f | u16 field type, u16 value offset, UTF-16z | a field's name, bare / in quotes, straight after a record's. Type and offset are the record format's own (§7.3) in 202 of 255; the rest hold 0 or another value, so they are a hint |
+| 0x0299 | u32 name index of the worksheet, UTF-16z, i16 rows, i16 columns | another worksheet's cell, as rows and columns away from the cell holding the formula |
+| 0x0665 | | brackets, after what they hold |
+| 0x02a5 | | closes a function's arguments |
+| 0x02a6 | | straight after a function's token: no arguments (`=COUNT`); two cells close an empty call with 0x02a5 instead |
+| 0x0661 | | opens a set `[…]`, which `0x0308 0x0641` (R, IN) closes |
+| 0x0296 | | before a bare criteria keyword, always; before some bracketed terms. What it says isn't known: kept as read, written before bare keywords |
+| 0x0647, 0x0646 | | = and <>, after their two operands |
+| 0x064f, 0x0648 | | & (and) and \| (or) |
+| 0x0654 | | × |
+| 0x0641 | | IN: the set, the keyword R, then this |
+| 0x0682 | | IF, after its three operands |
+| 0x00e4 | | after an area field: its cells are whole numbers near the field (rounding fits 25 of 28 in the 2023 demo), not settled |
+
+Functions: 0x029a DATABASE, 0x02c7 COUNT, 0x02e8 AREA, 0x02f3 VOLUME, 0x02ee
+LENGTH, 0x00f3 CONCAT (named from Vectorworks' scripting documentation and
+their use); 0x01e8 (called with 'finish', 'classification', 'MEMBER PHYSICAL
+LENGTH': taken to be OBJECTDATA), 0x039b (compared with 'Polyline',
+'Countertop': an object's type name), 0x02c2, 0x01ef, 0x01e0 and 0x01af are
+not named. Criteria keywords: 0x0308 R, 0x0305 L, 0x0328 PON, 0x031e
+NOTINDLVP, 0x0319 NOTINREFDLVP; 0x031d, 0x0345, 0x0346, 0x0348, 0x034d and
+0x0350 (2025 and 2026 files) are not named. The door schedule of every demo:
+
+```
+=DATABASE(((R IN ['Door']) & ('Door'.'OnSched'=TRUE)))
+029a | 0661 065b 'Door' 0308 0641 0665 | 029d 'Door' 029f 'OnSched' 0291 0647 0665 | 064f 0665 | 02a5 0690
+```
+
+No file seen holds + − ÷ ^ < > ≤ ≥, FALSE, a cell of the same worksheet (A1),
+a range, SUM or the maths functions, or the criteria keywords for type, class,
+symbol and name, so their tokens are unknown and openvwx can't write them.
+
+**Database rows.** The cells of a database row (its header row) are its
+columns' formulas. A cell's table-entry flags say how its column behaves: 0x8
+Summarize (one subrow for the objects that agree in it), 0x10 sorted
+ascending with the sort's precedence in the high word (1 in all 36 sorted
+rows), 0x40 Sum; 0x4 is on nearly every header cell (meaning unknown), and no
+descending bit occurs. The row's own entry has flags 6 (37 rows) or 0 (16);
+what that says isn't known. A header cell caches its column's total for a
+number column (every case: fields, COUNT, AREA, VOLUME); for a text column it
+caches a number the files don't agree on a rule for (the count of non-empty
+subrows fits 18 of 22).
+
+The block (60) holds the subrows: +0x50…+0x97 its header (the same in every
+block but its counts and three bytes that take two values), then the table.
+A subrow is a 12-byte header (u16 3, u16 height, u16 top, u16, u32
+0xffffffff when it stands for several objects, else 0) and a cell per column.
+Every subrow cell of the four demos (13,837) has one and the same format, not
+its header cell's: a worksheet image draws it in the header cell's. The
+block's children: type 61, the display order (u32 count + 1, then u16 1-based
+subrow numbers: ascending by the sort column under a natural,
+case-insensitive comparison in all 36 sorted rows, ties in the order they had);
+type 124, the objects (u16 n, then n × `u16 7, u16 subrow, u32 name index`),
+grouped by subrow. An object a block lists has a name index at +0x1a (§3),
+with no entry in the name table unless it is named (18,938 of 18,944 entries;
+6 are 0). All 53 database rows and their blocks rebuild byte for byte from
+this (`worksheetDb.check.ts`, `worksheetItems.check.ts`). 30 of the 83 blocks
+belong to no row (left behind by edited rows, it seems); nothing draws them.
+
+Cached numbers are in document units (lengths in feet in an imperial file;
+areas and volumes in its square and cubic units). Worked out from the
+drawing's records, 4,098 of 4,112 subrow cells openvwx claims equal the
+files'; the other 14 are in the 2024 demo, whose worksheets were saved stale
+(the same columns match in the other three years).
+
+**What openvwx writes.** A formula made of the tokens above, with its cached
+number. A database row: its header, its header cells (flags 0x4 and the
+column's), its block with the files' block header and subrow format, its
+order and objects lists; an object with no name index is given one with no
+name. A formula it can work out but can't write (+, A1, SUM…), or that comes
+to text, is saved as a plain cell holding its value, and its text is kept in
+a "Rodeo Show Data" object so that openvwx goes on working it out; Vectorworks
+reads the value. None of this has been opened in Vectorworks yet.
+
+A worksheet's other children: a type-62 record (82 bytes in most: 2 zero
+bytes after its header; longer ones not decoded), a type-112 print-setup
+record (166 bytes in the 2024 to 2026 files; longer ones hold a printer's
+name and driver data) and, in two, a type-76. Worksheet +0x8c has bit 0x20
+set when a worksheet image shows it (38 of 38) and clear when none does;
++0xa8…+0xb8 are three (row, column, offset) triples, the active cell and
+selection; +0xba the zoom (100). A worksheet lives in the class list (57),
+directly (the sample) or in a folder (92) named "Worksheets" (the demos).
+
+A worksheet image (56) on a layer shows the grid with database header rows
 left out and their subrows in their place, each subrow cell in its header
-cell's format: +0x68 its bounds (top, left, bottom, right, mm), +0x8c u32 the
-worksheet's name index, +0x90 the whole grid's frame, +0xb0 f64 scale (a point
-is 25.4 / 72 mm × scale). The frame equals the bounds up to 2025; in 2026 it
-can be taller, the bounds showing the first rows only. Not decoded: cell
-borders (four 10-byte entries at +0x24…+0x42), text colour, font, vertical
-alignment, formula tokens (the cached results serve). openvwx draws each image
-as its cells' fills and texts (no borders: the published sheets show none).
+cell's format: 192 bytes; +0x50 the object's attributes; +0x68 its bounds
+(top, left, bottom, right, mm); +0x8c u32 the worksheet's name index; +0x90
+the whole grid's frame; +0xb0 f64 scale (a point is 25.4 / 72 mm × scale).
+The frame equals the bounds up to 2025; in 2026 it can be taller, the bounds
+showing the first rows only. Not decoded: cell borders (four 10-byte entries
+at +0x24…+0x42), text colour, font, vertical alignment. openvwx draws each
+image as its cells' fills and texts (no borders: the published sheets show
+none).
 
-openvwx makes a worksheet (Tools > Reports > Create Report) by copying one of
-the file's with its children (the type-62 and type-112 records every sample
-worksheet has, not decoded) but its database blocks, and laying a new grid:
-the header kept but the counts and the u16s at +0xa8…+0xb8, set to 1, 1, 0
-three times (taken to be the active cell and selection, at A1: 4 of the 50
-sample worksheets have exactly these, the rest name other cells); the items
-straight after the table in its order (as in all 50); 6-byte columns; 8-byte
-plain rows, their last u16 the source's first plain row's; every entry's flags
-0 (as all 364 columns, 50 end entries, 282 of 284 plain rows and all 2,169
-text and number cells of plain rows have them); each cell in a plain text
-cell's format, unmerged and unfilled.
-It reads back, and survives a save, in openvwx; not yet checked in Vectorworks.
+openvwx makes a worksheet (Tools > Reports) by copying one of the file's with
+its children but its database blocks, or, in a drawing with none, from its
+own (`worksheetNew.ts`: the header bytes every sample worksheet shares, the
+commonest public values where they differ, the shortest type-62 and type-112
+children, and the public files' commonest plain cell format), and laying a
+new grid: the selection at A1; the items straight after the table in its
+order; 6-byte columns; 8-byte plain rows; every plain entry's flags 0; each
+cell in a plain text cell's format, unmerged and unfilled. It reads back, and
+survives a save, in openvwx; not yet checked in Vectorworks.
 
 ### 7.3 Record formats (47) and records (48)
 

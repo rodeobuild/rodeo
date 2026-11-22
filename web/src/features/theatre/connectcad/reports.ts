@@ -1,43 +1,21 @@
 // ConnectCAD's report commands: Current Layer and All Layers Circuit Report, Current Layer Device
 // Report, Device Connections Report and ConnectCAD Parts Report, each a new worksheet listing the
 // schematic as it is now (ccadReports.ts has the rows); externals are only in the connections
-// report. A worksheet is made from one the drawing has, so in a drawing with none the report shows
-// in a dialog instead.
+// report.
 
 import "./connectcad.css";
 import { attempt } from "../../../app/commands.ts";
-import { h } from "../../../app/dom.ts";
-import { showDialog } from "../../../app/menubar.ts";
 import { store } from "../../../app/state.ts";
 import { toast } from "../../../app/toast.ts";
 import { editWorksheet } from "../../../app/worksheetEditor.ts";
 import { circuitRows, connectionRows, deviceRows, freeName, partRows, reportSheet, type ReportRow } from "./ccadReports.ts";
 import { reportFacts } from "./schematic.ts";
 
-/** Without a worksheet to make one from, the report in a dialog. */
-async function showReport(name: string, rows: readonly ReportRow[]): Promise<void> {
-  const cell = (tag: "th" | "td", c: ReportRow[number]): HTMLElement => h(tag, { text: c === null ? "" : String(c.value) });
-  const cols = String(Math.max(1, ...rows.map((r) => r.length)));
-  // an empty row parts one section from the next
-  const row = (r: ReportRow): HTMLElement => (r.length ? h("tr", {}, ...r.map((c) => cell(c?.bold ? "th" : "td", c))) : h("tr", { cls: "ccad-gap" }, h("td", { attrs: { colspan: cols } })));
-  await showDialog<boolean>({
-    title: name,
-    okLabel: "Close",
-    cls: "ccad-dialog",
-    body: [
-      h("div", { cls: "ccad-scroll" }, h("table", { cls: "ccad-table ccad-report" }, ...rows.map(row))),
-      h("p", { cls: "muted", text: "This drawing has no worksheet to make the report from, so it shows here." }),
-    ],
-    check: () => ({ value: true }),
-  });
-}
-
-/** Makes worksheet `name` of `rows` and opens it, or shows them when the drawing can't hold one. */
+/** Makes worksheet `name` of `rows` and opens it. */
 export async function report(name: string, rows: readonly ReportRow[]): Promise<void> {
   const doc = store.session?.doc;
   if (!doc) return;
   const resources = doc.resources();
-  if (!resources.some((r) => r.kind === "worksheet")) return showReport(name, rows);
   const sheet = reportSheet(freeName(name, new Set(resources.map((r) => r.name))), rows);
   const made = attempt(name, (s) => s.createWorksheet(sheet));
   if (made) await editWorksheet(made.value);

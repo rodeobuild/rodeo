@@ -1,9 +1,10 @@
 // File > Export > Export Worksheet…, as Vectorworks' command does: one of the drawing's worksheets
 // saved where the browser saves downloads, in the format chosen: tab-delimited text (.txt), CSV
 // with commas or with semicolons between the values, DIF, SYLK, or an Excel workbook (.xlsx, plain
-// numbers as numbers; export/xlsx.ts). The cells hold what they
-// show, as last calculated (Rodeo doesn't recalculate worksheets yet), with database rows given as
-// their rows on a sheet show them: the objects' rows in place of the header row. A merged cell's
+// numbers as numbers; export/xlsx.ts). The worksheet is worked out again first (formulas and
+// database rows, as recalculateNow does), so the cells hold what they show for the drawing as it
+// is, with database rows given as their rows on a sheet show them: the objects' rows in place of
+// the header row. A merged cell's
 // text is in its first cell. Delimited text is UTF-8, marked so spreadsheets read it as such; DIF
 // and SYLK are Windows-1252, as Excel reads them.
 
@@ -14,6 +15,7 @@ import { h } from "./dom.ts";
 import { showDialog } from "./menubar.ts";
 import { store } from "./state.ts";
 import { toast } from "./toast.ts";
+import { recalculateNow } from "./worksheetFormulas.ts";
 
 type Format = DelimitedFormat | "dif" | "sylk" | "xlsx";
 
@@ -80,12 +82,21 @@ export async function exportWorksheetDialog(): Promise<void> {
       field("Format", format),
       h("p", {
         cls: "muted",
-        text: "The values are the ones last calculated; database rows give the objects' rows, as on a sheet.",
+        text: "The values are worked out again from the drawing first; database rows give the objects' rows, as on a sheet.",
       }),
     ],
     check: () => {
       const index = Number(sheet.value);
-      const rows = doc.worksheetRows(index);
+      // worked out again first; a failure leaves the values they had
+      const s = store.session;
+      if (s) {
+        try {
+          recalculateNow(s);
+        } catch (err) {
+          console.warn("worksheets not recalculated for export:", err);
+        }
+      }
+      const rows = (store.session?.doc ?? doc).worksheetRows(index);
       if (!rows) return { error: "This worksheet can't be read.", focus: sheet };
       return { value: { index, format: format.value as Format, rows } };
     },

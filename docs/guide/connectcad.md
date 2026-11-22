@@ -83,7 +83,7 @@ The ConnectCAD Status palette lists the same issues as you work, with buttons to
 
 ### Reports
 
-The ConnectCAD reports (**Stage › ConnectCAD**) each come as a new worksheet (shown in a dialog in a drawing that has no worksheet yet):
+The ConnectCAD reports (**Stage › ConnectCAD**) each come as a new worksheet:
 
 - circuit reports for the active layer or every layer
 - a device report with totals

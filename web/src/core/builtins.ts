@@ -111,6 +111,19 @@ function symbolInstance(): Template {
   return { recs: [plainAttributes(record(SYMBOL_INSTANCE, 280))], parent: [-1] };
 }
 
+/**
+ * A worksheet placed on a layer (type 56): 192 bytes, as all 20 in the public demos are. placeWorksheet
+ * writes its bounds, the worksheet's name index, its frame and its scale; the rest is what those 20
+ * share: the attribute bytes below at +0x50 (no fill mapping, both opacities 100) and 0x11 at +0x2f.
+ * Whether Vectorworks opens one made here is not confirmed.
+ */
+export function worksheetImageTemplate(): Template {
+  const d = record(WORKSHEET_IMAGE, 192);
+  d[0x2f] = 0x11;
+  d.set([0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 100, 100], 0x50);
+  return { recs: [d], parent: [-1] };
+}
+
 /** Where a picture's stream starts: its header and QuickTime description come before it (FORMAT.md §4, 14). */
 const PICTURE_HEAD = 0x190;
 
@@ -149,6 +162,7 @@ function picture(): Template {
   return { recs: [d], parent: [-1] };
 }
 
+const WORKSHEET_IMAGE = 56;
 const RECORD_FORMAT = 47;
 const RECORD = 48;
 const PLUGIN = 86;

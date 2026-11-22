@@ -323,7 +323,7 @@ The chains go to the outer faces or the centrelines, with small spans drawn in r
 
 - joists the spacing apart along two clicks, cut to the perimeter members round its edge (lapped or mitred)
 - headers round openings selected inside it
-- a Joist Take-Off worksheet when the drawing has a worksheet to copy one from
+- a Joist Take-Off worksheet
 
 Each member is a group of its plan and a solid.
 
@@ -331,7 +331,7 @@ Each member is a group of its plan and a solid.
 
 **AEC › Framing › Wall Framer…** frames the walls on the layers ticked: studs the spacing apart, plates, and king and jack studs, headers, cripples and sills round each door and window, with each wall class's own spacing and lumber.
 
-They're drawn on the framing model's own layers in 3D, in plan and as a diagram of each wall, with take-off and wall info worksheets when the drawing has a worksheet to copy one from.
+They're drawn on the framing model's own layers in 3D, in plan and as a diagram of each wall, with take-off and wall info worksheets.
 
 ### Roof Framer…
 

@@ -411,7 +411,7 @@ Units come from the `.prj`, or are asked for without one. Data more than 10 km f
 - DIF or SYLK (in Windows-1252, as Excel reads them)
 - an Excel workbook (.xlsx, plain numbers as numbers).
 
-It writes the values as last calculated, database rows as their objects' rows (as on a sheet), and a merged cell's text in its first cell.
+The worksheet is worked out again from the drawing first. It writes database rows as their objects' rows (as on a sheet), and a merged cell's text in its first cell.
 
 ### Export Database…
 
@@ -426,12 +426,11 @@ It writes the values as last calculated, database rows as their objects' rows (a
 - A workbook keeps its bold, alignment and column widths, its dates as text and its formulas' last calculated values (a formula saved without one is left empty, and said so).
 - Text files are read as UTF-8, or Windows-1252 when they aren't.
 
-Like Create Report, the worksheet copies its settings and font from one the drawing has.
+Like Create Report, the worksheet copies its settings and font from one the drawing has, or Rodeo's own when it has none.
 
 **Limits:**
 
 - Excel 97–2004 (.xls) workbooks aren't read yet, nor is a reference to the file kept.
-- A drawing with no worksheet can't import one yet.
 
 ## Converting files
 

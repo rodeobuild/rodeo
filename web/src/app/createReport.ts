@@ -5,10 +5,10 @@
 // Class, Layer, Area, Perimeter and Length, and the fields of the records and plug-in parameters
 // those objects hold. Rows can be sorted by the columns in order and summarized (reportRows.ts).
 //
-// Vectorworks writes a database row whose formulas recalculate; Rodeo can't write formulas yet,
-// so the report holds the values as they are now. The worksheet is made from one the drawing
-// has (its settings and a plain cell's font: core createWorksheet), so a drawing with no
-// worksheet can't have a report yet. The report opens in the worksheet editor once made.
+// The report holds the values as they are now, as a plain worksheet: for one that follows the
+// drawing, Create Schedule (schedules.ts) or a database row in the worksheet editor. Its settings
+// come from a worksheet the drawing has, else Rodeo's own (core createWorksheet). The report
+// opens in the worksheet editor once made.
 
 import type { ObjectInfo, RecordValue, VwxDocument } from "../core/index.ts";
 import { attempt } from "./commands.ts";
@@ -71,10 +71,6 @@ export async function createReportDialog(): Promise<void> {
     .resources()
     .filter((r) => r.kind === "worksheet")
     .sort((a, b) => a.index - b.index);
-  if (sheets.length === 0) {
-    toast("Create Report makes its worksheet from one the drawing has, and this drawing has none yet.", "info");
-    return;
-  }
   const taken = new Set([...doc.resources().map((r) => r.name), ...doc.layers().map((l) => l.name)]);
   const layerNames = new Map(doc.layers().map((l) => [l.id, l.name]));
 
@@ -121,7 +117,7 @@ export async function createReportDialog(): Promise<void> {
 
   const field = (label: string, input: HTMLElement): HTMLElement =>
     h("label", { cls: "menu-dialog-field" }, h("span", { cls: "menu-dialog-label", text: label }), input);
-  const result = await showDialog<{ sheet: NonNullable<ReturnType<typeof reportSheet>>; from: number; count: number }>({
+  const result = await showDialog<{ sheet: NonNullable<ReturnType<typeof reportSheet>>; from: number | undefined; count: number }>({
     title: "Create Report",
     okLabel: "Create",
     cls: "cs-dialog cr-dialog",
@@ -139,7 +135,7 @@ export async function createReportDialog(): Promise<void> {
       ...(sheets.length > 1 ? [field("Format from", from)] : []),
       h("p", {
         cls: "muted",
-        text: "The report holds the values as they are now: it doesn't recalculate as the drawing changes, since Rodeo can't write worksheet formulas yet. Its font and settings come from a worksheet the drawing has.",
+        text: "The report holds the values as they are now. For one that follows the drawing, use Create Schedule or a database row in the worksheet editor.",
       }),
     ],
     check: () => {
@@ -169,7 +165,7 @@ export async function createReportDialog(): Promise<void> {
       if (columns.length === 0) return { error: "Choose a column to report.", focus: builtInChecks[0].box };
       const sheet = reportSheet(title, chosen, columns, { sort: sort.box.checked, summarize: summarize.box.checked });
       if (!sheet) return { error: `A report holds at most ${MAX_REPORT_ROWS.toLocaleString()} rows: narrow the objects, or summarize them.`, focus: scope };
-      return { value: { sheet, from: Number(from.value), count: chosen.length } };
+      return { value: { sheet, from: sheets.length ? Number(from.value) : undefined, count: chosen.length } };
     },
   });
   if (!result) return;

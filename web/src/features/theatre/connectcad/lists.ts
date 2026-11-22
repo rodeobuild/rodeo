@@ -3,8 +3,7 @@
 // list and the active layer's circuits differ; Make Connections from List draws the list's circuits
 // the layer hasn't; Create Devices from Worksheet makes the devices a device list asks for that the
 // drawing hasn't. A list is one of the drawing's worksheets or, in Rodeo, a spreadsheet file (CSV,
-// tab-delimited or Excel), so that a drawing with no worksheet can take one. listShapes.ts and
-// deviceListShapes.ts have the sums.
+// tab-delimited or Excel). listShapes.ts and deviceListShapes.ts have the sums.
 
 import type { NewSheetCell, VwxDocument } from "../../../core/index.ts";
 import { attempt, setEditGroup } from "../../../app/commands.ts";

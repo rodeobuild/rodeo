@@ -10,8 +10,8 @@
 // drawing's choices in the drawing, in one undo step; Cancel drops both.
 
 import { attempt } from "../../../app/commands.ts";
-import { h } from "../../../app/dom.ts";
 import { downloadBlob } from "../../../app/fileio.ts";
+import { h } from "../../../app/dom.ts";
 import { confirmDialog, showDialog } from "../../../app/menubar.ts";
 import { store } from "../../../app/state.ts";
 import { toast } from "../../../app/toast.ts";
@@ -124,18 +124,12 @@ async function inventoryInfo(title: string, start: Pick<Inventory, "name" | "ven
   });
 }
 
-/** Puts `rows` in a new worksheet named `name`, or, in a drawing with no worksheet to copy one from, a .csv file. */
+/** Puts `rows` in a new worksheet named `name`. */
 function toWorksheet(name: string, widths: number[], rows: NewSheetCell[][]): void {
   const s = store.session;
   if (!s) return;
-  if (s.doc.resources().some((r) => r.kind === "worksheet")) {
-    const made = attempt(`Create ${name}`, (session) => session.createWorksheet({ name: freeName(name, s.doc.resources().map((r) => r.name)), widths, rowHeight: 14, rows }));
-    if (made) toast(`${name}: a worksheet of ${rows.length - 1} rows, in the Resource Manager.`, "info");
-    return;
-  }
-  const csv = rows.map((r) => r.map((c) => `"${String(c.value).replace(/"/g, '""')}"`).join(",")).join("\n");
-  downloadBlob(`${name}.csv`, new Blob([csv + "\n"], { type: "text/csv" }));
-  toast(`${name}: this drawing has no worksheet to copy one from, so it's saved as a .csv file.`, "info");
+  const made = attempt(`Create ${name}`, (session) => session.createWorksheet({ name: freeName(name, s.doc.resources().map((r) => r.name)), widths, rowHeight: 14, rows }));
+  if (made) toast(`${name}: a worksheet of ${rows.length - 1} rows, in the Resource Manager.`, "info");
 }
 
 /** Stage > Lighting Paperwork > Inventory and Equipment List…. */

@@ -630,7 +630,6 @@ export async function siteVolumeListDialog(): Promise<void> {
   }
   const units = doc.info.units;
   const limits = doc.layers().filter((l) => l.kind === "design").flatMap((l) => doc.objects(l.id).filter((o) => modifierOf(doc, o)?.kind === "limits"));
-  const canSheet = doc.resources().some((r) => r.kind === "worksheet");
   const columnBoxes = COLUMNS.map((c) => ({ c, box: checkbox(c.label, volumeAsked.labels?.includes(c.label) ?? true) }));
   const outside = checkbox("Outside Grade Limits", true);
   const A = appContext();
@@ -647,10 +646,9 @@ export async function siteVolumeListDialog(): Promise<void> {
     return { o, box, row: h("div", { cls: "site-colour-row" }, box.row, show) };
   });
   const unmodified = checkbox("Show Data for Unmodified Site Model Surface", volumeAsked.unmodified ?? true);
-  const textFile = checkbox("Create Text File", volumeAsked.textFile ?? !canSheet);
+  const textFile = checkbox("Create Text File", volumeAsked.textFile ?? false);
   const group = checkbox("Create Triangle Group", volumeAsked.group ?? false);
-  const sheet = checkbox("Create Worksheet", canSheet && (volumeAsked.sheet ?? true));
-  sheet.input.disabled = !canSheet;
+  const sheet = checkbox("Create Worksheet", volumeAsked.sheet ?? true);
   const asked = await showDialog<VolumeAsked>({
     title: "Create Site Model Volume List",
     okLabel: "OK",
@@ -666,7 +664,6 @@ export async function siteVolumeListDialog(): Promise<void> {
       textFile.row,
       group.row,
       sheet.row,
-      ...(canSheet ? [] : [h("p", { cls: "muted", text: "This drawing has no worksheet to take a new one's settings from, so it can't make one. The text file opens in a spreadsheet." })]),
     ],
     check: () => {
       const columns = columnBoxes.filter((b) => b.box.input.checked).map((b) => b.c);

@@ -3,20 +3,9 @@
 // sees or types is converted here, at the edge: formatLength and parseLength map millimetres to
 // text and back. unitLabel and millimetresPerUnit give the short label and the size of one unit.
 
-/** British spellings of the unit names below, which the tables do not list. */
-const ALIASES: Readonly<Record<string, string>> = {
-  millimetres: "millimeters",
-  centimetres: "centimeters",
-  metres: "meters",
-  kilometres: "kilometers",
-  "feet & inches": "feet and inches",
-};
+import { keyOf, millimetresPerUnit } from "../core/unitSize.ts";
 
-/** The document's unit name in the spelling the tables use, lower case; "" when the document names none. */
-function keyOf(units: string | undefined): string {
-  const key = (units ?? "").toLowerCase();
-  return ALIASES[key] ?? key;
-}
+export { millimetresPerUnit } from "../core/unitSize.ts";
 
 const SHORT_UNITS: Readonly<Record<string, string>> = {
   millimeters: "mm",
@@ -34,24 +23,6 @@ const SHORT_UNITS: Readonly<Record<string, string>> = {
 export function unitLabel(units: string | undefined): string {
   if (!units) return "mm";
   return SHORT_UNITS[keyOf(units)] ?? units;
-}
-
-const MM_PER_UNIT: Readonly<Record<string, number>> = {
-  millimeters: 1,
-  centimeters: 10,
-  meters: 1000,
-  kilometers: 1e6,
-  inches: 25.4,
-  feet: 304.8,
-  "feet and inches": 304.8,
-  yards: 914.4,
-  miles: 1609344,
-};
-
-/** Millimetres in one document unit; 1 (millimetres) when the document names none or an unknown one. */
-export function millimetresPerUnit(units: string | undefined): number {
-  if (!units) return 1;
-  return MM_PER_UNIT[keyOf(units)] ?? 1;
 }
 
 const MM_PER_FOOT = 304.8;

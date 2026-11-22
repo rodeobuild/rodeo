@@ -4,8 +4,8 @@
 // Import Options do (keeping a reference to the file isn't offered: Rodeo can't save one). Plain
 // numbers become number cells with the decimals they're written with, the rest text; a workbook's
 // values are the ones it last calculated, with its bold, alignment and column widths. Like Create
-// Report, the worksheet takes its settings and font from one the drawing has, so a drawing with
-// none can't import one yet. A dropped .csv, .dif, .slk or .xlsx imports the same way.
+// Report, the worksheet takes its settings and font from one the drawing has, else Rodeo's own. A
+// dropped .csv, .dif, .slk or .xlsx imports the same way.
 
 import { readWorksheetFile, type ImportedSheet } from "../import/worksheet.ts";
 import { attempt } from "./commands.ts";
@@ -24,15 +24,9 @@ export function isWorksheetFile(name: string): boolean {
   return /\.(csv|tsv|dif|slk|sylk|xlsx|xlsm)$/i.test(name);
 }
 
-/** The drawing has a worksheet to copy settings from; says why not when it hasn't. */
+/** A drawing is open: the worksheet's settings come from one the drawing has, else Rodeo's own. */
 function ready(): boolean {
-  const doc = store.session?.doc;
-  if (!doc) return false;
-  if (!doc.resources().some((r) => r.kind === "worksheet")) {
-    toast("Import Worksheet makes its worksheet from one the drawing has, and this drawing has none yet.", "info");
-    return false;
-  }
-  return true;
+  return store.session !== null;
 }
 
 /** File > Import > Import Worksheet…: asks for the file, then imports it. */

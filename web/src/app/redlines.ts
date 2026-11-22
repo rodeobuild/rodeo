@@ -8,8 +8,6 @@
 
 import type { NewSheetCell, ObjectInfo } from "../core/index.ts";
 import { attempt, setSelection } from "./commands.ts";
-import { h } from "./dom.ts";
-import { showDialog } from "./menubar.ts";
 import { colorMatcher } from "./pdfImport.ts";
 import { store } from "./state.ts";
 import { toast } from "./toast.ts";
@@ -154,33 +152,12 @@ function reportRows(all: readonly Redline[]): (NewSheetCell | null)[][] {
   return [...section("Open Redlines", all.filter((r) => !r.closed)), ...section("Closed Redlines", all.filter((r) => r.closed))];
 }
 
-/** Without a worksheet to make one from, the report in a dialog. */
-async function showReport(all: readonly Redline[]): Promise<void> {
-  const list = (name: string, rows: readonly Redline[]): HTMLElement[] => [
-    h("p", { text: `${name}: ${rows.length}` }),
-    ...(rows.length ? [h("dl", { cls: "props-list" }, ...rows.flatMap((r) => [h("dt", { text: `${r.layer}, ${r.date}` }), h("dd", { text: r.comment || "No comment" })]))] : []),
-  ];
-  await showDialog<boolean>({
-    title: REPORT_NAME,
-    okLabel: "Close",
-    cls: "props-dialog",
-    body: [
-      ...list("Open Redlines", all.filter((r) => !r.closed)),
-      ...list("Closed Redlines", all.filter((r) => r.closed)),
-      h("p", { cls: "muted", text: "This drawing has no worksheet to make the report from, so it shows here." }),
-    ],
-    check: () => ({ value: true }),
-  });
-}
-
 /** Text > Redlines > Create Redline Status WS: the Redlines Status Report made afresh and opened. */
 export async function redlineStatusWorksheet(): Promise<void> {
   const doc = store.session?.doc;
   if (!doc) return;
   const all = allRedlines();
-  const sheets = doc.resources().filter((r) => r.kind === "worksheet");
-  if (!sheets.length) return showReport(all);
-  const was = sheets.find((r) => r.name === REPORT_NAME);
+  const was = doc.resources().find((r) => r.kind === "worksheet" && r.name === REPORT_NAME);
   const made = attempt("Create Redline Status WS", (s) =>
     s.batch(() => {
       if (was) s.deleteWorksheet(was.index);

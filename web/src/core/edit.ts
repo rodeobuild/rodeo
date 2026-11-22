@@ -12,7 +12,7 @@
 import { ATTR_END, BLACK, BY_CLASS, BY_CLASS_BITS, BY_CLASS_KEYS, CLASS_TEXT_STYLE, CLASS_TEXTURE, WHITE, addTableColors, byClassGroup, readAttrs, writeAttrs, writeClassAttrs, writeLineType } from "./attrs.ts";
 import { concat, encodeUtf16, f64, i16, i32, setF64, setI16, setI32, setU16, setU32, setU64, u16, u32, u64 } from "./bytes.ts";
 import { WallInserts, type HoleSize, type PlanLike, type WallInsertPlace } from "./wallInserts.ts";
-import { symbolDefinitionTemplate, symbolLibraryTemplate, builtinTemplates, imageTexture, shaderFormatList, extrudeShell as builtinExtrudeShell, meshShell as builtinMeshShell, pluginTemplate, poly3dHead as builtinPoly3dHead, WALL_SHELL_LENGTH, plainWall, wallShell, viewportShell as builtinViewportShell, recordFormatTemplate, type Template } from "./builtins.ts";
+import { worksheetImageTemplate, symbolDefinitionTemplate, symbolLibraryTemplate, builtinTemplates, imageTexture, shaderFormatList, extrudeShell as builtinExtrudeShell, meshShell as builtinMeshShell, pluginTemplate, poly3dHead as builtinPoly3dHead, WALL_SHELL_LENGTH, plainWall, wallShell, viewportShell as builtinViewportShell, recordFormatTemplate, type Template } from "./builtins.ts";
 import {
   FILL_MAPPING,
   LOCUS,
@@ -135,7 +135,26 @@ import { writeLayerView } from "./layerView.ts";
 import { writeNameTable } from "./names.ts";
 import { RECORD, RECORD_FORMAT, encodeFormat, encodePluginFormat, encodeRecord, readFormat, readValues, recordFormat, writeValue, type FormatDef } from "./params.ts";
 import { NEXT_MARK, Rec, newGuid } from "./records.ts";
-import { DATABASE_BLOCK, WORKSHEET_IMAGE, newWorksheetRecord, readWorksheetImage, writeWorksheetCell } from "./worksheet.ts";
+import { DATABASE_BLOCK, DATABASE_OBJECTS, DATABASE_ORDER, IMAGE_BOUNDS, IMAGE_FRAME, MM_PER_POINT, SHEET_COUNTS, SHEET_PLACED, SHEET_PLACED_BIT, WORKSHEET_IMAGE, newWorksheetRecord, readWorksheet, readWorksheetImage, writeWorksheetCell, writeWorksheetImage } from "./worksheet.ts";
+import { blankWorksheetTemplate, blockTemplate } from "./worksheetNew.ts";
+import { FormulaError, isError } from "./formula/ast.ts";
+import { blockBody, readDatabaseRows } from "./worksheetDb.ts";
+import { deleteColumns, deletedBlocks, deleteRows, insertColumns, insertRows, laySheet, readSheet, retop, type SheetItems } from "./worksheetItems.ts";
+import {
+  cellValueAt,
+  emptyBlock,
+  evaluateCell,
+  formulaTokens,
+  isFormulaCell,
+  plainUnsupported,
+  recalcSheet,
+  sheetBlocks,
+  withDatabaseRow,
+  withFormula,
+  withPlain,
+  type DatabaseRowSpec,
+  type RecalcContext,
+} from "./worksheetLive.ts";
 import earcut from "earcut";
 import { contourAt, type Axis } from "./contours.ts";
 import { SIMPLIFIABLE, simplifiedRecord } from "./simplify.ts";
@@ -342,6 +361,13 @@ function hasGuid(d: Uint8Array): boolean {
   for (let i = 0x38; i < 0x48; i++) if (d[i] !== 0) return true;
   return false;
 }
+
+/**
+ * The last name index recalculation gives an object for a database block to list it by: the indices
+ * above stay free for the classes, layers and resources that need a name. Past it a block lists the
+ * object as 0, as the files' blocks list a few.
+ */
+const LAST_LISTED_NAME = 0xefff;
 
 function templateOf(rec: Rec, skip?: (r: Rec, depth: number) => boolean): Template {
   const t: Template = { recs: [], parent: [] };
@@ -4274,29 +4300,327 @@ export class Session implements EditSession {
     const rec = this.doc.worksheets.get(index);
     if (!rec) throw new Error(`no worksheet #${index}`);
     const p = this.plan();
-    p.set(rec.index, writeWorksheetCell(p.cur(rec.index), row, col, value));
+    const cur = p.cur(rec.index);
+    // typed over a formula, the formula goes
+    p.set(rec.index, isFormulaCell(cur, row, col) ? withPlain(cur, row, col, value) : writeWorksheetCell(cur, row, col, value));
     // the sheets' worksheet images draw from it
     this.commit(p, "all");
   }
 
   createWorksheet(sheet: NewWorksheet, from?: number): number {
     const src = from === undefined ? [...this.doc.worksheets.values()].sort((a, b) => a.index - b.index)[0] : this.doc.worksheets.get(from);
-    if (!src) throw new Error(from === undefined ? "this drawing has no worksheet to copy settings from yet" : `no worksheet #${from}`);
+    if (!src && from !== undefined) throw new Error(`no worksheet #${from}`);
     this.checkName(sheet.name);
-    // its children but the database blocks, which list objects for the source's database rows
-    const t = templateOf(src, (r, depth) => depth === 1 && r.type === DATABASE_BLOCK);
-    t.recs[0] = newWorksheetRecord(src.data, sheet);
-    const copies = this.instantiate(t, src.owner);
+    // with none to copy: Rodeo's own (worksheetNew.ts), first in the class list as a new record format goes
+    const before = src ?? this.doc.classList?.children[0];
+    if (!before) throw new Error("this drawing has no class list to keep a worksheet in");
+    let t: Template;
+    if (src) {
+      // its children but the database blocks, which list objects for the source's database rows
+      t = templateOf(src, (r, depth) => depth === 1 && r.type === DATABASE_BLOCK);
+      t.recs[0] = newWorksheetRecord(src.data, sheet);
+      // nothing shows the new one on a sheet yet (the bit placeWorksheet sets)
+      t.recs[0][SHEET_PLACED] &= ~SHEET_PLACED_BIT;
+    } else {
+      const blank = blankWorksheetTemplate();
+      t = { recs: [newWorksheetRecord(blank.sheet, sheet), ...blank.children], parent: [-1, ...blank.children.map(() => 0)] };
+    }
+    const copies = this.instantiate(t, before.owner);
     const fresh = this.freshName();
     setU16(copies[0], 0x1a, fresh);
     const names = new Map(this.doc.names);
     names.set(fresh, sheet.name);
     const p = this.plan();
     this.writeNames(p, names);
-    // before the original, so the copy is never the last of its list
-    p.insert(src.index, copies);
+    // before the original (or the list's first), so the new one is never the last of its list
+    p.insert(before.index, copies);
     this.commit(p, "all", []);
     return fresh;
+  }
+
+  placeWorksheet(index: number, layerId: string, at: Pt, scale = 1): string {
+    const ws = this.doc.worksheets.get(index);
+    if (!ws) throw new Error(`no worksheet #${index}`);
+    if (![at.x, at.y].every(Number.isFinite) || !(scale > 0 && scale < 1e4)) throw new Error("a worksheet's place is finite and its scale above zero");
+    const grid = readWorksheet(ws, this.doc.names, this.doc.info.units);
+    if (!grid) throw new Error("this worksheet can't be read");
+    const mm = MM_PER_POINT * scale;
+    const width = grid.colWidths.reduce((a, b) => a + b, 0) * mm;
+    const height = grid.rowHeights.reduce((a, b) => a + b, 0) * mm;
+    const layer = this.container(layerId);
+    const { owner, at: slot } = this.slot(layer);
+    const [d] = this.instantiate(worksheetImageTemplate(), owner);
+    setU32(d, 0x20, this.noneClass());
+    writeWorksheetImage(d, index, { x: at.x, y: at.y }, width, height, scale);
+    const p = this.plan();
+    p.insert(slot, [d]);
+    // the worksheet's own note that it is shown on a drawing
+    p.mut(ws.index)[SHEET_PLACED] |= SHEET_PLACED_BIT;
+    const id = recOfData(d).guid;
+    this.commit(p, "all", [id]);
+    return id;
+  }
+
+  // ---- live worksheets -----------------------------------------------------------------
+
+  private sheetRec(index: number): Rec {
+    const rec = this.doc.worksheets.get(index);
+    if (!rec) throw new Error(`no worksheet #${index}`);
+    return rec;
+  }
+
+  /** What recalculation reads of the drawing, with `p` taking the name indices it allots to objects a database row lists. */
+  private recalcContext(p: Plan): RecalcContext {
+    const doc = this.doc;
+    const byName = new Map<string, Rec>();
+    for (const r of doc.worksheets.values()) {
+      const n = doc.names.get(r.nameIndex);
+      if (n !== undefined) byName.set(n, r);
+    }
+    const allotted = new Map<string, number>();
+    return {
+      index: doc.databaseIndex(),
+      units: doc.info.units ?? "",
+      parse: doc.formulaContext(),
+      sheetCell: (sheet, row, col) => {
+        const r = byName.get(sheet);
+        return r ? cellValueAt(p.cur(r.index), row, col) : { error: "#OBJ!" };
+      },
+      // a database block lists each object by its name index: an object with none takes one with no name, as
+      // Vectorworks gives the objects its worksheets list (FORMAT.md §7.2), while there are indices to spare
+      refOf: (o) => {
+        if (o.nameIndex) return o.nameIndex;
+        let ref = allotted.get(o.id);
+        if (ref === undefined) {
+          const rec = doc.rec(o.id);
+          ref = rec && this.nextName <= LAST_LISTED_NAME ? this.freshName() : 0;
+          if (rec && ref) setU16(p.mut(rec.index), 0x1a, ref);
+          allotted.set(o.id, ref);
+        }
+        return ref;
+      },
+    };
+  }
+
+  recalculateWorksheets(kept: ReadonlyMap<number, ReadonlyMap<string, string>> = new Map(), only?: readonly number[]): number {
+    return this.batch(() => {
+      const p = this.plan();
+      const ctx = this.recalcContext(p);
+      const changed = new Set<number>();
+      // a worksheet as the plan has it now
+      const view = (r: Rec): Rec => {
+        const v = new Rec(p.cur(r.index), r.index);
+        v.children = r.children.map(view);
+        return v;
+      };
+      const withBody = (old: Uint8Array, body: Uint8Array): Uint8Array => {
+        const d = concat([old.subarray(0, 0x50), body]);
+        setU64(d, 0, BigInt(d.length));
+        return d;
+      };
+      /** Works one worksheet out into the plan; true when it reads other worksheets' cells. */
+      const apply = (index: number, rec: Rec): boolean => {
+        const res = recalcSheet(view(rec), ctx, kept.get(index));
+        if (res.data) {
+          p.set(rec.index, res.data);
+          changed.add(index);
+        }
+        for (const [block, build] of res.blocks) {
+          const b = rec.children.find((c) => c.type === DATABASE_BLOCK && c.nameIndex === block);
+          const order = b?.children.find((c) => c.type === DATABASE_ORDER);
+          const objects = b?.children.find((c) => c.type === DATABASE_OBJECTS);
+          if (!b || !order || !objects) continue;
+          p.set(b.index, withBody(p.cur(b.index), build.body));
+          p.set(order.index, withBody(p.cur(order.index), build.order));
+          p.set(objects.index, withBody(p.cur(objects.index), build.objects));
+          changed.add(index);
+        }
+        return res.readsSheets;
+      };
+      const sheets = [...this.doc.worksheets].filter(([index]) => !only || only.includes(index));
+      // those that read other worksheets go again, once the others hold their new values
+      const again = sheets.filter(([index, rec]) => apply(index, rec));
+      for (const [index, rec] of again) apply(index, rec);
+      if (!changed.size) return 0;
+      this.commit(p, "all", []);
+      for (const index of changed) this.fitWorksheetImages(index);
+      return changed.size;
+    });
+  }
+
+  /** Resizes the worksheet images that show worksheet `index` to its grid as it is now, their top left corners staying. */
+  private fitWorksheetImages(index: number): void {
+    const ws = this.doc.worksheets.get(index);
+    const grid = ws && readWorksheet(ws, this.doc.names, this.doc.info.units);
+    if (!grid) return;
+    const p = this.plan();
+    let any = false;
+    for (const r of this.doc.recs) {
+      if (r.type !== WORKSHEET_IMAGE) continue;
+      const img = readWorksheetImage(r.data);
+      if (!img || img.worksheet !== index) continue;
+      const mm = MM_PER_POINT * img.scale;
+      const w = grid.colWidths.reduce((a, b) => a + b, 0) * mm;
+      const h = grid.rowHeights.reduce((a, b) => a + b, 0) * mm;
+      const tol = 1e-6 * Math.max(1, w, h);
+      if (Math.abs(img.box.x1 - img.box.x0 - w) <= tol && Math.abs(img.box.y1 - img.box.y0 - h) <= tol) continue;
+      // an image that shows the whole worksheet (its bounds are its frame) goes on showing all of it
+      const whole = [0, 8, 16, 24].every((k) => f64(r.data, IMAGE_BOUNDS + k) === f64(r.data, IMAGE_FRAME + k));
+      const d = p.mut(r.index);
+      for (const at of whole ? [IMAGE_BOUNDS, IMAGE_FRAME] : [IMAGE_FRAME]) {
+        setF64(d, at, img.box.y1);
+        setF64(d, at + 8, img.box.x0);
+        setF64(d, at + 16, img.box.y1 - h);
+        setF64(d, at + 24, img.box.x0 + w);
+      }
+      any = true;
+    }
+    if (any) this.commit(p, "all", []);
+  }
+
+  setWorksheetFormula(index: number, row: number, col: number, text: string, kept: ReadonlyMap<string, string> = new Map()): { kept: boolean } {
+    const rec = this.sheetRec(index);
+    return this.batch(() => {
+      const p = this.plan();
+      const ctx = this.recalcContext(p);
+      const f = formulaTokens(text, ctx.parse, { row, col });
+      const why = plainUnsupported(f.node);
+      if (why) throw new FormulaError(why);
+      const others = new Map(kept);
+      others.delete(`${row},${col}`);
+      const value = evaluateCell(rec, ctx, others, row, col, f.node);
+      // a formula cell holds a number beside its tokens and nowhere for text: text results are kept as values
+      const held = f.tokens !== null && (typeof value === "number" || value === null);
+      if (held) {
+        p.set(rec.index, withFormula(rec.data, row, col, f.tokens!, value ?? 0));
+      } else {
+        const shown = typeof value === "number" ? value : value === null ? "" : typeof value === "boolean" ? (value ? "True" : "False") : isError(value) ? value.error : value;
+        p.set(rec.index, withPlain(rec.data, row, col, shown));
+      }
+      this.commit(p, "all", []);
+      // the cells that read it
+      const now = new Map(others);
+      if (!held) now.set(`${row},${col}`, text);
+      this.recalculateWorksheets(new Map([[index, now]]), [index]);
+      return { kept: !held };
+    });
+  }
+
+  setDatabaseRow(index: number, row: number, spec: DatabaseRowSpec): void {
+    const rec = this.sheetRec(index);
+    this.batch(() => {
+      const p = this.plan();
+      let block = readDatabaseRows(rec.data, sheetBlocks(rec)).find((r) => r.row === row)?.block;
+      if (block === undefined) {
+        // its block: first of the worksheet's children, where blocks go, under an index with no name
+        const first = rec.children[0];
+        if (!first) throw new Error("this worksheet has no child records to keep a database row's lines among");
+        block = this.freshName();
+        const empty = emptyBlock(block, u16(rec.data, SHEET_COUNTS));
+        const copies = this.instantiate({ recs: blockTemplate(empty.body, empty.order, empty.objects), parent: [-1, 0, 0] }, first.owner);
+        setU16(copies[0], 0x1a, block);
+        p.insert(first.index, copies);
+      }
+      p.set(rec.index, withDatabaseRow(rec.data, row, block, spec, this.doc.formulaContext()));
+      this.commit(p, "all", []);
+      this.recalculateWorksheets(new Map(), [index]);
+    });
+  }
+
+  /** Lays worksheet `rec` out again after its rows or columns changed: tops from the heights, its database rows' lines included. */
+  private relaid(rec: Rec, s: SheetItems): Uint8Array {
+    const heights = new Map<number, readonly number[]>();
+    for (const r of readDatabaseRows(laySheet(s), sheetBlocks(rec))) heights.set(r.row, r.subrows.map((x) => x.height));
+    return laySheet(retop(s, heights));
+  }
+
+  private sheetItems(rec: Rec): SheetItems {
+    const s = readSheet(rec.data);
+    if (!s) throw new Error("this worksheet can't be read");
+    return s;
+  }
+
+  insertWorksheetRows(index: number, at: number, count: number): void {
+    const rec = this.sheetRec(index);
+    const s = this.sheetItems(rec);
+    if (!(Number.isInteger(at) && at >= 0 && at <= s.rows && Number.isInteger(count) && count > 0 && s.rows + count <= 0xffff)) throw new Error("no such place for new rows");
+    // as tall as the row above (or the first)
+    const like = s.rowHeads[Math.max(0, Math.min(s.rows - 1, at - 1))]?.item;
+    const p = this.plan();
+    p.set(rec.index, this.relaid(rec, insertRows(s, at, count, like ? u16(like, 2) : 18)));
+    this.batch(() => {
+      this.commit(p, "all", []);
+      this.fitWorksheetImages(index);
+    });
+  }
+
+  deleteWorksheetRows(index: number, at: number, count: number): void {
+    const rec = this.sheetRec(index);
+    const s = this.sheetItems(rec);
+    if (!(Number.isInteger(at) && at >= 0 && Number.isInteger(count) && count > 0 && at + count <= s.rows)) throw new Error("no such rows");
+    if (count >= s.rows) throw new Error("a worksheet keeps at least one row");
+    const p = this.plan();
+    // a database row's lines go with it
+    for (const block of deletedBlocks(s, at, count)) {
+      const b = rec.children.find((c) => c.type === DATABASE_BLOCK && c.nameIndex === block);
+      if (b) p.remove(b.index, subtreeEnd(b));
+    }
+    p.set(rec.index, this.relaid(rec, deleteRows(s, at, count)));
+    this.batch(() => {
+      this.commit(p, "all", []);
+      this.fitWorksheetImages(index);
+    });
+  }
+
+  /** The worksheet's blocks with `count` columns added before column `at` (count > 0) or deleted from it (count < 0), into `p`. */
+  private shiftBlockColumns(p: Plan, rec: Rec, at: number, count: number): void {
+    for (const row of readDatabaseRows(rec.data, sheetBlocks(rec))) {
+      const b = rec.children.find((c) => c.type === DATABASE_BLOCK && c.nameIndex === row.block);
+      if (!b) continue;
+      const shift = <T>(list: readonly T[], empty: T): T[] => {
+        const out = [...list];
+        if (count > 0) out.splice(at, 0, ...Array.from({ length: count }, () => empty));
+        else out.splice(at, -count);
+        return out;
+      };
+      const next = {
+        ...row,
+        columns: shift(row.columns, { flags: 0, summarize: false, sort: "none" as const, precedence: 0, sum: false, result: null }),
+        blockColumnFlags: shift(row.blockColumnFlags, 0),
+        subrows: row.subrows.map((sr) => ({ ...sr, cells: shift(sr.cells, null) })),
+      };
+      const d = concat([b.data.subarray(0, 0x50), blockBody(next)]);
+      setU64(d, 0, BigInt(d.length));
+      p.set(b.index, d);
+    }
+  }
+
+  insertWorksheetColumns(index: number, at: number, count: number): void {
+    const rec = this.sheetRec(index);
+    const s = this.sheetItems(rec);
+    if (!(Number.isInteger(at) && at >= 0 && at <= s.cols && Number.isInteger(count) && count > 0 && s.cols + count <= 0xfff)) throw new Error("no such place for new columns");
+    const like = s.columns[Math.max(0, Math.min(s.cols - 1, at - 1))]?.item;
+    const p = this.plan();
+    this.shiftBlockColumns(p, rec, at, count);
+    p.set(rec.index, this.relaid(rec, insertColumns(s, at, count, like ? u16(like, 2) : 72)));
+    this.batch(() => {
+      this.commit(p, "all", []);
+      this.fitWorksheetImages(index);
+    });
+  }
+
+  deleteWorksheetColumns(index: number, at: number, count: number): void {
+    const rec = this.sheetRec(index);
+    const s = this.sheetItems(rec);
+    if (!(Number.isInteger(at) && at >= 0 && Number.isInteger(count) && count > 0 && at + count <= s.cols)) throw new Error("no such columns");
+    if (count >= s.cols) throw new Error("a worksheet keeps at least one column");
+    const p = this.plan();
+    this.shiftBlockColumns(p, rec, at, -count);
+    p.set(rec.index, this.relaid(rec, deleteColumns(s, at, count)));
+    this.batch(() => {
+      this.commit(p, "all", []);
+      this.fitWorksheetImages(index);
+    });
   }
 
   // ---- resources ----------------------------------------------------------------------

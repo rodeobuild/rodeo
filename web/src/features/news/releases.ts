@@ -51,6 +51,21 @@ export const RELEASES: readonly Release[] = [
     "walls",
   ),
   release(
+    "2026-11-23T00:00:00Z",
+    "2026-11-23T12:00:00Z",
+    "live-schedules",
+    "Schedules that follow the drawing",
+    `Door, window and room schedules now keep themselves up to date.
+- Tools › Reports › Create Schedule… makes a door, window, room or room finish schedule in one step, in a new drawing too, and can place it on a sheet.
+- A schedule follows the drawing: widen a door, add a window or rename a room and its line changes with it, as part of the same undo step.
+- Schedules made in Vectorworks follow the drawing as well, where Rodeo can read what they ask for.
+- The worksheet editor takes formulas (=B2*C2, =SUM(D2..D9), =COUNT of the objects that meet criteria) and database rows, with columns you choose, sorting, and one line per kind with a count.
+- Rows and columns can be added and deleted, and a worksheet shown on any layer with Worksheet on Drawing….
+- Export Worksheet… works the worksheet out again first, to CSV, Excel and the rest.
+- Some formulas (those with + or SUM, say) are saved for Vectorworks as their values, because the file's codes for them aren't known yet. Rodeo keeps the formula and goes on working it out.`,
+    "records",
+  ),
+  release(
     "2026-11-23T12:00:00Z",
     "vectorworks-2018-2019",
     "Vectorworks 2018 and 2019 drawings open",

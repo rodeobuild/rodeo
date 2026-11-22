@@ -293,11 +293,10 @@ export async function roofFramerDialog(): Promise<void> {
     return;
   }
   const all = framed.flatMap((f) => f.members);
-  const sheets = !!session.doc.resources().some((r) => r.kind === "worksheet");
   const made = attempt("Roof Framer", (s) =>
     s.batch(() => {
       const ids = framed.flatMap(({ roof, members }) => members.map((m) => addMember(s, roof.layerId, m, classOf(m, k))));
-      if (sheets) s.createWorksheet({ name: freeSheetName(), widths: [80, 64, 64, 90, 50, 100], rowHeight: 14, rows: takeOffRows(all) });
+      s.createWorksheet({ name: freeSheetName(), widths: [80, 64, 64, 90, 50, 100], rowHeight: 14, rows: takeOffRows(all) });
       return ids;
     }),
   );
@@ -309,5 +308,5 @@ export async function roofFramerDialog(): Promise<void> {
   });
   const roofs = framed.length === 1 ? "" : ` on ${framed.length} roofs`;
   const left = skipped.length ? ` ${skipped.length} selected ${skipped.length === 1 ? "object wasn't" : "objects weren't"} framed: ${skipped[0]}.` : "";
-  toast(`Roof framed${roofs}: ${what.join(", ")}${sheets ? `, counted in a ${SHEET_NAME} worksheet` : ""}.${left}`, "info");
+  toast(`Roof framed${roofs}: ${what.join(", ")}, counted in a ${SHEET_NAME} worksheet.${left}`, "info");
 }

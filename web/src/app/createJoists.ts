@@ -220,15 +220,13 @@ function frame(floor: Floor, k: JoistSettings, a: Pt, b: Pt): void {
     toast(members, "info");
     return;
   }
-  const doc = store.session?.doc;
   const layer = appContext()?.scene.layer(floor.layerId);
   const textSize = LABEL_MM * (layer?.scale || 1);
-  const sheets = !!doc?.resources().some((r) => r.kind === "worksheet");
   const made = attempt("Create Joists", (s) =>
     s.batch(() => {
       const ids = members.map((m) => addMember(s, floor.layerId, m, lookOf(m, k), textSize));
       if (k.deleteSource) s.deleteObjects(floor.sources);
-      if (sheets) s.createWorksheet({ name: freeSheetName(), widths: [80, 64, 64, 90, 50, 100], rowHeight: 14, rows: takeOffRows(members) });
+      s.createWorksheet({ name: freeSheetName(), widths: [80, 64, 64, 90, 50, 100], rowHeight: 14, rows: takeOffRows(members) });
       return ids;
     }),
   );
@@ -239,7 +237,7 @@ function frame(floor: Floor, k: JoistSettings, a: Pt, b: Pt): void {
     return n ? [`${n} ${n === 1 ? one : many}`] : [];
   };
   const what = [...count("joist", "joist", "joists"), ...count("perimeter", "perimeter member", "perimeter members"), ...count("header", "header", "headers")].join(", ");
-  toast(sheets ? `Framed: ${what}, counted in a ${SHEET_NAME} worksheet.` : `Framed: ${what}. (This drawing has no worksheet to copy one from, so there's no ${SHEET_NAME}.)`, "info");
+  toast(`Framed: ${what}, counted in a ${SHEET_NAME} worksheet.`, "info");
 }
 
 /** AEC > Framing > Create Joists…: the settings, then two clicks for the joists' direction. */

@@ -1,8 +1,7 @@
 // ConnectCAD Layout's Make Rack Equipment Worksheet: a click opens Rack Equipment Columns, for the
 // rack (the one clicked over, or the first) and the worksheet's columns, used or not and dragged
 // into order; then a worksheet lists what's in that rack at each position from the top (reports.ts
-// makes it, or shows it in a dialog in a drawing that can't hold one). The columns chosen are kept
-// for next time.
+// makes it). The columns chosen are kept for next time.
 
 import "./connectcad.css";
 import type { Pt } from "../../../core/index.ts";
