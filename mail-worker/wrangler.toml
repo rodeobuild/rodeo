@@ -3,6 +3,8 @@
 name = "rodeo-mail"
 main = "src/index.ts"
 compatibility_date = "2026-11-01"
+# reached only by Email Routing, so no public workers.dev address
+workers_dev = false
 
 [vars]
 # The server's inbound endpoint.
