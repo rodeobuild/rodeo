@@ -198,7 +198,6 @@ const bounds: [number | undefined, number | undefined][] = [
   [-1e12, 5],
   [5, 1e12],
   [NaN, 3],
-  [3.7, 9.2],
   [N - 3, undefined],
   [N + 10, N + 20],
   [-N - 5, 7],
@@ -215,6 +214,22 @@ for (const [s, e] of bounds) {
   }
 }
 check(sliceOk, `slice matches Blob.slice for ${bounds.length} (start, end) pairs, negatives, out of range, reversed and undefined`);
+// Fractional bounds are compared with Web IDL's rule, not the running Blob: Node 22 truncates them, while
+// browsers and Node 24 round to the nearest whole number, a half to the even one.
+const fractions: [number, number, number, number][] = [
+  [3.7, 9.2, 4, 9],
+  [2.5, 7.5, 2, 8],
+  [-3.5, -1.6, N - 4, N - 2],
+];
+let fractionsOk = true;
+for (const [s, e, from, to] of fractions) {
+  const mine = big.slice(s, e);
+  if (mine.size !== to - from || !same(await mine.arrayBuffer(), await REAL.slice(from, to).arrayBuffer())) {
+    fractionsOk = false;
+    console.log(`     slice(${s}, ${e}) differs: size ${mine.size} against ${to - from}`);
+  }
+}
+check(fractionsOk, "slice rounds fractional bounds to the nearest whole number, a half to the even one");
 
 const chained = big.slice(5, 20).slice(3, 8);
 check(same(await chained.arrayBuffer(), BIG.subarray(8, 13)), "slice(5, 20).slice(3, 8) holds bytes 8..13");

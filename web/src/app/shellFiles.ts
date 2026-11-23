@@ -94,11 +94,25 @@ async function readRange(src: ShellSource, start: number, end: number): Promise<
   return out;
 }
 
+/**
+ * A number as Web IDL's [Clamp] long long takes it, as Blob.slice's bounds are: NaN is 0, and a
+ * fraction rounds to the nearest whole number, a half to the even one (browsers and Node 24 do this;
+ * Node 22 truncated).
+ */
+function clampWhole(n: number): number {
+  if (Number.isNaN(n)) return 0;
+  if (!Number.isFinite(n)) return n;
+  const low = Math.floor(n);
+  const rest = n - low;
+  if (rest > 0.5) return low + 1;
+  if (rest < 0.5) return low;
+  return low % 2 === 0 ? low : low + 1;
+}
+
 /** Blob.slice's rule for one bound: negative counts from the end, and the result is clamped into [0, size]. */
 function bound(value: number | undefined, fallback: number, size: number): number {
   if (value === undefined) return fallback;
-  const n = Number(value);
-  const whole = Number.isNaN(n) ? 0 : Math.trunc(n);
+  const whole = clampWhole(Number(value));
   return whole < 0 ? Math.max(size + whole, 0) : Math.min(whole, size);
 }
 

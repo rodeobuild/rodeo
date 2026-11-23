@@ -138,6 +138,14 @@ const jsonText = new TextDecoder().decode(kept.get(`${K1}.json`)!.bytes);
 check(jsonText === JSON.stringify({ name: "Plan.vwx", savedAt: T0 }), `the JSON holds the name and time: ${jsonText}`);
 check(same(kept.get(`${K1}.vwx`)!.bytes, sessionA.doc.toBytes()), "the kept drawing's bytes are the drawing's (toBytes)");
 
+// Where Node has Web Locks (24 and later, as browsers do), the open drawing's lock keeps its copy from
+// being offered. From here on the check stands for that window having crashed, its locks gone: it runs
+// without Web Locks, as Rodeo does where a browser has none, so it checks the same on every Node.
+if (navigator.locks) {
+  check((await offeredUnder(K1)) === null, "a copy is not offered while its drawing's window holds the lock");
+  Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
+}
+
 // the copy is offered back, and opens as the drawing
 const offered = await offeredUnder(K1);
 check(offered !== null && offered.name === "Plan.vwx" && offered.savedAt === T0, "a complete copy is offered with its name and time");
