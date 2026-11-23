@@ -38,6 +38,15 @@ import type {
   Sponsor,
   User,
   Version,
+  MailAlias,
+  MailFolder,
+  MailSend,
+  MailSent,
+  MailSettings,
+  MailThread,
+  MailThreadFull,
+  MailThreadPage,
+  MailView,
 } from "./protocol.ts";
 
 import { inShell } from "./shell.ts";
@@ -524,6 +533,28 @@ export const feedback = {
   setStatus: async (id: string, status: Feedback["status"]): Promise<Feedback> =>
     (await json<{ feedback: Feedback }>("PATCH", `/admin/feedback/${encodeURIComponent(id)}`, { status })).feedback,
   remove: async (id: string): Promise<void> => void (await request("DELETE", `/admin/feedback/${encodeURIComponent(id)}`)),
+};
+
+/** The admin page's Mail tab: the mailbox the rodeo.build addresses receive into (admins only). */
+export const mailbox = {
+  threads: async (view: MailView, opts: { q?: string; before?: string | null } = {}): Promise<MailThreadPage> => {
+    const query = new URLSearchParams({ view });
+    if (opts.q) query.set("q", opts.q);
+    if (opts.before) query.set("before", opts.before);
+    return json<MailThreadPage>("GET", `/admin/mail/threads?${query}`);
+  },
+  /** the conversation with every message; reading it marks it read */
+  thread: async (id: string): Promise<MailThreadFull> => json<MailThreadFull>("GET", `/admin/mail/threads/${encodeURIComponent(id)}`),
+  update: async (id: string, change: { folder?: MailFolder; unread?: boolean; starred?: boolean }): Promise<MailThread> =>
+    (await json<{ thread: MailThread }>("PATCH", `/admin/mail/threads/${encodeURIComponent(id)}`, change)).thread,
+  /** deletes for good (only a conversation in the trash) */
+  remove: async (id: string): Promise<void> => void (await request("DELETE", `/admin/mail/threads/${encodeURIComponent(id)}`)),
+  send: async (m: MailSend): Promise<MailSent> => json<MailSent>("POST", "/admin/mail/send", m),
+  settings: async (): Promise<MailSettings> => json<MailSettings>("GET", "/admin/mail/settings"),
+  saveSettings: async (s: { aliases: readonly MailAlias[]; signature: string }): Promise<MailSettings> => json<MailSettings>("PUT", "/admin/mail/settings", s),
+  /** where the admin's browser downloads an attachment, and a message as its .eml */
+  attachmentUrl: (id: string): string => `${BASE}/admin/mail/attachments/${encodeURIComponent(id)}`,
+  rawUrl: (messageId: string): string => `${BASE}/admin/mail/messages/${encodeURIComponent(messageId)}/raw`,
 };
 
 export const errorReports = {

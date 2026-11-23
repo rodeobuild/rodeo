@@ -17,6 +17,7 @@ import { feedbackView } from "./feedback.ts";
 import { fundingView } from "./funding.ts";
 import { galleryView } from "./gallery.ts";
 import { liveView } from "./live.ts";
+import { mailView } from "./mail.ts";
 import { overviewTab } from "./overview.ts";
 import { peopleView } from "./people.ts";
 import { revenueView } from "./revenue.ts";
@@ -46,6 +47,8 @@ const GROUPS: readonly { readonly label: string; readonly tabs: readonly TabSpec
   {
     label: "Manage",
     tabs: [
+      // the mailbox first: it is the one an admin answers most
+      { id: "mail", label: "Mail", view: mailView },
       // made once and kept while the page is open, so its search and place survive a look elsewhere
       { id: "people", label: "People", view: (ctx) => (people ??= peopleView(ctx.currency)) },
       { id: "feedback", label: "Feedback", view: feedbackView },
@@ -125,7 +128,8 @@ function storedDays(): number {
 }
 
 function tabOf(hash: string): Tab {
-  const id = hash.replace(/^#/, "");
+  // a sub-path after the tab (#mail/sent, #mail/t/<id>) is for the tab itself to read
+  const id = hash.replace(/^#/, "").split("/")[0] ?? "";
   return TABS.some((t) => t.id === id) ? (id as Tab) : "overview";
 }
 
@@ -220,7 +224,10 @@ function start(user: User, cfg: ServerConfig, currency: string | null): void {
     show();
   });
   window.addEventListener("hashchange", () => {
-    tab = tabOf(location.hash);
+    const next = tabOf(location.hash);
+    // the Mail tab follows its own sub-path (which conversation is open) without being drawn again
+    if (next === tab && tab === "mail") return;
+    tab = next;
     show();
     window.scrollTo(0, 0);
   });

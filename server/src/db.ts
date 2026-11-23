@@ -532,7 +532,60 @@ CREATE TABLE admin_log (
 CREATE INDEX admin_log_created ON admin_log(created_at);
 `;
 
-const MIGRATIONS: readonly string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11];
+const SCHEMA_V12 = `
+CREATE TABLE mail_threads (
+  id TEXT PRIMARY KEY,
+  subject TEXT NOT NULL,
+  last_at TEXT NOT NULL,
+  folder TEXT NOT NULL CHECK (folder IN ('inbox', 'archive', 'spam', 'trash')),
+  starred INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX mail_threads_folder ON mail_threads(folder, last_at);
+CREATE INDEX mail_threads_last ON mail_threads(last_at);
+
+CREATE TABLE mail_messages (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL REFERENCES mail_threads(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+  message_id TEXT,
+  in_reply_to TEXT,
+  refs TEXT NOT NULL DEFAULT '[]',
+  from_addr TEXT NOT NULL,
+  from_name TEXT NOT NULL DEFAULT '',
+  to_json TEXT NOT NULL DEFAULT '[]',
+  cc_json TEXT NOT NULL DEFAULT '[]',
+  reply_to_json TEXT,
+  delivered_to TEXT,
+  subject TEXT NOT NULL DEFAULT '',
+  date TEXT NOT NULL,
+  text TEXT NOT NULL DEFAULT '',
+  html TEXT,
+  snippet TEXT NOT NULL DEFAULT '',
+  size INTEGER NOT NULL DEFAULT 0,
+  auth_json TEXT,
+  raw_path TEXT,
+  unread INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX mail_messages_message_id ON mail_messages(message_id) WHERE message_id IS NOT NULL;
+CREATE INDEX mail_messages_thread ON mail_messages(thread_id, date);
+CREATE INDEX mail_messages_from ON mail_messages(from_addr);
+
+CREATE TABLE mail_attachments (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES mail_messages(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  content_id TEXT,
+  inline INTEGER NOT NULL DEFAULT 0,
+  path TEXT NOT NULL
+);
+CREATE INDEX mail_attachments_message ON mail_attachments(message_id);
+`;
+
+const MIGRATIONS: readonly string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12];
 
 let conn: DatabaseSync | null = null;
 const statements = new Map<string, StatementSync>();

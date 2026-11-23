@@ -1,0 +1,622 @@
+/* The admin page's Mail tab (mail.ts, mailRead.ts, mailCompose.ts): the list of conversations beside
+   the one open, in the admin's solid panels (no glass, no blur). On a phone the list and the pane
+   take turns. Columns are minmax(0, 1fr) with min-width: 0 so a long subject or address ellipsises
+   or wraps and never widens the page, down to 375 px. Buttons and controls keep the arrow cursor;
+   only real links take the hand. */
+
+.mail-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.mail-root button,
+.mail-root .adm-btn,
+.mail-root .adm-chip,
+.mail-root select,
+.mail-root input[type="checkbox"] {
+  cursor: default;
+}
+
+.mail-root a {
+  cursor: pointer;
+}
+
+.mail-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mail-search {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.mail-icon {
+  width: 30px;
+  padding: 0;
+}
+
+.mail-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mail-list-col {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mail-list {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--glass-radius);
+  background: var(--card);
+}
+
+.mail-more {
+  justify-self: start;
+}
+
+.mail-pane {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--glass-radius);
+  background: var(--card);
+}
+
+.mail-pane-bar {
+  display: none;
+}
+
+.mail-pane-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .mail-grid {
+    grid-template-columns: 360px minmax(0, 1fr);
+  }
+}
+
+/* narrow: the list or the pane, with Back in the pane */
+@media (max-width: 899px) {
+  .mail-grid.reading > .mail-list-col {
+    display: none;
+  }
+
+  .mail-grid:not(.reading) > .mail-pane {
+    display: none;
+  }
+
+  .mail-pane .mail-pane-bar {
+    display: flex;
+  }
+}
+
+/* ---- the list ------------------------------------------------------------------- */
+
+.mail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+.mail-row:last-child {
+  border-bottom: 0;
+}
+
+.mail-row-link {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.mail-row-link:hover {
+  background: var(--fill-hover);
+}
+
+.mail-row.on .mail-row-link {
+  background: var(--select);
+}
+
+.mail-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mail-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.mail-row-who {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mail-row-when {
+  flex: none;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mail-row-subject {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mail-row-subject-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mail-row-count {
+  flex: none;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mail-clip {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-3);
+}
+
+.mail-clip svg {
+  width: 13px;
+  height: 13px;
+}
+
+.mail-row-snippet {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mail-row.unread .mail-row-who,
+.mail-row.unread .mail-row-subject-text {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mail-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: start;
+  width: 30px;
+  height: 30px;
+  margin: 6px 6px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+}
+
+.mail-star:hover:not(:disabled) {
+  background: var(--fill-hover);
+  color: var(--text-2);
+}
+
+.mail-star:disabled {
+  opacity: 0.5;
+}
+
+.mail-star svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mail-star.on {
+  color: var(--warn);
+}
+
+.mail-star.on svg path {
+  fill: currentColor;
+}
+
+/* ---- the conversation ----------------------------------------------------------- */
+
+.mail-conv {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mail-head {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mail-head .adm-muted {
+  font-size: 12px;
+}
+
+.mail-subject {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mail-messages {
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid var(--chrome-border);
+}
+
+.mail-msg {
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+.mail-msg:last-child {
+  border-bottom: 0;
+}
+
+/* a folded message: its sender, the start of its text, the time */
+.mail-msg-fold {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+}
+
+.mail-msg-from {
+  flex: 0 1 auto;
+  max-width: 45%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mail-msg.unread .mail-msg-from {
+  color: var(--text);
+}
+
+.mail-msg-snip {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+
+.mail-msg-when {
+  flex: none;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mail-msg-head {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mail-msg-from-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.mail-msg-name {
+  overflow-wrap: anywhere;
+}
+
+.mail-msg-from-row .adm-muted {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.mail-msg-line {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.mail-msg-date {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mail-body {
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.mail-body-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mail-remote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* the HTML of a message: a white page, as tall as its content */
+.mail-frame {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  height: 200px;
+  max-width: 100%;
+  border: 0;
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.mail-text {
+  min-width: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.mail-chunk {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mail-chunk a {
+  overflow-wrap: anywhere;
+}
+
+.mail-quote {
+  margin: 4px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--chrome-border);
+  color: var(--text-2);
+}
+
+.mail-quote-toggle {
+  margin: 4px 0;
+}
+
+.mail-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.mail-files li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mail-files a {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mail-eml {
+  margin: 8px 0 0;
+}
+
+.mail-reply-host {
+  min-width: 0;
+}
+
+/* ---- the composer and the settings ---------------------------------------------- */
+
+.mail-compose,
+.mail-settings {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+/* in the pane, the composer and the settings are the pane's own content: no second frame */
+.mail-pane-body > .mail-compose,
+.mail-pane-body > .mail-settings {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.mail-compose-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mail-compose-head h3,
+.mail-settings h3 {
+  font-size: 14px;
+}
+
+.mail-subhead {
+  margin-top: 4px;
+}
+
+.mail-field {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mail-label {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mail-field > .adm-input,
+.mail-field > select {
+  width: 100%;
+  min-width: 0;
+}
+
+.mail-textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.mail-textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.mail-compose-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mail-compose-foot .adm-muted {
+  flex: 1 1 auto;
+  font-size: 12px;
+}
+
+.mail-note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.mail-stats {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mail-stat {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.mail-aliases {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mail-alias {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mail-alias .adm-input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .mail-alias {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .mail-alias input[type="email"] {
+    grid-column: 1 / -1;
+    order: 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .mail-pane {
+    padding: 12px;
+  }
+}

@@ -50,6 +50,9 @@ host with no server.
 | `REPORTS_TOKEN` | a secret that reads and clears error reports as a bearer token, without an admin's sign-in (`server/scripts/reports.ts`) |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_TOKEN` | send mail through Cloudflare Email Sending's HTTPS API (a token with Email Sending: Edit); used before `SMTP_URL`, and the way to send from hosts that block outgoing SMTP (Hetzner Cloud blocks 25 and 465, and Cloudflare's SMTP takes only 465) |
 | `SMTP_URL`, `MAIL_FROM` | email sign-in links and invites (`smtp://user:pass@host:587`, or `smtps://…:465`). Without them, email sign-in is off in production, and in development the links are printed to the log |
+| `MAIL_DOMAINS` | comma-separated domains mail is sent from and received at, for the admin Mail tab (lower case; default: the host of `PUBLIC_URL`) |
+| `MAIL_INBOUND_SECRET` | the bearer secret Cloudflare's mail Worker sends with each received message to `POST /api/mail/inbound` (Email Routing: a Worker with `email()`); unset, receiving is off |
+| `MAIL_API_BASE` | tests only: where Cloudflare's send API is taken to be (ignored when `NODE_ENV=production`) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Sign in with Google" (redirect URI `PUBLIC_URL/api/auth/oauth/google/callback`) |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | "Sign in with Microsoft" (common tenant; `…/oauth/microsoft/callback`) |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | "Sign in with GitHub" (`…/oauth/github/callback`) |

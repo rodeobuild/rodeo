@@ -1,0 +1,16 @@
+# Rodeo's inbound mail Worker. Cloudflare Email Routing hands each message for
+# rodeo.build to the email() handler in src/index.ts, which posts it to the server.
+name = "rodeo-mail"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+# The server's inbound endpoint.
+INBOUND_URL = "https://rodeo.build/api/mail/inbound"
+# "1" also keeps a copy of stored mail at FORWARD_TO. Off by default.
+ALWAYS_FORWARD = "0"
+
+# Secrets are not in this file. From mail-worker/, logged in to the Cloudflare
+# account that holds the domain:
+#   npx wrangler secret put INBOUND_SECRET   # same value as the server's MAIL_INBOUND_SECRET
+#   npx wrangler secret put FORWARD_TO       # optional: a verified Email Routing destination

@@ -34,6 +34,11 @@ export interface MailApi {
 const cfAccount = env("CLOUDFLARE_ACCOUNT_ID");
 const cfMailToken = env("CLOUDFLARE_EMAIL_TOKEN");
 const mailApi: MailApi | null = cfAccount && cfMailToken ? { accountId: cfAccount, token: cfMailToken } : null;
+/** Cloudflare's API root; MAIL_API_BASE moves it for the tests (ignored in production). */
+const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
+const mailApiBase = !production && env("MAIL_API_BASE") ? env("MAIL_API_BASE")!.replace(/\/+$/, "") : CLOUDFLARE_API;
+/** The admin Mail tab's inbound endpoint secret: Cloudflare's Worker sends it as a bearer token. Null: receiving is off. */
+const mailInboundSecret = env("MAIL_INBOUND_SECRET") ?? null;
 
 function pair(idName: string, secretName: string): OAuthApp | null {
   const clientId = env(idName);
@@ -332,6 +337,16 @@ function fundingFromEnv(): Funding | null {
   };
 }
 
+/**
+ * The domains mail can be sent from and received at (MAIL_DOMAINS, lower case). Defaults to the host
+ * of PUBLIC_URL, so a development server takes "localhost".
+ */
+function mailDomainsFromEnv(): string[] {
+  const listed = envList("MAIL_DOMAINS").map((d) => d.toLowerCase());
+  if (listed.length > 0) return [...new Set(listed)];
+  return [new URL(publicUrl).hostname.toLowerCase()];
+}
+
 const version = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
 
 export const config = {
@@ -359,6 +374,9 @@ export const config = {
   admins: new Set(envList("ADMIN_EMAILS").map((e) => e.toLowerCase())),
   smtpUrl,
   mailApi,
+  mailApiBase,
+  mailInboundSecret,
+  mailDomains: mailDomainsFromEnv(),
   mailFrom: env("MAIL_FROM") ?? "Rodeo <noreply@localhost>",
   /** email sign-in is offered when mail can be sent (the API or SMTP), or in development (the links go to the log) */
   emailAuth: mailApi !== null || smtpUrl !== null || !production,

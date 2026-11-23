@@ -1,0 +1,11 @@
+{
+  "name": "rodeo-mail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rodeo's inbound mail Worker for Cloudflare Email Routing",
+  "scripts": {
+    "check": "npx tsx src/index.check.ts",
+    "deploy": "npx wrangler deploy"
+  }
+}

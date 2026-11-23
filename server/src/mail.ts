@@ -19,7 +19,7 @@ const RETRY_CODES = new Set(["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS", "ECO
 
 let timing: Timing = { connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 };
 let pauses = [500, 1500];
-let apiBase = "https://api.cloudflare.com/client/v4";
+let apiBase = config.mailApiBase;
 
 /** Tests only: where Cloudflare's API is taken to be. */
 export function setMailApiBaseForTests(base: string): void {
@@ -46,6 +46,11 @@ function urlWithTimeouts(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}${extra.join("&")}`;
 }
 
+/** The recipients as a list: `to` as given, one or many. */
+function recipients(to: string | readonly string[]): string[] {
+  return typeof to === "string" ? [to] : [...to];
+}
+
 /** The address with its name hidden, for logs: a***@example.com. */
 function masked(address: string): string {
   const at = address.lastIndexOf("@");
@@ -70,7 +75,10 @@ function describe(err: unknown): string {
 export interface MailMessage {
   /** "Name <address>" or an address; MAIL_FROM when left out */
   from?: string;
-  to: string;
+  /** one address, or several (the admin Mail tab sends to a list) */
+  to: string | readonly string[];
+  /** copies, besides `to` */
+  cc?: readonly string[];
   subject: string;
   text: string;
   html?: string;
@@ -95,7 +103,8 @@ export async function sendMessage(m: MailMessage): Promise<string | null> {
   const url = urlWithTimeouts(config.smtpUrl);
   const message = {
     from: m.from ?? config.mailFrom,
-    to: m.to,
+    to: recipients(m.to),
+    ...(m.cc?.length ? { cc: [...m.cc] } : {}),
     subject: m.subject,
     text: m.text,
     ...(m.html ? { html: m.html } : {}),
@@ -115,7 +124,7 @@ export async function sendMessage(m: MailMessage): Promise<string | null> {
     }
     const again = attempt < MAX_ATTEMPTS && isRetryable(failure);
     console.error(
-      `[mail] attempt ${attempt} of ${MAX_ATTEMPTS} to ${masked(m.to)} failed: ${describe(failure)}${again ? "; trying again" : ""}`,
+      `[mail] attempt ${attempt} of ${MAX_ATTEMPTS} to ${masked(recipients(m.to)[0] ?? "")} failed: ${describe(failure)}${again ? "; trying again" : ""}`,
     );
     if (!again) throw failure;
     await new Promise((resolve) => setTimeout(resolve, pauses[attempt - 1] ?? 0));
@@ -140,7 +149,8 @@ interface ApiAnswer {
 async function sendByApi(api: { accountId: string; token: string }, m: MailMessage): Promise<string | null> {
   const body = {
     from: m.from ?? config.mailFrom,
-    to: [m.to],
+    to: recipients(m.to),
+    ...(m.cc?.length ? { cc: [...m.cc] } : {}),
     subject: m.subject,
     text: m.text,
     ...(m.html ? { html: m.html } : {}),
@@ -170,7 +180,7 @@ async function sendByApi(api: { accountId: string; token: string }, m: MailMessa
       failure = new ApiError(0, err instanceof Error ? err.name : "error");
     }
     const again = attempt < MAX_ATTEMPTS && (failure.status === 0 || failure.status === 429 || failure.status >= 500);
-    console.error(`[mail] attempt ${attempt} of ${MAX_ATTEMPTS} to ${masked(m.to)} failed: ${failure.message}${again ? "; trying again" : ""}`);
+    console.error(`[mail] attempt ${attempt} of ${MAX_ATTEMPTS} to ${masked(recipients(m.to)[0] ?? "")} failed: ${failure.message}${again ? "; trying again" : ""}`);
     if (!again) throw failure;
     await new Promise((resolve) => setTimeout(resolve, pauses[attempt - 1] ?? 0));
   }

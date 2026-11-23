@@ -16,6 +16,7 @@ export type Tab =
   | "gallery"
   | "announcements"
   | "funding"
+  | "mail"
   | "settings"
   | "system";
 

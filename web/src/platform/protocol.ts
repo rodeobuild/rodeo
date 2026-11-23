@@ -941,3 +941,124 @@ export const SAVE_BIG_EVERY_MS = 15 * 60_000;
 
 /** Colours given to collaborators in turn. */
 export const PEER_COLORS: readonly string[] = ["#e5484d", "#30a46c", "#0090ff", "#f76b15", "#8e4ec6", "#12a594", "#d6409f", "#ffc53d"];
+
+// ---- the admin page's Mail tab (server/src/mailbox.ts, web/src/admin/mail.ts) -------------------
+
+/** Where a conversation is filed. "sent" and "starred" are views over these, not folders. */
+export type MailFolder = "inbox" | "archive" | "spam" | "trash";
+/** What the Mail tab's side list shows: a folder, or every conversation with something sent / starred. */
+export type MailView = MailFolder | "sent" | "starred";
+
+export interface MailAddress {
+  /** the display name, "" when the message gave none */
+  readonly name: string;
+  /** lower-case address */
+  readonly address: string;
+}
+
+/** One conversation in the list. */
+export interface MailThread {
+  readonly id: string;
+  readonly subject: string;
+  /** ISO time of its newest message */
+  readonly lastAt: string;
+  readonly folder: MailFolder;
+  /** how many of its messages are unread (only received ones can be) */
+  readonly unread: number;
+  readonly starred: boolean;
+  readonly count: number;
+  /** the start of the newest message's text, one line */
+  readonly snippet: string;
+  /** everyone in it but our own addresses, newest first, at most 4 */
+  readonly participants: readonly MailAddress[];
+  /** it holds at least one attachment */
+  readonly attachments: boolean;
+}
+
+export interface MailThreadPage {
+  readonly threads: readonly MailThread[];
+  /** pass as `before` for the next page; null at the end */
+  readonly next: string | null;
+  /** unread conversations in the inbox, for the tab's badge */
+  readonly unreadInbox: number;
+}
+
+export interface MailAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly mime: string;
+  readonly size: number;
+  /** shown in the body (cid:) rather than listed */
+  readonly inline: boolean;
+}
+
+/** SPF/DKIM/DMARC as Cloudflare Email Routing judged them ("pass", "fail", "none"…; null: not said). */
+export interface MailAuth {
+  readonly spf: string | null;
+  readonly dkim: string | null;
+  readonly dmarc: string | null;
+}
+
+export interface MailMessage {
+  readonly id: string;
+  readonly direction: "in" | "out";
+  /** the RFC 5322 Message-ID with its <>, null when it had none */
+  readonly messageId: string | null;
+  readonly from: MailAddress;
+  readonly to: readonly MailAddress[];
+  readonly cc: readonly MailAddress[];
+  readonly replyTo: MailAddress | null;
+  /** which of our addresses it came in to (the envelope recipient); null for sent ones */
+  readonly deliveredTo: string | null;
+  readonly subject: string;
+  /** ISO time: the Date header, or when it arrived when that is missing or absurd */
+  readonly date: string;
+  /** the plain text (from the HTML when it had only HTML) */
+  readonly text: string;
+  /** the HTML as sent, with cid: images turned into data: URLs; null when it had none. Never sanitised: show it only in a sandboxed frame. */
+  readonly html: string | null;
+  readonly auth: MailAuth | null;
+  readonly unread: boolean;
+  readonly attachments: readonly MailAttachment[];
+}
+
+export interface MailThreadFull {
+  readonly thread: MailThread;
+  /** oldest first */
+  readonly messages: readonly MailMessage[];
+}
+
+/** An address the admin can send from. */
+export interface MailAlias {
+  readonly name: string;
+  readonly address: string;
+}
+
+export interface MailSettings {
+  readonly aliases: readonly MailAlias[];
+  /** added under new messages and replies ("" for none) */
+  readonly signature: string;
+  /** the domains mail can be sent from (MAIL_DOMAINS; PUBLIC_URL's host by default), read only */
+  readonly domains: readonly string[];
+  /** whether the inbound endpoint is set up (MAIL_INBOUND_SECRET), read only */
+  readonly receiving: boolean;
+  /** whether mail can be sent (Cloudflare's API or SMTP), read only */
+  readonly sending: boolean;
+}
+
+export interface MailSend {
+  /** one of the aliases' addresses, or any address at one of the domains */
+  readonly from: string;
+  readonly fromName?: string;
+  readonly to: readonly string[];
+  readonly cc?: readonly string[];
+  readonly subject: string;
+  readonly text: string;
+  /** the message this answers (its id in the mailbox): sets In-Reply-To and References, and files the reply in its conversation */
+  readonly inReplyTo?: string;
+}
+
+export interface MailSent {
+  readonly id: string;
+  readonly threadId: string;
+}
