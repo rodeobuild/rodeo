@@ -26,6 +26,15 @@ const publicUrl = (env("PUBLIC_URL") ?? `http://localhost:${port}`).replace(/\/+
 const dataDir = resolve(env("DATA_DIR") ?? "/data");
 const smtpUrl = env("SMTP_URL") ?? null;
 
+/** Cloudflare Email Sending's HTTPS API, used instead of SMTP_URL when set (Hetzner Cloud blocks outgoing 465 and 25). */
+export interface MailApi {
+  readonly accountId: string;
+  readonly token: string;
+}
+const cfAccount = env("CLOUDFLARE_ACCOUNT_ID");
+const cfMailToken = env("CLOUDFLARE_EMAIL_TOKEN");
+const mailApi: MailApi | null = cfAccount && cfMailToken ? { accountId: cfAccount, token: cfMailToken } : null;
+
 function pair(idName: string, secretName: string): OAuthApp | null {
   const clientId = env(idName);
   const clientSecret = env(secretName);
@@ -349,9 +358,10 @@ export const config = {
   redirectHosts: new Set(envList("REDIRECT_HOSTS").map((h) => h.toLowerCase())),
   admins: new Set(envList("ADMIN_EMAILS").map((e) => e.toLowerCase())),
   smtpUrl,
+  mailApi,
   mailFrom: env("MAIL_FROM") ?? "Rodeo <noreply@localhost>",
-  /** email sign-in is offered with SMTP, or in development (the links go to the log) */
-  emailAuth: smtpUrl !== null || !production,
+  /** email sign-in is offered when mail can be sent (the API or SMTP), or in development (the links go to the log) */
+  emailAuth: mailApi !== null || smtpUrl !== null || !production,
   oauth,
   stripe,
   drives: {

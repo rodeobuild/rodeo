@@ -48,6 +48,7 @@ host with no server.
 | `CLIENT_IP_HEADER` | the header holding the visitor's address, for sign-in rate limits: `cf-connecting-ip` behind Cloudflare. Without it, the last `X-Forwarded-For` hop is used |
 | `ADMIN_EMAILS` | comma-separated: these accounts may use the admin page (`/admin`), set funding and the sponsor, and read feedback and error reports |
 | `REPORTS_TOKEN` | a secret that reads and clears error reports as a bearer token, without an admin's sign-in (`server/scripts/reports.ts`) |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_TOKEN` | send mail through Cloudflare Email Sending's HTTPS API (a token with Email Sending: Edit); used before `SMTP_URL`, and the way to send from hosts that block outgoing SMTP (Hetzner Cloud blocks 25 and 465, and Cloudflare's SMTP takes only 465) |
 | `SMTP_URL`, `MAIL_FROM` | email sign-in links and invites (`smtp://user:pass@host:587`, or `smtps://…:465`). Without them, email sign-in is off in production, and in development the links are printed to the log |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Sign in with Google" (redirect URI `PUBLIC_URL/api/auth/oauth/google/callback`) |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | "Sign in with Microsoft" (common tenant; `…/oauth/microsoft/callback`) |

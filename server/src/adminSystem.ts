@@ -51,7 +51,7 @@ function features(): AdminSystem["features"] {
   };
 
   // off in production until SMTP is set; in development the links go to the log
-  feature("Email sign-in", c.emailAuth, !c.emailAuth ? "Needs SMTP_URL" : c.smtpUrl !== null ? "Sent through SMTP" : "Links go to the log");
+  feature("Email sign-in", c.emailAuth, !c.emailAuth ? "Needs CLOUDFLARE_EMAIL_TOKEN or SMTP_URL" : c.mailApi !== null ? "Sent through Cloudflare's API" : c.smtpUrl !== null ? "Sent through SMTP" : "Links go to the log");
   feature("Google sign-in", c.oauth.google !== undefined, c.oauth.google ? null : "Needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET");
   feature("GitHub sign-in", c.oauth.github !== undefined, c.oauth.github ? null : "Needs GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET");
   feature("Microsoft sign-in", c.oauth.microsoft !== undefined, c.oauth.microsoft ? null : "Needs MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET");

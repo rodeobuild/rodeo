@@ -1,11 +1,13 @@
 // Tests for email delivery retries (src/mail.ts): node scripts/mail-test.ts
 // A fake SMTP server on a loopback port plays each case: a server that never greets, one that
-// hangs on the first connection only, and one that refuses the recipient.
+// hangs on the first connection only, and one that refuses the recipient. A fake Cloudflare Email
+// Sending API then plays a busy answer, a refused request, a bounce, and the API taking precedence.
 
 import assert from "node:assert/strict";
+import { createServer as createHttpServer, type IncomingMessage } from "node:http";
 import { createServer, type Server, type Socket } from "node:net";
 import { config } from "../src/config.ts";
-import { sendMail, setMailTimingForTests } from "../src/mail.ts";
+import { sendMail, sendMessage, setMailApiBaseForTests, setMailTimingForTests } from "../src/mail.ts";
 
 type Plan = "hang" | "accept" | "refuse-recipient";
 
@@ -162,6 +164,83 @@ setMailTimingForTests({ connectionTimeout: 300, greetingTimeout: 300, socketTime
   assert.ok(elapsed < 3000, `bounded time (${elapsed} ms)`);
   await fake.close();
   console.log(`ok (d) three hanging attempts give up after 3 connections (${elapsed} ms)`);
+}
+
+// ---- Cloudflare Email Sending's HTTPS API -------------------------------------------------------
+
+interface ApiCall {
+  path: string;
+  auth: string | undefined;
+  body: Record<string, unknown>;
+}
+
+/** A fake of Cloudflare's send endpoint: answer k (from 1) is `answers(k)`, [status, JSON]. */
+async function fakeApi(answers: (n: number) => [number, unknown]): Promise<{ base: string; calls: ApiCall[]; close(): Promise<void> }> {
+  const calls: ApiCall[] = [];
+  const server = createHttpServer(async (req: IncomingMessage, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += String(chunk);
+    calls.push({ path: req.url ?? "", auth: req.headers.authorization, body: JSON.parse(raw) as Record<string, unknown> });
+    const [status, json] = answers(calls.length);
+    res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(json));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  return { base: `http://127.0.0.1:${port}/client/v4`, calls, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
+}
+
+const sentOk = (id: string): [number, unknown] => [200, { success: true, errors: [], result: { message_id: id, delivered: [], queued: [RECIPIENT], permanent_bounces: [], suppressed_recipients: [] } }];
+const mutable = config as { mailApi: { accountId: string; token: string } | null; smtpUrl: string | null };
+
+// (e) Busy (503) first, then sent: two requests, the API taking precedence over SMTP_URL, the fields mapped.
+{
+  const api = await fakeApi((n) => (n === 1 ? [503, { success: false, errors: [{ code: 1, message: "busy" }] }] : sentOk("<m1@rodeo.test>")));
+  setMailApiBaseForTests(api.base);
+  mutable.mailApi = { accountId: "acc123", token: "tok-test" };
+  mutable.smtpUrl = "smtp://127.0.0.1:9?ignoreTLS=true";
+  const { result, lines } = await captureLogs(() =>
+    sendMessage({ from: "Cal <cal@rodeo.test>", to: RECIPIENT, subject: "Re: hi", text: "Hello", replyTo: "cal@rodeo.test", headers: { "In-Reply-To": "<a@x>", References: "<a@x>" } }),
+  );
+  assert.equal(result, "<m1@rodeo.test>", "the Message-ID comes back");
+  assert.equal(api.calls.length, 2, "retried once after 503");
+  const call = api.calls[1]!;
+  assert.equal(call.path, "/client/v4/accounts/acc123/email/sending/send");
+  assert.equal(call.auth, "Bearer tok-test");
+  assert.deepEqual(call.body, { from: "Cal <cal@rodeo.test>", to: [RECIPIENT], subject: "Re: hi", text: "Hello", reply_to: "cal@rodeo.test", headers: { "In-Reply-To": "<a@x>", References: "<a@x>" } });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!.text, /attempt 1 of 3 to r\*\*\*@example\.com failed: Cloudflare Email Sending answered 503: 1 busy; trying again$/);
+  await api.close();
+  console.log("ok (e) the API is used before SMTP, a 503 is retried, fields map to Cloudflare's");
+}
+
+// (f) A refused request (400) is not retried; sendMail fills in MAIL_FROM and leaves out reply_to.
+{
+  const api = await fakeApi(() => [400, { success: false, errors: [{ code: 10001, message: "email.sending.error.invalid_request_schema" }] }]);
+  setMailApiBaseForTests(api.base);
+  const { result, lines } = await captureLogs(send);
+  assert.ok(result instanceof Error && /answered 400: 10001 email\.sending\.error\.invalid_request_schema/.test(result.message));
+  assert.equal(api.calls.length, 1, "no retry");
+  assert.equal(api.calls[0]!.body.from, config.mailFrom);
+  assert.ok(!("reply_to" in api.calls[0]!.body) && !("headers" in api.calls[0]!.body));
+  assert.equal(lines.length, 1);
+  await api.close();
+  console.log("ok (f) a 400 is not retried; MAIL_FROM is the default sender");
+}
+
+// (g) A bounced address is a failure, not retried; an unreachable API is tried three times.
+{
+  const api = await fakeApi(() => [200, { success: true, errors: [], result: { message_id: "<b@x>", permanent_bounces: [RECIPIENT], suppressed_recipients: [] } }]);
+  setMailApiBaseForTests(api.base);
+  const bounced = await captureLogs(send);
+  assert.ok(bounced.result instanceof Error && /bounced/.test(bounced.result.message));
+  assert.equal(api.calls.length, 1);
+  await api.close();
+  setMailApiBaseForTests(api.base); // closed: nothing listens there now
+  const down = await captureLogs(send);
+  assert.ok(down.result instanceof Error && /unreachable/.test(down.result.message));
+  assert.equal(down.lines.length, 3, "three attempts");
+  console.log("ok (g) a bounce fails at once; an unreachable API is tried three times");
 }
 
 console.log("mail tests passed");
