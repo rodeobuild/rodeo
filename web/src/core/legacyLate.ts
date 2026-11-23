@@ -139,7 +139,7 @@ const LATER_FIELD = [1, 0, 1, 0];
 const SYMBOL_DEF_SIZE = 258;
 const PLUGIN_SIZE = 272;
 
-function symbolDefinitionBody(body: Uint8Array): Uint8Array | null {
+export function symbolDefinitionBody(body: Uint8Array): Uint8Array | null {
   const slotted = withSlot(body);
   if (!slotted || body.length !== SYMBOL_DEF_SIZE) return slotted;
   const out = new Uint8Array(slotted.length + 4);
@@ -148,7 +148,7 @@ function symbolDefinitionBody(body: Uint8Array): Uint8Array | null {
   return out;
 }
 
-function pluginBody(body: Uint8Array): Uint8Array | null {
+export function pluginBody(body: Uint8Array): Uint8Array | null {
   const slotted = withSlot(body);
   if (!slotted || body.length !== PLUGIN_SIZE) return slotted;
   const out = withZeros(slotted, slotted.length - 4, 4);
@@ -236,6 +236,21 @@ const DASH_NAME = 260;
 const LINE_TYPE_SIZE = 18;
 const LINE_TYPE_NEW = 274;
 
+/** The dashes of a dash table (30) of 2016 and 2017, by their line type's name. */
+function dashTable(body: Uint8Array): Map<string, Uint8Array> {
+  const out = new Map<string, Uint8Array>();
+  if (body.length < 2) return out;
+  const n = Math.min(u16(body, 0), Math.floor((body.length - 2) / DASH_ENTRY));
+  for (let k = 0; k < n; k++) {
+    const at = 2 + DASH_ENTRY * k;
+    out.set(slotText(body, at + DASH_NAME, DASH_ENTRY - DASH_NAME - 1), body.subarray(at, at + DASH_DATA));
+  }
+  return out;
+}
+
+/** the dashes at the start of a dash table entry, as 2018+ keeps them in the line type */
+export const DASH_DATA_SIZE = DASH_DATA;
+
 /** One record of a drawing before 2018, as lineTypeBodies needs it. */
 export interface OlderRecord {
   readonly type: number;
@@ -252,17 +267,12 @@ export interface OlderRecord {
  * the same 18 bytes, and its entry of the same name). A line type the table doesn't name gets no
  * body, and is left out.
  */
-export function lineTypeBodies(recs: Iterable<OlderRecord>, names: ReadonlyMap<number, string>): Map<OlderRecord, Uint8Array> {
+export function lineTypeBodies(recs: Iterable<OlderRecord>, names: ReadonlyMap<number, string>, readDashes: (table: Uint8Array) => Map<string, Uint8Array> = dashTable): Map<OlderRecord, Uint8Array> {
   const dashes = new Map<string, Uint8Array>();
   const types: OlderRecord[] = [];
   for (const r of recs) {
     if (r.type === 96 && r.body.length === LINE_TYPE_SIZE) types.push(r);
-    if (r.type !== 30 || r.body.length < 2) continue;
-    const n = Math.min(u16(r.body, 0), Math.floor((r.body.length - 2) / DASH_ENTRY));
-    for (let k = 0; k < n; k++) {
-      const at = 2 + DASH_ENTRY * k;
-      dashes.set(slotText(r.body, at + DASH_NAME, DASH_ENTRY - DASH_NAME - 1), r.body.subarray(at, at + DASH_DATA));
-    }
+    if (r.type === 30) for (const [name, dash] of readDashes(r.body)) dashes.set(name, dash);
   }
   const out = new Map<OlderRecord, Uint8Array>();
   for (const r of types) {

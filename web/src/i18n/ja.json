@@ -16783,6 +16783,7 @@
   "{0} is from Vectorworks {1}: its 2D, extrudes and sweeps came in, its other 3D objects and images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0}はVectorworks {1}のファイルです。2D、押し出し、スイープは読み込まれましたが、その他の3Dオブジェクトと画像はまだ読み取れません。保存すると現在の形式で新しいファイルが作られるので、元のファイルはそのまま残ります。",
   "{0} is in an older Vectorworks format: its 2D came in, most of its 3D objects and its images aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0}は古いVectorworks形式のファイルです。2Dは読み込まれましたが、3Dオブジェクトの大部分と画像はまだ読み取れません。保存すると現在の形式で新しいファイルが作られるので、元のファイルはそのまま残ります。",
   "{0} is a Vectorworks {1} file: its 2D and 3D came in, its images, worksheets, textures and the data attached to objects aren't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0}はVectorworks {1}のファイルです。2Dと3Dは読み込まれましたが、画像、ワークシート、テクスチャ、オブジェクトに付いたデータはまだ読み取れません。保存すると現在の形式で新しいファイルが作られるので、元のファイルはそのまま残ります。",
+  "{0} is a Vectorworks {1} file: its 2D and 3D came in, the data attached to objects isn't read yet. Saving makes a new file in the current format, so the original stays as it is.": "{0}はVectorworks {1}のファイルです。2Dと3Dは読み込まれましたが、オブジェクトに付いたデータはまだ読み取れません。保存すると現在の形式で新しいファイルが作られるので、元のファイルはそのまま残ります。",
   "{0} is in the row below the input: move it to loop the input.": "{0}は入力の下の行にあります。入力をループさせるには移動してください。",
   "{0} is in the script palette {1}: double-click it to run it.": "{0}はスクリプトパレット「{1}」にあります。ダブルクリックで実行します。",
   "{0} is larger than {1}": "{0}が{1}を超えています",

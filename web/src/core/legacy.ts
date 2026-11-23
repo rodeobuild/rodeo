@@ -45,6 +45,7 @@
 
 import { blankHeader } from "./blank.ts";
 import { docBody, nameEntries } from "./legacyDoc.ts";
+import { earlyBody, earlyDashes, earlyNames } from "./legacyEarly.ts";
 import { lateBody, lineTypeBodies } from "./legacyLate.ts";
 import { midBody, midDirect } from "./legacyMid.ts";
 import { shapeBody, shapeType } from "./legacyShapes.ts";
@@ -104,9 +105,10 @@ export function legacyStart(first: Uint8Array): LegacyLayout | null {
 /**
  * Which records a converted body held, by the year they were measured in: "2013" its narrow ones
  * (2D only comes in), "2016" 0x38-byte headers (2D, extrudes and sweeps), "2017" 0x48-byte headers
- * (2D and 3D), "2018" whole 2018+ records without compression (everything, as they are).
+ * (2D and 3D), "2019" 0x48-byte headers over UTF-16 text, as Vectorworks 2018 and 2019 save (2D
+ * and 3D), "2018" whole 2018+ records without compression (everything, as they are).
  */
-export type LegacyKind = "2013" | "2016" | "2017" | "2018";
+export type LegacyKind = "2013" | "2016" | "2017" | "2019" | "2018";
 
 /**
  * The whole body as 2018+ records, when it is the layout `layout` from its first record to its
@@ -186,7 +188,7 @@ function longRecords(body: Uint8Array): { records: Uint8Array[]; kind: LegacyKin
   const head = recs && longHead(recs);
   if (!recs || head === null || recs.some((r) => r.length < head)) return null;
   if (head === MID_HEAD) return { records: convert(MID, recs), kind: "2016" };
-  if (head === LATE_HEAD) return { records: convert(LATE, recs), kind: "2017" };
+  if (head === LATE_HEAD) return isEarly(recs) ? { records: convert(EARLY, recs), kind: "2019" } : { records: convert(LATE, recs), kind: "2017" };
   return { records: recs.map((r) => r.slice()), kind: "2018" };
 }
 
@@ -240,15 +242,15 @@ const NARROW: OldLayout = {
  * The 2018+ bodies of the line types (96) of a drawing of u64-sized records under `head`-byte
  * headers, by their records (legacyLate.ts lineTypeBodies): the names come from its name table.
  */
-function lineTypes(head: number, recs: readonly Uint8Array[]): Map<Uint8Array, Uint8Array> {
+function lineTypes(head: number, recs: readonly Uint8Array[], early = false): Map<Uint8Array, Uint8Array> {
   const out = new Map<Uint8Array, Uint8Array>();
   const mine = recs.filter((r) => r[0x19] === 96 || r[0x19] === 30);
   if (!mine.some((r) => r[0x19] === 96)) return out;
   const table = recs.find((r) => r[0x19] === 55);
   const names = new Map<number, string>();
-  if (table) for (const e of nameEntries(table.subarray(head))) names.set(e.index, e.name);
+  if (table) for (const e of (early ? earlyNames(table.subarray(head)) : nameEntries(table.subarray(head))) ?? []) names.set(e.index, e.name);
   const older = mine.map((r) => ({ type: r[0x19], name: r[0x1a] | (r[0x1b] << 8), body: r.subarray(head) }));
-  const bodies = lineTypeBodies(older, names);
+  const bodies = early ? lineTypeBodies(older, names, earlyDashes) : lineTypeBodies(older, names);
   older.forEach((o, i) => {
     const made = bodies.get(o);
     if (made) out.set(mine[i], made);
@@ -288,6 +290,32 @@ const LATE: OldLayout = {
   reader: (recs) => {
     const lines = lineTypes(LATE_HEAD, recs);
     return (type, rec) => lines.get(rec) ?? lateBody(type, rec.subarray(LATE_HEAD));
+  },
+  same: NONE,
+  leftOut: NONE,
+  widen: (rec, index, body) => lengthen(LATE_HEAD, rec, index, body),
+};
+
+/**
+ * Whether 0x48-byte records are Vectorworks 2018/2019's (legacyEarly.ts) rather than the 2017
+ * format: their name table reads as UTF-16 names to its end. A 2017 table (2013's entries, 8-bit
+ * names in fixed slots) never does: its count is followed by entries, not the zeros an index list
+ * of 12-byte entries and UTF-16 lengths need.
+ */
+function isEarly(recs: readonly Uint8Array[]): boolean {
+  const table = recs.find((r) => r[0x19] === 55);
+  return table !== undefined && earlyNames(table.subarray(LATE_HEAD)) !== null;
+}
+
+/** Vectorworks 2018 and 2019 records: legacyEarly.ts names every type it keeps, converts or leaves out. */
+const EARLY: OldLayout = {
+  head: LATE_HEAD,
+  type: (rec) => rec[0x19],
+  owner: (rec) => u64(rec, 0x26),
+  last: (rec) => u64(rec, 0x08) === 0n,
+  reader: (recs) => {
+    const lines = lineTypes(LATE_HEAD, recs, true);
+    return (type, rec) => lines.get(rec) ?? earlyBody(type, rec.subarray(LATE_HEAD));
   },
   same: NONE,
   leftOut: NONE,

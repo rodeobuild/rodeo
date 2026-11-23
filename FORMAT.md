@@ -263,6 +263,49 @@ layers (5 design layers, 14 sheets with their viewports, sections and
 dimensions) to the same SVG, byte for byte, and build the same 3D model (80
 meshes, 50,852 triangles, identical).
 
+### 1.4 The Vectorworks 2018 and 2019 format (core/legacy.ts, core/legacyEarly.ts)
+
+Vectorworks 2018 and 2019 save the record stream uncompressed, under 2017's
+0x48-byte headers (§1.3): u64 sizes, the GUID at +0x38, the body at +0x48, a
+terminator of 0x50 bytes. Snappy chunks and the 0x50-byte header of §2 came
+later. So a file these versions saved isn't the "2018+" layout openvwx was
+written against, though its bodies are close to 2017's.
+
+Measured on four public drawings a newer Vectorworks saved twice, for 2018
+(header `VectorWorks 195`, build 679396) and for 2022 (the layout of §2):
+243,964 records pair by GUID. Checked against two files Vectorworks 2019
+saved itself, which read the
+same way.
+
+**Told from 2017** by the name table: 2017's is §1.1's (8-bit names in fixed
+entries); this one is UTF-16, and so is all its other text (layers, the font
+list, record formats, viewports), which therefore needs no conversion.
+
+**Bodies, 2018/2019 against 2018+** (body offsets, as §1.3):
+
+| Type | 2018/19 | 2018+ | Difference | Pairs |
+|---|---|---|---|---|
+| line (2), loci (9, 17), class (94), aux (76), palette (80), font list (74), record format (47), preview image (119), texture (97), gradient (120), 26–28, 33, 39, 44, 49, 59, 61, 62, 70, 77, 79, 91, 93, 106, 108, 109, 112, 115, 121, 123–125 | | same | identical, or differing only in bytes openvwx doesn't read: attribute byte +0x05 (0 here), stale pointers and padding, palette colours (2022 has slightly different ones), cell flags | 249; 15,450; 115; 124,097; … |
+| rectangle (3), polygon (5), arc (6), group (11), image (14), worksheet (18), polyline (21), extrude (24), layer (31), solids (84), lists 51, 54, 56, 57, 60, 65, 78, 92 | n | n + 4 | no u32 material slot at +0x38 | 159; 76; 50,358; 18,332; 1,198; 4; 11,326; 46; 14; 4; … |
+| text (10) | n | n + 4 + 12 r | the slot; u16 line count at +0xac, u16 style-run count r at +0xae, the line table from +0xb4, then one 26-byte block per run whose first four bytes are two u16 point sizes, where 2018+ has two f64 (2022 keeps them unrounded, 7.08 for 7) | 20,377 (20,376 exact but for the sizes) |
+| 3D polygon (25) | n | n + 6 | the slot; the u16 corner count at +0x3a (after the closed byte) moves to +0x7c, just before the corners | 42 |
+| hatch (66) | n | n | u16 line count at +0x04 and ground colour at +0x06, the other way round | 8 |
+| name table (55) | | | u32 count at +0x08, then from +0x18 count 12-byte entries (u32 index, 8 zero bytes), 4 bytes, then the names in the same order as `u32 len + UTF-16` | 4 (every name the 2022 file's under the same index) |
+| symbol definition (16), plug-in object (86) | 258, 272 | | as §1.3; 2022 has 90 and 98 more bytes, but openvwx reads both shapes | 892; 3,666 |
+| line type (96) and dash table (30) | 18 | 274 | as §1.3, but the dash table's entries are 268 bytes and the names follow them as `u32 len + UTF-16` | 14 |
+| 3D body (114) | | | 2017's layout (§1.3); 2022 drops the cached body, so the pairs can't compare it. The converted bodies build the same 3D (95 meshes, 688 triangles) as the 2022 file | 30 |
+| record data (48), slab and wall components and styles (69, 102, 107, 127), profile caches (42) | | | laid out differently; not worked out | |
+
+**Not in the pairs:** viewports (122), slabs (71), meshes (40, 41), NURBS
+(111), dimensions. One viewport (Vectorworks 2019) is 2018+'s without the
+slot: its scale, view matrix and layer and class list land where §7 has
+them. A slab (186 bytes) and mesh faces fit §1.3's rules by their sizes.
+
+**Checked as drawn.** The converted 2018 files export 13 layers to SVG: 9
+the same as the 2022 file's byte for byte, the rest differing only where
+Vectorworks 2022 itself changed the drawing (palette colours, Marionette
+results it computed again).
+
 ## 2. Record stream
 
 The stream is a flat sequence of records, laid end to end with no gaps

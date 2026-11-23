@@ -22,6 +22,17 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-23T12:00:00Z",
+    "vectorworks-2018-2019",
+    "Vectorworks 2018 and 2019 drawings open",
+    `Files saved by Vectorworks 2018 and 2019 open. Rodeo refused them before, with a message about the file's records.
+- The whole drawing comes in, 2D and 3D: lines, shapes, text, dimensions, dashed lines, hatches, groups, symbols, plug-in objects as drawn, extrudes and solids, images, worksheets, layers, sheets with their viewports, and classes.
+- That includes a file a newer Vectorworks exported for 2018.
+- The data attached to objects (record fields, plug-in settings) and wall and slab styles aren't read yet.
+- Saving writes a new file in the current Vectorworks format, so the original stays as it was.`,
+    "plan3d",
+  ),
+  release(
     "2026-11-22T12:02:00Z",
     "sheets-viewports",
     "Page Setup on new sheets, and viewports that copy",

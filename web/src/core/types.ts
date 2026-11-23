@@ -598,9 +598,10 @@ export interface DocumentInfo {
   /**
    * the records a file from before Vectorworks 2018 held, when it came in converted to the current
    * format (legacy.ts): "2013" (its 2D came in), "2016" (its 2D, extrudes and sweeps), "2017" (its
-   * 2D and 3D) or "2018" (current records without compression: everything); null for a file read as it is
+   * 2D and 3D), "2019" (Vectorworks 2018 and 2019's own format: its 2D and 3D) or "2018" (current
+   * records without compression: everything); null for a file read as it is
    */
-  converted: "2013" | "2016" | "2017" | "2018" | null;
+  converted: "2013" | "2016" | "2017" | "2019" | "2018" | null;
 }
 
 export type ChangeKind = "objects" | "layers" | "classes" | "all";
