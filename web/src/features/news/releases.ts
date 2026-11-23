@@ -22,7 +22,7 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
-    "2026-11-22T12:03:00Z",
+    "2026-11-23T12:09:00Z",
     "doors-windows-any-wall",
     "Doors and windows in any wall",
     `The Door and Window tools now cut their own openings, so a door or window of any size goes into any straight wall.
@@ -35,7 +35,7 @@ export const RELEASES: readonly Release[] = [
     "door",
   ),
   release(
-    "2026-11-23T00:00:00Z",
+    "2026-11-23T12:08:00Z",
     "space-objects",
     "Rooms are Space objects, with finishes and a 3D volume",
     `A room is now the same Space object Vectorworks makes, so Rodeo reads the rooms in your Vectorworks drawings and shows their data in Object Info.
@@ -51,8 +51,7 @@ export const RELEASES: readonly Release[] = [
     "walls",
   ),
   release(
-    "2026-11-23T00:00:00Z",
-    "2026-11-23T12:00:00Z",
+    "2026-11-23T12:07:00Z",
     "live-schedules",
     "Schedules that follow the drawing",
     `Door, window and room schedules now keep themselves up to date.
@@ -66,7 +65,7 @@ export const RELEASES: readonly Release[] = [
     "records",
   ),
   release(
-    "2026-11-23T00:00:00Z",
+    "2026-11-23T12:06:00Z",
     "texture-mapping",
     "Texture mapping, and textures you can make and edit",
     `Textures are laid the way each object says, and can be moved on a face by hand.
@@ -83,8 +82,7 @@ export const RELEASES: readonly Release[] = [
     "paint",
   ),
   release(
-    "2026-11-23T00:00:00Z",
-    "2026-11-22T12:04:00Z",
+    "2026-11-23T12:05:00Z",
     "marionette-and-drawing-scripts",
     "Marionette networks and a drawing's own scripts, to read",
     `Rodeo now reads two kinds of script a Vectorworks drawing holds.
@@ -95,7 +93,7 @@ export const RELEASES: readonly Release[] = [
     "code",
   ),
   release(
-    "2026-11-22T12:03:00Z",
+    "2026-11-23T12:04:00Z",
     "more-vectorworks-plug-ins",
     "Many more Vectorworks plug-ins and scripts run",
     `Rodeo knows more than twice as many of Vectorworks' script calls: about 1,160, up from 490. Of 141 public plug-ins and scripts we tried that don't check for a Vectorworks licence, 35 ran to the end before and 89 do now.
@@ -109,7 +107,7 @@ export const RELEASES: readonly Release[] = [
     "plug",
   ),
   release(
-    "2026-11-23T00:00:00Z",
+    "2026-11-23T12:03:00Z",
     "desktop-app",
     "Rodeo as a desktop app",
     `The whole editor in its own window, for macOS, Windows and Linux, with no browser or account needed.
