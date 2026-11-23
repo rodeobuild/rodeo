@@ -19733,5 +19733,6 @@
   "the file (stopped when the form closed)": "le fichier (arrêté à la fermeture du formulaire)",
   "the pictures ({0})": "les images ({0})",
   "{0} (didn't convert)": "{0} (non converti)",
-  "{0} preview": "Aperçu {0}"
+  "{0} preview": "Aperçu {0}",
+  "This page in your language": "Cette page en français"
 }

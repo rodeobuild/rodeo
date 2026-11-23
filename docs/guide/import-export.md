@@ -442,6 +442,8 @@ It reads Vectorworks, Revit projects, Archicad, DWG, DXF, PDF, EMF, IFC, SketchU
 
 The conversion runs in your browser, so the file is never uploaded. A preview shows what came in, in 3D or in plan, with its units, layers, objects, size and what was left out.
 
+The converter's pages are in each of Rodeo's languages: rodeo.build/de/convert in German, /ja/convert in Japanese and so on, with the same for each conversion (/fr/convert/dwg-to-pdf) and each file viewer (/es/viewer/rvt). A list under each page links to it in the other languages, and **File › Convert Files…** opens the page in the interface's language.
+
 Each file's row shows two small pictures: the file as it came in, and the converted file for the format picked. Rodeo makes the second one by reading the converted file back in, so it is also a check that the file opens: when it doesn't, the picture says so in red. Under them a line compares the two (objects and layers before and after). Click either picture to see it large in the preview, where **Original** and **Converted** switch between them, each in 3D or in plan. SVG and PNG files are shown as they are; EPS files and converted files over 300 MB get no picture.
 
 ### Reporting a converted file

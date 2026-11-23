@@ -22,6 +22,16 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-23T12:12:00Z",
+    "convert-pages-languages",
+    "The converter in your language",
+    `The converter's and file viewers' pages are now in all 17 of Rodeo's languages, at addresses such as rodeo.build/de/convert and /ja/viewer/rvt.
+- Each conversion's page and each viewer's page is translated: the steps, what comes across, the limits and the questions.
+- The converter starts in the page's language, and a list under each page links to it in the other languages.
+- File › Convert Files… opens the converter in the interface's language, and an English page links to the page in yours.`,
+    "language",
+  ),
+  release(
     "2026-11-23T12:11:00Z",
     "user-guide-on-site",
     "The user guide on rodeo.build",

@@ -20,13 +20,16 @@
         document.documentElement.dataset.theme = "dark";
       }
       try {
-        var lang = localStorage.getItem("openvwx.language");
+        // a page in another language (/de/convert) has its language, set by the server, and keeps it
+        var lang = document.documentElement.getAttribute("data-page-lang") || localStorage.getItem("openvwx.language");
         var tags = navigator.languages || [navigator.language];
         for (var i = 0; lang === null && i < tags.length; i++) {
           var known = /^(en|id|de|es|fr|it|nl|pl|pt|vi|tr|ru|uk|ja|zh|ko)\b/i.exec(tags[i]);
           if (known) lang = known[1].toLowerCase();
         }
-        if (lang && lang !== "en") document.documentElement.classList.add("i18n-pending");
+        // the server wrote that page's text in its language, so only the converter waits for its words
+        var pinned = document.documentElement.hasAttribute("data-page-lang");
+        if (lang && lang !== "en") document.documentElement.classList.add(pinned ? "i18n-app-pending" : "i18n-pending");
       } catch {
         // storage blocked: the browser's language, once i18n.ts has read it
       }
@@ -37,8 +40,10 @@
   <body>
     <main class="cv">
       <header class="cv-top">
+        <!-- convert:top -->
         <a class="cv-brand" href="/"><img src="/icon.svg" alt="" width="24" height="24" />Rodeo</a>
         <a class="cv-top-link" href="/">Open the editor</a>
+        <!-- /convert:top -->
       </header>
       <section class="cv-hero">
         <!-- convert:intro -->
@@ -46,7 +51,7 @@
         <p class="cv-lede">Drop Revit, AutoCAD, SketchUp, Rhino, Archicad, IFC or Vectorworks files here and download IFC, PDF, DXF, glTF, OBJ, STL, SketchUp and more. Rodeo converts them in your browser, so your files never leave your computer.</p>
         <!-- /convert:intro -->
         <div id="cv-app"></div>
-        <noscript><p class="cv-note">The converter needs JavaScript: it runs in your browser so your files stay on your computer.</p></noscript>
+        <noscript><!-- convert:noscript --><p class="cv-note">The converter needs JavaScript: it runs in your browser so your files stay on your computer.</p><!-- /convert:noscript --></noscript>
       </section>
       <!-- convert:about -->
       <!-- /convert:about -->
@@ -56,13 +61,13 @@
         <!-- /convert:links -->
       </section>
       <section class="cv-section">
-        <h2>What Rodeo reads and writes</h2>
         <!-- convert:formats -->
+        <h2>What Rodeo reads and writes</h2>
         <!-- /convert:formats -->
       </section>
       <section class="cv-section cv-faq">
-        <h2>Questions</h2>
         <!-- convert:faq -->
+        <h2>Questions</h2>
         <details>
           <summary>Are my files uploaded?</summary>
           <p>No. The converter runs in your browser: your files are read and written on your computer and never sent anywhere.</p>
@@ -86,9 +91,11 @@
         <!-- /convert:faq -->
       </section>
       <footer class="cv-foot">
+        <!-- convert:foot -->
         <p>On the command line: <code class="cv-cli">npx @rodeo.build/cli convert model.rvt model.ifc</code></p>
         <p>Rodeo is free and open source (AGPL-3.0): <a href="https://github.com/rodeobuild/rodeo">github.com/rodeobuild/rodeo</a>.</p>
         <p class="cv-note">Revit and AutoCAD are trademarks of Autodesk, Inc.; SketchUp of Trimble Inc.; Rhino of Robert McNeel &amp; Associates; Archicad of Graphisoft SE; Vectorworks of Vectorworks, Inc. Rodeo is not affiliated with any of them.</p>
+        <!-- /convert:foot -->
       </footer>
     </main>
     <script type="module" src="./src/convert/page/main.ts"></script>

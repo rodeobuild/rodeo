@@ -19606,5 +19606,6 @@
   "the file (stopped when the form closed)": "файл (остановлено при закрытии формы)",
   "the pictures ({0})": "изображения ({0})",
   "{0} (didn't convert)": "{0} (не преобразован)",
-  "{0} preview": "Предпросмотр: {0}"
+  "{0} preview": "Предпросмотр: {0}",
+  "This page in your language": "Эта страница на русском"
 }

@@ -19783,5 +19783,6 @@
   "the file (stopped when the form closed)": "dosya (form kapanınca durdu)",
   "the pictures ({0})": "görüntüler ({0})",
   "{0} (didn't convert)": "{0} (dönüştürülemedi)",
-  "{0} preview": "{0} önizlemesi"
+  "{0} preview": "{0} önizlemesi",
+  "This page in your language": "Bu sayfanın Türkçesi"
 }

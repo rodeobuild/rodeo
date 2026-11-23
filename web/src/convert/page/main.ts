@@ -5,7 +5,7 @@
 // downloads and its problems; the file picked also shows a preview and its facts.
 
 import { h } from "../../app/dom.ts";
-import { startLanguage } from "../../app/i18n.ts";
+import { language, startLanguage } from "../../app/i18n.ts";
 import { canvasBlob, MAX_PNG_SIDE, svgToPng } from "../../export/png.ts";
 import { zipFiles } from "../../export/zip.ts";
 import { summaryLine } from "../describe.ts";
@@ -17,7 +17,21 @@ import { type ConvertCase, renderCheck } from "./report.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
 // the interface in the language chosen in the editor (or the browser's), as the page builds
-void startLanguage();
+void startLanguage().then(offerOwnLanguage);
+
+/**
+ * On an English page, for a visitor whose interface is in another language: a link to this page in that
+ * language (rodeo.build/de/convert/…), beside the editor's. A page in another language already is one.
+ */
+function offerOwnLanguage(): void {
+  const lang = language();
+  if (lang.code === "en" || document.documentElement.dataset.pageLang) return;
+  if (!/^\/(convert|viewer)(\/|$)/.test(location.pathname)) return;
+  const editor = document.querySelector(".cv-top .cv-top-link");
+  if (!editor) return;
+  const href = `/${lang.code.toLowerCase()}${location.pathname}${location.search}`;
+  editor.before(h("a", { cls: "cv-top-link cv-own-lang", text: "This page in your language", attrs: { href, hreflang: lang.code } }));
+}
 
 /** The localStorage key of the format picked last. */
 const CHOICE_KEY = "openvwx.convert.to";
@@ -1124,9 +1138,10 @@ function download(url: string, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-/** The format the page starts on: the "to" of /convert/<from>-to-<to>, else ?to=, else the one picked last time, else PDF. */
+/** The format the page starts on: the "to" of /convert/<from>-to-<to> (in any language), else ?to=, else the one picked last time, else PDF. */
 function startFormat(): string {
-  const fromPath = /^\/convert\/[a-z0-9]+-to-([a-z0-9]+)\/?$/.exec(location.pathname)?.[1];
+  // the pages in other languages start with theirs: /de/convert/dwg-to-pdf, /pt-br/convert/…
+  const fromPath = /^(?:\/[a-z]{2}(?:-[a-z]{2})?)?\/convert\/[a-z0-9]+-to-([a-z0-9]+)\/?$/.exec(location.pathname)?.[1];
   const fromQuery = new URLSearchParams(location.search).get("to");
   let saved: string | null = null;
   try {

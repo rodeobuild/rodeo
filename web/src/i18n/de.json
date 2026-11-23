@@ -19754,5 +19754,6 @@
   "the file (stopped when the form closed)": "die Datei (gestoppt, als das Formular geschlossen wurde)",
   "the pictures ({0})": "die Bilder ({0})",
   "{0} (didn't convert)": "{0} (nicht konvertiert)",
-  "{0} preview": "{0}-Vorschau"
+  "{0} preview": "{0}-Vorschau",
+  "This page in your language": "Diese Seite auf Deutsch"
 }

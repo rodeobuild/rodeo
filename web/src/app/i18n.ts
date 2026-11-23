@@ -56,8 +56,8 @@ const KEY = "openvwx.language";
 /** what a text is translated to, for each attribute translated as text is */
 const ATTRS = ["title", "placeholder", "aria-label"] as const;
 
-/** where text is a person's own, not the interface's */
-const KEEP = '[translate="no"], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], code, pre, script, style, textarea';
+/** where text is a person's own, not the interface's, or a page's own words (data-i18n-keep: the converter's pages, which the server writes in their language) */
+const KEEP = '[translate="no"], [data-i18n-keep], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], code, pre, script, style, textarea';
 
 interface Pattern {
   readonly re: RegExp;
@@ -124,8 +124,17 @@ export function language(): Language {
   return current;
 }
 
+/**
+ * The language a page's address gives (rodeo.build/de/convert): the server marks the page with it, and
+ * the visit follows it without keeping it as the chosen language.
+ */
+function pageLanguage(): string | null {
+  const code = typeof document === "undefined" ? undefined : document.documentElement.dataset.pageLang;
+  return code && LANGUAGES.some((l) => l.code === code) ? code : null;
+}
+
 function chosen(): Language {
-  const code = stored() ?? browserLanguage();
+  const code = pageLanguage() ?? stored() ?? browserLanguage();
   return LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
 }
 
@@ -522,8 +531,8 @@ export async function startLanguage(): Promise<void> {
   } catch (err) {
     console.warn("openvwx: interface language not loaded", err);
   } finally {
-    // index.html hid the page while the language loaded
-    document.documentElement.classList.remove("i18n-pending");
+    // index.html hid the page while the language loaded (a page in its own language hid only its tool)
+    document.documentElement.classList.remove("i18n-pending", "i18n-app-pending");
   }
 }
 

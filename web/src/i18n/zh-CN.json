@@ -19619,5 +19619,6 @@
   "the file (stopped when the form closed)": "文件（关闭表单时停止）",
   "the pictures ({0})": "图片（{0}）",
   "{0} (didn't convert)": "{0}（未能转换）",
-  "{0} preview": "{0}预览"
+  "{0} preview": "{0}预览",
+  "This page in your language": "此页面的中文版"
 }

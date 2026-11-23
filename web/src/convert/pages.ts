@@ -2,6 +2,13 @@
 // /viewer and /viewer/<id>): the formats they name, the pairs of formats that have a page, the viewer
 // pages, and the words each page shows. It has no imports, because the server reads it too
 // (server/src/convertPage.ts) and Node runs it as it is.
+//
+// The pages are written in English and served in the editor's other languages too, at /de/convert,
+// /ja/viewer/rvt and so on. Every sentence goes through a language's `say`, which looks it up by its
+// English in that language's words (web/src/convert/i18n/<code>.json, read by the server); a sentence
+// made round a format's name is a pattern with {0}, {1}…, and one whose grammar changes with what
+// goes in it (an app's name, a format's output) is a whole sentence per format. `node
+// server/scripts/convert-words.ts` lists every sentence and pattern, and what a language lacks.
 
 /** How a format is laid out: a drawing of Rodeo's own, 2D line work, or 3D objects. Matches FormatInfo.kind in formats.ts. */
 export type FormatKind = "drawing" | "2d" | "3d";
@@ -76,7 +83,12 @@ export interface PageCrumb {
 /** One page of the converter or the viewer: its address, its text, and the pages it links to. */
 export interface ConvertPage {
   readonly kind: "index" | "pair" | "viewer" | "viewer-index";
+  /** the language it is in, as PageLanguage.code gives it */
+  readonly lang: string;
+  /** its address, with its language's prefix ("/de/convert/dwg-to-pdf") */
   readonly path: string;
+  /** its address in English, without the prefix ("/convert/dwg-to-pdf"): the same page in another language is that language's prefix and this */
+  readonly basePath: string;
   readonly title: string;
   readonly description: string;
   readonly h1: string;
@@ -862,6 +874,7 @@ export const PAIRS: readonly (readonly [string, string])[] = [
   ["pdf", "vwx"],
 ];
 
+
 /** The formats whose files are plain meshes: their objects carry shapes and, in most, colours, but no records. */
 const MESH_FORMATS: readonly string[] = ["obj", "glb", "fbx", "dae", "stl", "ply", "3ds", "usdz"];
 
@@ -887,6 +900,72 @@ const INDEX_FAQ: readonly PageQuestion[] = [
   },
 ];
 
+/** A language the pages are served in. English is the default, at the unprefixed addresses. */
+export interface PageLanguage {
+  /** its tag, as <html lang> and hreflang give it: "en", "de", "pt-BR" */
+  readonly code: string;
+  /** the first part of its addresses: "" for English, "/de", "/pt-br" */
+  readonly prefix: string;
+  /** its own name, as the list of languages under each page shows it */
+  readonly name: string;
+  /**
+   * The language's words for an English sentence or pattern ("Convert {0} to {1}"), or undefined where
+   * it has none, so the English shows. `parts` are what will stand in for the pattern's {n}s, already
+   * in the language; the server's dictionaries ignore them, and the word list's extractor notes them.
+   */
+  readonly words: (english: string, parts: readonly string[]) => string | undefined;
+}
+
+/**
+ * The languages the pages are written in, English first: the editor's languages (web/src/app/i18n.ts,
+ * which this file can't import). Each other language's words are web/src/convert/i18n/<code>.json,
+ * which the server reads; a language without its file isn't served.
+ */
+export const PAGE_LANGUAGES: readonly { readonly code: string; readonly name: string }[] = [
+  { code: "en", name: "English" },
+  { code: "id", name: "Bahasa Indonesia" },
+  { code: "de", name: "Deutsch" },
+  { code: "es", name: "Español" },
+  { code: "fr", name: "Français" },
+  { code: "it", name: "Italiano" },
+  { code: "nl", name: "Nederlands" },
+  { code: "pl", name: "Polski" },
+  { code: "pt-BR", name: "Português (Brasil)" },
+  { code: "vi", name: "Tiếng Việt" },
+  { code: "tr", name: "Türkçe" },
+  { code: "ru", name: "Русский" },
+  { code: "uk", name: "Українська" },
+  { code: "ja", name: "日本語" },
+  { code: "zh-CN", name: "简体中文" },
+  { code: "zh-TW", name: "繁體中文" },
+  { code: "ko", name: "한국어" },
+];
+
+/** The first part of a language's addresses: "" for English, else "/" and its tag in lower case ("/pt-br"). */
+export function languagePrefix(code: string): string {
+  return code === "en" ? "" : `/${code.toLowerCase()}`;
+}
+
+/** English: the source's own words. */
+export const ENGLISH: PageLanguage = { code: "en", prefix: "", name: "English", words: () => undefined };
+
+/**
+ * What a page says in one language: `say(text, ...parts)` gives the language's words for an English
+ * sentence or pattern, each {n} filled with parts[n]. A key may name its sense before " › "
+ * ("Pair › {0} to {1}"), which English leaves out. With no parts, a pattern comes back with its {n}s.
+ */
+export type Say = (text: string, ...parts: string[]) => string;
+
+/** The `say` of a language. */
+export function sayIn(lang: PageLanguage): Say {
+  return (text, ...parts) => {
+    const cut = text.lastIndexOf(" › ");
+    const english = cut < 0 ? text : text.slice(cut + 3);
+    const to = lang.words(text, parts) ?? english;
+    return parts.length ? to.replace(/\{(\d+)\}/g, (all, n: string) => parts[Number(n)] ?? all) : to;
+  };
+}
+
 /** The page's format with this id, or undefined. */
 export function pageFormat(id: string): PageFormat | undefined {
   return PAGE_FORMATS.find((f) => f.id === id);
@@ -902,22 +981,35 @@ export function viewerFor(id: string): ViewerPage | undefined {
   return VIEWER_PAGES.find((v) => v.id === id);
 }
 
-/** Lists words the way English does: "A", "A and B", "A, B and C". */
-function joinList(items: readonly string[]): string {
-  if (items.length <= 1) return items.join("");
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+/** Sentences one after another: a space between them in most languages, none in Japanese or Chinese. */
+function sentences(say: Say, ...parts: readonly (string | undefined)[]): string {
+  const said = parts.filter((p): p is string => Boolean(p));
+  return said.length ? said.reduce((a, b) => say("Sentences › {0} {1}", a, b)) : "";
 }
 
-/** A short phrase on what comes across, for a pair's description. */
+/** Lists words as the language does: "A", "A and B", "A, B and C". */
+function joinList(say: Say, items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  let head = items[0];
+  for (const item of items.slice(1, -1)) head = say("List › {0}, {1}", head, item);
+  return say("List › {0} and {1}", head, items[items.length - 1]);
+}
+
+/** A pair's name, as its links and breadcrumb show it: "DWG to PDF". */
+function pairName(say: Say, from: string, to: string): string {
+  return say("Pair › {0} to {1}", pageFormat(from)?.short ?? from, pageFormat(to)?.short ?? to);
+}
+
+/** A short sentence on what comes across, for a pair's description. */
 function pairSummary(from: PageFormat, to: PageFormat): string {
-  if (to.id === "ifc") return "Objects become IFC elements";
-  if (to.id === "step" || to.id === "iges") return "Closed objects come across as solids";
-  if (from.kind === "3d" && to.kind === "2d") return "Only a plan view comes across";
-  if (from.kind === "2d" && to.kind === "drawing") return "Flat line work comes in as drawing lines";
-  if (from.kind === "2d" && to.kind === "2d") return "Line work, text and fills come across";
-  if (MESH_FORMATS.includes(to.id)) return "Objects come across as meshes";
-  if (to.kind === "drawing") return "The objects come into a Vectorworks drawing";
-  return "Shapes come across, with colours where the format holds them";
+  if (to.id === "ifc") return "Objects become IFC elements.";
+  if (to.id === "step" || to.id === "iges") return "Closed objects come across as solids.";
+  if (from.kind === "3d" && to.kind === "2d") return "Only a plan view comes across.";
+  if (from.kind === "2d" && to.kind === "drawing") return "Flat line work comes in as drawing lines.";
+  if (from.kind === "2d" && to.kind === "2d") return "Line work, text and fills come across.";
+  if (MESH_FORMATS.includes(to.id)) return "Objects come across as meshes.";
+  if (to.kind === "drawing") return "The objects come into a Vectorworks drawing.";
+  return "Shapes come across, with colours where the format holds them.";
 }
 
 /** The page's sentence about what it shows, from the kinds of the two formats. */
@@ -958,87 +1050,108 @@ function viewLine(f: PageFormat): string {
   return "The preview shows the drawing in 3D or in plan, with its layers and classes.";
 }
 
-/** The viewer's bullet on converting: the formats its pairs write, or the ones Rodeo writes. */
-function convertItem(f: PageFormat): string {
-  const targets = [...new Set(PAIRS.filter(([a]) => a === f.id).map(([, b]) => pageFormat(b)?.long ?? b))];
-  if (!f.write) {
-    const suggest = targets.length ? joinList(targets.slice(0, 4)) : "DXF, IFC or glTF";
-    return `Rodeo doesn't write ${f.short} files, so convert it to a format it does write, such as ${suggest}.`;
-  }
-  if (targets.length) return `Convert it to ${joinList(targets)}, with the links below.`;
-  return "Convert it with the Convert to menu, which lists every format Rodeo writes.";
-}
-
-/** The viewer's questions and answers: which app is needed, the releases, the limits, devices and uploads. */
-function viewerFaq(f: PageFormat): readonly PageQuestion[] {
-  return [
-    {
-      q: `Do I need ${f.app} to open it?`,
-      a: `No. Rodeo reads the file itself in your browser, so ${f.app} doesn't need to be on your computer, and nothing has to be opened there first.`,
-    },
-    { q: "Which versions can it open?", a: f.versions ?? NO_VERSIONS },
-    {
-      q: "What is left out when a file opens?",
-      a: f.readLimits ? `${f.readLimits} The preview lists what was left out.` : NO_LIMITS,
-    },
-    { q: "Does it work on a Mac, a PC, a Chromebook or a phone?", a: ON_ANY_DEVICE },
-    { q: "Is my file uploaded?", a: NOT_UPLOADED },
-  ];
-}
-
 /** The text with its first letter in lower case, for a sentence that continues after "is". */
 function lowerFirst(text: string): string {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
-/** The pair's questions and answers: the releases, what is lost, what opens the result, and a whole folder. */
-function pairFaq(from: PageFormat, to: PageFormat): readonly PageQuestion[] {
-  const lost = [from.readLimits, to.writeLimits].filter((s): s is string => Boolean(s));
+/** The sentence on what a pair's output is, from what Rodeo writes in its format: one sentence per format, as languages need. */
+function youGet(to: PageFormat): string {
+  return `You get ${lowerFirst(to.writes)}`;
+}
+
+/** The sentence on what the written file keeps, per format. */
+function keepsLine(to: PageFormat): string | undefined {
+  return to.keeps ? `On the way out, ${to.keeps}.` : undefined;
+}
+
+/** The viewer's bullet on converting: the formats its pairs write, or the ones Rodeo writes. */
+function convertItem(say: Say, f: PageFormat): string {
+  const targets = [...new Set(PAIRS.filter(([a]) => a === f.id).map(([, b]) => say(pageFormat(b)?.long ?? b)))];
+  if (!f.write) {
+    const suggest = targets.length ? joinList(say, targets.slice(0, 4)) : say("DXF, IFC or glTF");
+    return say("Rodeo doesn't write {0} files, so convert it to a format it does write, such as {1}.", f.short, suggest);
+  }
+  if (targets.length) return say("Convert it to {0}, with the links below.", joinList(say, targets));
+  return say("Convert it with the Convert to menu, which lists every format Rodeo writes.");
+}
+
+/** The viewer's questions and answers: which app is needed, the releases, the limits, devices and uploads. */
+function viewerFaq(say: Say, f: PageFormat): readonly PageQuestion[] {
   return [
     {
-      q: `Which ${from.short} files can I convert?`,
-      a: from.versions ?? `${from.reads} ${NO_VERSIONS}`,
+      // whole sentences per app, as the app's name takes a different case in some languages
+      q: say(`Do I need ${f.app} to open it?`),
+      a: say(`No. Rodeo reads the file itself in your browser, so ${f.app} doesn't need to be on your computer, and nothing has to be opened there first.`),
+    },
+    { q: say("Which versions can it open?"), a: say(f.versions ?? NO_VERSIONS) },
+    {
+      q: say("What is left out when a file opens?"),
+      a: f.readLimits ? sentences(say, say(f.readLimits), say("The preview lists what was left out.")) : say(NO_LIMITS),
+    },
+    { q: say("Does it work on a Mac, a PC, a Chromebook or a phone?"), a: say(ON_ANY_DEVICE) },
+    { q: say("Is my file uploaded?"), a: say(NOT_UPLOADED) },
+  ];
+}
+
+/** The pair's questions and answers: the releases, what is lost, what opens the result, and a whole folder. */
+function pairFaq(say: Say, from: PageFormat, to: PageFormat): readonly PageQuestion[] {
+  const lost = [from.readLimits, to.writeLimits].filter((s): s is string => Boolean(s));
+  const command = `npx @rodeo.build/cli convert "folder/*.${from.extensions[0]}" --to ${to.id} --out converted`;
+  return [
+    {
+      q: say("Which {0} files can I convert?", from.short),
+      a: from.versions ? say(from.versions) : sentences(say, say(from.reads), say(NO_VERSIONS)),
     },
     {
-      q: `Does converting ${from.short} to ${to.short} lose anything?`,
+      q: say("Does converting {0} to {1} lose anything?", from.short, to.short),
       a: lost.length
-        ? "Some things can be left out, as the notes above say. The preview lists what was left out before you download."
-        : "Nothing is noted as left out for this pair. The preview lists anything that was left out before you download, so check it.",
+        ? say("Some things can be left out, as the notes above say. The preview lists what was left out before you download.")
+        : say("Nothing is noted as left out for this pair. The preview lists anything that was left out before you download, so check it."),
     },
     {
-      q: `Will the ${to.short} file open in other apps?`,
-      a: [`The output is ${lowerFirst(to.writes)}`, to.openNote ?? "Open the result in the app you plan to use before you rely on it."].join(" "),
+      q: say("Will the {0} file open in other apps?", to.short),
+      a: sentences(say, say(youGet(to)), say(to.openNote ?? "Open the result in the app you plan to use before you rely on it.")),
     },
     {
-      q: `Can I convert a whole folder of ${from.short} files at once?`,
-      a: `Yes. On your computer, run \`npx @rodeo.build/cli convert "folder/*.${from.extensions[0]}" --to ${to.id} --out converted\`. You can also drop several files on the page and choose Download all (.zip).`,
+      q: say("Can I convert a whole folder of {0} files at once?", from.short),
+      a: say("Yes. On your computer, run `{0}`. You can also drop several files on the page and choose Download all (.zip).", command),
     },
   ];
 }
 
-/** The index page at /convert when `slug` is null, a pair's page for its slug, and null for anything else (including a slug that isn't lower case). */
-export function convertPage(slug: string | null): ConvertPage | null {
+/**
+ * The index page at /convert when `slug` is null, a pair's page for its slug, and null for anything else
+ * (including a slug that isn't lower case), in `lang` (English when not given).
+ */
+export function convertPage(slug: string | null, lang: PageLanguage = ENGLISH): ConvertPage | null {
+  const say = sayIn(lang);
+  const at = lang.prefix;
   if (slug === null) {
     return {
       kind: "index",
-      path: "/convert",
-      title: "Convert CAD files online, free and private | Rodeo",
-      description:
+      lang: lang.code,
+      path: `${at}/convert`,
+      basePath: "/convert",
+      title: say("Convert CAD files online, free and private | Rodeo"),
+      description: say(
         "Convert Revit, DWG, SketchUp, IFC, Rhino, Archicad and Vectorworks files to IFC, PDF, DXF, glTF, OBJ, STL and more, free in your browser. Nothing is uploaded.",
-      h1: "Convert CAD and 3D files",
-      intro:
+      ),
+      h1: say("Convert CAD and 3D files"),
+      intro: say(
         "Drop Revit, AutoCAD, SketchUp, Rhino, Archicad, IFC or Vectorworks files here and download IFC, PDF, DXF, glTF, OBJ, STL, SketchUp and more. Rodeo converts them in your browser, so your files never leave your computer.",
+      ),
       from: null,
       to: null,
       crumbs: [
         { name: "Rodeo", path: "/" },
-        { name: "Convert", path: "/convert" },
+        { name: say("Crumb › Convert"), path: `${at}/convert` },
       ],
       sections: [],
-      see: [{ path: "/viewer", label: "Open a CAD or 3D file without converting it" }],
-      faq: INDEX_FAQ,
-      linksTitle: "Popular conversions",
-      links: PAIRS.map(([a, b]) => ({ path: `/convert/${pairSlug(a, b)}`, label: `${pageFormat(a)?.short ?? a} to ${pageFormat(b)?.short ?? b}` })),
+      see: [{ path: `${at}/viewer`, label: say("Open a CAD or 3D file without converting it") }],
+      faq: INDEX_FAQ.map((qa) => ({ q: say(qa.q), a: say(qa.a) })),
+      linksTitle: say("Popular conversions"),
+      links: PAIRS.map(([a, b]) => ({ path: `${at}/convert/${pairSlug(a, b)}`, label: pairName(say, a, b) })),
     };
   }
 
@@ -1056,106 +1169,127 @@ export function convertPage(slug: string | null): ConvertPage | null {
   const spare = [...sameFrom.slice(5), ...sameTo.slice(3)];
   while (picks.length < 8 && spare.length) picks.push(spare.shift() as readonly [string, string]);
 
-  const keeps = to.keeps ? [`On the way out, ${to.keeps}.`] : [];
+  const keeps = keepsLine(to);
   const viewer = viewerFor(fromId);
-  const pairName = `${from.short} to ${to.short}`;
-  const limitNotes = [from.readLimits && `From ${from.short}: ${from.readLimits}`, to.writeLimits && `Into ${to.short}: ${to.writeLimits}`].filter(
-    (s): s is string => Boolean(s),
-  );
+  const slugPath = `/convert/${pairSlug(fromId, toId)}`;
+  const limitNotes = [
+    from.readLimits && say("From {0}: {1}", from.short, say(from.readLimits)),
+    to.writeLimits && say("Into {0}: {1}", to.short, say(to.writeLimits)),
+  ].filter((s): s is string => Boolean(s));
 
   return {
     kind: "pair",
-    path: `/convert/${pairSlug(fromId, toId)}`,
-    title: `Convert ${from.short} to ${to.short} online, free | Rodeo`,
-    description: `Convert ${from.long} (.${from.extensions[0]}) files to ${to.long} (.${to.extensions[0]}) in your browser, free. ${pairSummary(from, to)}. Nothing is uploaded and there is no sign-up.`,
-    h1: `Convert ${from.short} to ${to.short}`,
-    intro: `${from.reads} You get ${lowerFirst(to.writes)} Your file never leaves your computer.`,
+    lang: lang.code,
+    path: `${at}${slugPath}`,
+    basePath: slugPath,
+    title: say("Convert {0} to {1} online, free | Rodeo", from.short, to.short),
+    description: sentences(
+      say,
+      say("Convert {0} (.{1}) files to {2} (.{3}) in your browser, free.", say(from.long), from.extensions[0], say(to.long), to.extensions[0]),
+      say(pairSummary(from, to)),
+      say("Nothing is uploaded and there is no sign-up."),
+    ),
+    h1: say("Convert {0} to {1}", from.short, to.short),
+    intro: sentences(say, say(from.reads), say(youGet(to)), say("Your file never leaves your computer.")),
     from: fromId,
     to: toId,
     crumbs: [
       { name: "Rodeo", path: "/" },
-      { name: "Convert", path: "/convert" },
-      { name: pairName, path: `/convert/${pairSlug(fromId, toId)}` },
+      { name: say("Crumb › Convert"), path: `${at}/convert` },
+      { name: pairName(say, fromId, toId), path: `${at}${slugPath}` },
     ],
     sections: [
       {
-        heading: `How to convert ${from.short} to ${to.short}`,
+        heading: say("How to convert {0} to {1}", from.short, to.short),
         steps: [
-          `Choose ${from.short} files with Choose files, or drop them on the page. Rodeo reads them in your browser.`,
-          `Pick ${to.long} in the Convert to menu. The preview shows what came in: its units, layers, objects and size, and what was left out.`,
-          "Click Download to save the converted file. With several files, Download all (.zip) saves them together.",
+          say("Choose {0} files with Choose files, or drop them on the page. Rodeo reads them in your browser.", from.short),
+          say(
+            "Pick {0} in the Convert to menu. The preview shows what came in: its units, layers, objects and size, and what was left out.",
+            say(to.long),
+          ),
+          say("Click Download to save the converted file. With several files, Download all (.zip) saves them together."),
         ],
       },
       {
-        heading: "What comes across",
-        paragraphs: [kindLine(from, to), ...keeps, fromLine(from)],
+        heading: say("What comes across"),
+        paragraphs: [say(kindLine(from, to)), ...(keeps ? [say(keeps)] : []), say(fromLine(from))],
       },
       {
-        heading: "Good to know",
-        items: [...limitNotes, IN_BROWSER],
+        heading: say("Good to know"),
+        items: [...limitNotes, say(IN_BROWSER)],
       },
     ],
-    see: viewer ? [{ path: `/viewer/${fromId}`, label: `Open a ${from.short} file in the viewer first` }] : [],
-    faq: pairFaq(from, to),
-    linksTitle: "Popular conversions",
-    links: picks.map(([a, b]) => ({ path: `/convert/${pairSlug(a, b)}`, label: `${pageFormat(a)?.short ?? a} to ${pageFormat(b)?.short ?? b}` })),
+    see: viewer ? [{ path: `${at}/viewer/${fromId}`, label: say("Open a {0} file in the viewer first", from.short) }] : [],
+    faq: pairFaq(say, from, to),
+    linksTitle: say("Popular conversions"),
+    links: picks.map(([a, b]) => ({ path: `${at}/convert/${pairSlug(a, b)}`, label: pairName(say, a, b) })),
   };
 }
 
-/** The viewer's index at /viewer when `id` is null, a viewer page for its id, and null for anything else. */
-export function viewerPage(id: string | null): ConvertPage | null {
+/** The viewer's index at /viewer when `id` is null, a viewer page for its id, and null for anything else, in `lang` (English when not given). */
+export function viewerPage(id: string | null, lang: PageLanguage = ENGLISH): ConvertPage | null {
+  const say = sayIn(lang);
+  const at = lang.prefix;
   if (id === null) {
     return {
       kind: "viewer-index",
-      path: "/viewer",
-      title: "Open CAD and 3D files online, free | Rodeo",
-      description:
+      lang: lang.code,
+      path: `${at}/viewer`,
+      basePath: "/viewer",
+      title: say("Open CAD and 3D files online, free | Rodeo"),
+      description: say(
         "Open Vectorworks, Revit, Archicad, IFC, SketchUp, Rhino, STEP, SolidWorks and 3D model files in your browser, free. Nothing is uploaded.",
-      h1: "Open CAD and 3D files online",
-      intro:
+      ),
+      h1: say("Open CAD and 3D files online"),
+      intro: say(
         "Rodeo's viewer opens a drawing or model in your browser and shows it in 3D or in plan, with its layers, objects and facts. Pick a file type below to see what Rodeo reads from it. Nothing is uploaded, so your files stay on your computer.",
+      ),
       from: null,
       to: null,
       crumbs: [
         { name: "Rodeo", path: "/" },
-        { name: "Viewer", path: "/viewer" },
+        { name: say("Crumb › Viewer"), path: `${at}/viewer` },
       ],
       sections: [
         {
-          heading: "What you can open",
+          heading: say("What you can open"),
           paragraphs: [
-            "Each page below opens one kind of file in the same converter, so you can see what is in a file before you decide what to do with it.",
-            "Everything happens in your browser. Rodeo doesn't upload the file, and it doesn't need the app that made the file.",
+            say("Each page below opens one kind of file in the same converter, so you can see what is in a file before you decide what to do with it."),
+            say("Everything happens in your browser. Rodeo doesn't upload the file, and it doesn't need the app that made the file."),
           ],
         },
         {
-          heading: "Formats without a page",
+          heading: say("Formats without a page"),
           paragraphs: [
-            "PDF and EMF files open in the converter too. They are generic formats rather than CAD files, so they have no viewer page of their own: drop one on the converter to read its line work and convert it.",
+            say(
+              "PDF and EMF files open in the converter too. They are generic formats rather than CAD files, so they have no viewer page of their own: drop one on the converter to read its line work and convert it.",
+            ),
           ],
         },
       ],
-      see: [{ path: "/convert", label: "Convert files between formats" }],
+      see: [{ path: `${at}/convert`, label: say("Convert files between formats") }],
       faq: [
         {
-          q: "Do I need a CAD or 3D app to open these files?",
-          a: "No. Rodeo reads each file itself in your browser, so none of the apps that made the files needs to be on your computer.",
+          q: say("Do I need a CAD or 3D app to open these files?"),
+          a: say("No. Rodeo reads each file itself in your browser, so none of the apps that made the files needs to be on your computer."),
         },
         {
-          q: "Can I convert these files to other formats?",
-          a: "Yes, for many of them. The converter writes Vectorworks, DXF, IFC, SketchUp, glTF, OBJ and other formats. It doesn't write DWG, Revit, Archicad, 3MF, Blender or the CAD part formats, so a file in one of those is converted to a format it does write.",
+          q: say("Can I convert these files to other formats?"),
+          a: say(
+            "Yes, for many of them. The converter writes Vectorworks, DXF, IFC, SketchUp, glTF, OBJ and other formats. It doesn't write DWG, Revit, Archicad, 3MF, Blender or the CAD part formats, so a file in one of those is converted to a format it does write.",
+          ),
         },
-        { q: "Is my file uploaded?", a: NOT_UPLOADED },
+        { q: say("Is my file uploaded?"), a: say(NOT_UPLOADED) },
         {
-          q: "Does it work on a phone?",
-          a: "It has a layout for phones, but a large model can need more memory than a phone has. The command line has more room, on a computer.",
+          q: say("Does it work on a phone?"),
+          a: say("It has a layout for phones, but a large model can need more memory than a phone has. The command line has more room, on a computer."),
         },
-        { q: "Is it free?", a: "Yes. There is no sign-up and no limit beyond your computer's memory. Rodeo is open source under AGPL-3.0." },
+        { q: say("Is it free?"), a: say("Yes. There is no sign-up and no limit beyond your computer's memory. Rodeo is open source under AGPL-3.0.") },
       ],
-      linksTitle: "Open a file type",
+      linksTitle: say("Open a file type"),
       links: VIEWER_PAGES.map((v) => {
         const f = pageFormat(v.id);
-        return { path: `/viewer/${v.id}`, label: `${f?.long ?? v.id} (.${f?.extensions[0] ?? v.id})` };
+        return { path: `${at}/viewer/${v.id}`, label: `${say(f?.long ?? v.id)} (.${f?.extensions[0] ?? v.id})` };
       }),
     };
   }
@@ -1167,38 +1301,42 @@ export function viewerPage(id: string | null): ConvertPage | null {
 
   return {
     kind: "viewer",
-    path: `/viewer/${id}`,
-    title: viewer.title,
-    description: viewer.description,
-    h1: viewer.h1,
-    intro: viewer.intro,
+    lang: lang.code,
+    path: `${at}/viewer/${id}`,
+    basePath: `/viewer/${id}`,
+    title: say(viewer.title),
+    description: say(viewer.description),
+    h1: say(viewer.h1),
+    intro: say(viewer.intro),
     from: id,
     to: null,
     crumbs: [
       { name: "Rodeo", path: "/" },
-      { name: "Viewer", path: "/viewer" },
-      { name: f.short, path: `/viewer/${id}` },
+      { name: say("Crumb › Viewer"), path: `${at}/viewer` },
+      { name: f.short, path: `${at}/viewer/${id}` },
     ],
     sections: [
       {
-        heading: "What you see",
-        paragraphs: [f.reads, viewLine(f)],
+        heading: say("What you see"),
+        paragraphs: [say(f.reads), say(viewLine(f))],
       },
       {
-        heading: "What you can do with it",
+        heading: say("What you can do with it"),
         items: [
-          "Open in Rodeo opens the file in the editor, in a new tab, where you can measure it and change it. Save asks where to write the drawing, so the original file stays as it was.",
-          convertItem(f),
-          "Check it first: the preview lists the commonest kinds of object, the size, the units and the layers, and says what was left out.",
+          say(
+            "Open in Rodeo opens the file in the editor, in a new tab, where you can measure it and change it. Save asks where to write the drawing, so the original file stays as it was.",
+          ),
+          convertItem(say, f),
+          say("Check it first: the preview lists the commonest kinds of object, the size, the units and the layers, and says what was left out."),
         ],
       },
     ],
     see: [
-      { path: "/viewer", label: "All the file viewers" },
-      { path: "/convert", label: "Convert files between formats" },
+      { path: `${at}/viewer`, label: say("All the file viewers") },
+      { path: `${at}/convert`, label: say("Convert files between formats") },
     ],
-    faq: viewerFaq(f),
-    linksTitle: "Convert it",
-    links: pairs.map(([a, b]) => ({ path: `/convert/${pairSlug(a, b)}`, label: `${pageFormat(a)?.short ?? a} to ${pageFormat(b)?.short ?? b}` })),
+    faq: viewerFaq(say, f),
+    linksTitle: say("Convert it"),
+    links: pairs.map(([a, b]) => ({ path: `${at}/convert/${pairSlug(a, b)}`, label: pairName(say, a, b) })),
   };
 }

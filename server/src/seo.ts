@@ -14,6 +14,7 @@ import { config } from "./config.ts";
 import { escapeHtml, type PageExtras, registerPageHook } from "./page.ts";
 import { robotsTxt } from "../../web/src/features/gallery/rules.ts";
 import { VIEWER_PAGES, PAIRS } from "../../web/src/convert/pages.ts";
+import { pageLanguages } from "./pageLanguages.ts";
 import { loadGuide } from "./guide.ts";
 
 /** The title and description the editor's home page gets from the server. */
@@ -145,9 +146,10 @@ function viewerLinks(): LlmsPage[] {
 /**
  * llms.txt (llmstxt.org): what Rodeo is and where its parts live, for language models that read the
  * site. `guide` lists the user guide's pages (the server reads them from docs/guide); the viewers come
- * from the converter's page data.
+ * from the converter's page data; `languages` are the address prefixes of the other languages the
+ * converter's and viewers' pages are served in ("/de", "/pt-br").
  */
-export function llmsTxt(publicUrl: string, guide: readonly LlmsPage[] = []): string {
+export function llmsTxt(publicUrl: string, guide: readonly LlmsPage[] = [], languages: readonly string[] = []): string {
   const line = (p: LlmsPage): string => `- [${p.title}](${publicUrl}${p.path}): ${p.description}`;
   return [
     "# Rodeo",
@@ -164,6 +166,11 @@ export function llmsTxt(publicUrl: string, guide: readonly LlmsPage[] = []): str
     `- [File converter](${publicUrl}/convert): converts CAD and 3D files between formats in the browser, free. Each of its ${PAIRS.length} pairs has a page at ${publicUrl}/convert/<from>-to-<to>, for example ${publicUrl}/convert/dwg-to-pdf.`,
     `- [File viewers](${publicUrl}/viewer): open CAD and 3D files in the browser without the app that made them.`,
     ...viewerLinks().map(line),
+    ...(languages.length
+      ? [
+          `- The converter's and viewers' pages in ${languages.length} other languages: the same address after the language's code (${languages.map((p) => p.slice(1)).join(", ")}), for example ${publicUrl}${languages[0]}/convert/dwg-to-pdf.`,
+        ]
+      : []),
     `- [Gallery](${publicUrl}/gallery): drawings that people have published for others to look at and open a copy of.`,
     "",
     "## Developers",
@@ -328,7 +335,8 @@ export function registerSeo(app: Hono): void {
     c.header("Cache-Control", HOUR_CACHE);
     const guide = await loadGuide();
     const pages = guide ? [...guide.docs.values()].filter((d) => d.slug !== "readme").map((d) => ({ path: d.path, title: d.h1, description: d.description })) : [];
-    return c.body(llmsTxt(config.publicUrl, pages));
+    const languages = pageLanguages().map((l) => l.prefix).filter(Boolean);
+    return c.body(llmsTxt(config.publicUrl, pages, languages));
   });
 
   const key = indexNowKey();

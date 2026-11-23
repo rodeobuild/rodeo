@@ -19731,5 +19731,6 @@
   "the file (stopped when the form closed)": "파일(양식을 닫을 때 중단됨)",
   "the pictures ({0})": "이미지({0})",
   "{0} (didn't convert)": "{0}(변환하지 못함)",
-  "{0} preview": "{0} 미리보기"
+  "{0} preview": "{0} 미리보기",
+  "This page in your language": "이 페이지를 한국어로"
 }

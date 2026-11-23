@@ -89,3 +89,50 @@
 .cv-about a:hover {
   color: var(--accent);
 }
+
+/* the page in each language it is served in, under the footer; and, on an English page for a visitor
+   in another language, the link to the page in theirs, beside the editor's */
+.cv-langs ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.cv-langs a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.cv-langs a:hover {
+  color: var(--accent);
+}
+
+.cv-langs [aria-current="page"] {
+  color: var(--text);
+}
+
+.cv-top {
+  flex-wrap: wrap;
+}
+
+.cv-own-lang {
+  margin-left: auto;
+}
+
+/* on a phone the offer takes its own row under the brand and the editor's link */
+@media (max-width: 520px) {
+  .cv-own-lang {
+    flex-basis: 100%;
+    margin-left: 0;
+    order: 3;
+  }
+}
+
+/* a page in its own language shows its text at once; only the converter waits for its words (3 s at most) */
+html.i18n-app-pending #cv-app {
+  visibility: hidden;
+  animation: i18n-reveal 0s 3s forwards;
+}

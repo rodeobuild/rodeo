@@ -1,7 +1,8 @@
 // Tests for the converter's and the viewer's pages (src/convertPage.ts and src/convert.ts): node scripts/convert-test.ts
-// The unit part renders the page template (web/convert.html) for every page and checks the HTML, the
-// JSON-LD, the words and the sitemap. With --server, a real server on a loopback port checks the routes;
-// its web/dist holds a copy of the page.
+// The unit part renders the page template (web/convert.html) for every page, in English and in every
+// other language served (web/src/convert/i18n), and checks the HTML, the JSON-LD, the words, the links
+// between languages (hreflang) and the sitemap. With --server, a real server on a loopback port checks
+// the routes; its web/dist holds a copy of the page.
 
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
@@ -12,14 +13,20 @@ import { formatById, formatOfName, outputFormat } from "../../web/src/convert/fo
 import {
   convertPage,
   type ConvertPage,
+  ENGLISH,
   PAGE_FORMATS,
+  PAGE_LANGUAGES,
   PAIRS,
+  type PageLanguage,
   pageFormat,
   pairSlug,
+  sayIn,
   VIEWER_PAGES,
   viewerPage,
 } from "../../web/src/convert/pages.ts";
-import { escapeHtml, renderConvertPage, sitemapXml } from "../src/convertPage.ts";
+import { basePaths, escapeHtml, hreflangsOf, renderConvertPage, sitemapXml } from "../src/convertPage.ts";
+import { checkedWords, englishOf, loadPageLanguages, wordsDir } from "../src/pageLanguages.ts";
+import { pageWords } from "./convert-words.ts";
 
 const PAGE_PATH = join(import.meta.dirname, "../../web/convert.html");
 const template = readFileSync(PAGE_PATH, "utf8");
@@ -56,15 +63,16 @@ function must(page: ConvertPage | null, what: string): ConvertPage {
 }
 
 /** Every page the site has: the converter's index, each pair, the viewer's index, each viewer. */
-function allPages(): ConvertPage[] {
-  const out: ConvertPage[] = [must(convertPage(null), "the converter index"), must(viewerPage(null), "the viewer index")];
-  for (const [a, b] of PAIRS) out.push(must(convertPage(pairSlug(a, b)), `${a}-to-${b}`));
-  for (const v of VIEWER_PAGES) out.push(must(viewerPage(v.id), `viewer ${v.id}`));
+function allPages(lang: PageLanguage = ENGLISH): ConvertPage[] {
+  const out: ConvertPage[] = [must(convertPage(null, lang), "the converter index"), must(viewerPage(null, lang), "the viewer index")];
+  for (const [a, b] of PAIRS) out.push(must(convertPage(pairSlug(a, b), lang), `${a}-to-${b}`));
+  for (const v of VIEWER_PAGES) out.push(must(viewerPage(v.id, lang), `viewer ${v.id}`));
   return out;
 }
 
-/** Whether a link's address is one of the site's pages. */
-function pageExists(path: string): boolean {
+/** Whether a link's address is one of the site's pages, in English or (with its prefix) in `lang`. */
+function pageExists(path: string, lang: PageLanguage = ENGLISH): boolean {
+  if (lang.prefix) return path.startsWith(`${lang.prefix}/`) && pageExists(path.slice(lang.prefix.length));
   const pair = /^\/convert\/([a-z0-9]+)-to-([a-z0-9]+)$/.exec(path);
   if (pair) return convertPage(pairSlug(pair[1], pair[2])) !== null;
   if (path === "/convert" || path === "/viewer") return true;
@@ -94,9 +102,19 @@ function visibleText(fragment: string): string {
   return decode(blocks).replace(/\s+/g, " ").trim();
 }
 
-/** The number of words a page shows in main. */
+/** Chinese and Japanese characters, which are written without spaces between words. */
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g;
+
+/** The number of words a page shows in main; in Chinese and Japanese, two characters count as a word. */
 function wordCount(html: string): number {
-  return visibleText(mainPart(html)).split(" ").filter(Boolean).length;
+  const text = visibleText(mainPart(html));
+  const cjk = (text.match(CJK) ?? []).length;
+  return text.replace(CJK, " ").split(" ").filter(Boolean).length + Math.round(cjk / 2);
+}
+
+/** The page's links to its versions in each language, as hreflang → address, in order. */
+function alternatesOf(html: string): [string, string][] {
+  return [...html.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)" \/>/g)].map((m) => [m[1], decode(m[2])]);
 }
 
 /** The questions and answers the page shows, in order, as their visible text. */
@@ -134,10 +152,11 @@ function checkRendered(page: ConvertPage, html: string): void {
   }
 
   const graph = graphOf(html);
-  const web = graph.find((g) => g["@type"] === "WebApplication") as { url: string; description: string } | undefined;
+  const web = graph.find((g) => g["@type"] === "WebApplication") as { url: string; description: string; inLanguage: string } | undefined;
   assert.ok(web, "a WebApplication");
   assert.equal(web.url, url);
   assert.equal(web.description, page.description);
+  assert.equal(web.inLanguage, page.lang, "the WebApplication's language");
 
   const crumbs = graph.find((g) => g["@type"] === "BreadcrumbList") as
     | { itemListElement: { position: number; name: string; item: string }[] }
@@ -335,6 +354,150 @@ async function unitPart(): Promise<void> {
   });
 }
 
+/** The pages in every language, with the languages read from web/src/convert/i18n. */
+async function languagePart(): Promise<void> {
+  const languages = loadPageLanguages();
+  const others = languages.filter((l) => l.code !== "en");
+  const words = pageWords();
+
+  await check("every language in PAGE_LANGUAGES has a words file: every sentence, nothing unused, every translation usable", () => {
+    assert.equal(languages.length, PAGE_LANGUAGES.length, `all ${PAGE_LANGUAGES.length} languages are served (${languages.map((l) => l.code).join(" ")})`);
+    for (const lang of others) {
+      const raw = JSON.parse(readFileSync(join(wordsDir(), `${lang.code}.json`), "utf8")) as Record<string, unknown>;
+      const { refused } = checkedWords(raw);
+      assert.deepEqual(refused, [], `${lang.code}: every translation is usable`);
+      const missing = [...words.keys()].filter((key) => !(key in raw));
+      assert.deepEqual(missing.slice(0, 3), [], `${lang.code}: ${missing.length} sentences missing`);
+      const unused = Object.keys(raw).filter((key) => !words.has(key));
+      assert.deepEqual(unused.slice(0, 3), [], `${lang.code}: ${unused.length} sentences no page says`);
+    }
+  });
+
+  // every page in every language, rendered as the server sends it
+  const rendered = new Map<string, Map<string, { page: ConvertPage; html: string }>>();
+  for (const lang of languages) {
+    const pages = new Map<string, { page: ConvertPage; html: string }>();
+    for (const page of allPages(lang)) pages.set(page.basePath, { page, html: renderConvertPage(template, page, BASE_URL, lang, languages) });
+    rendered.set(lang.code, pages);
+  }
+
+  await check("every page in every language renders with its language, its own head, one FAQ matching its questions, and at least 250 words", () => {
+    for (const lang of languages) {
+      for (const { page, html } of rendered.get(lang.code)!.values()) {
+        try {
+          assert.equal(page.lang, lang.code);
+          assert.equal(page.path, `${lang.prefix}${page.basePath}`);
+          checkRendered(page, html);
+          const tag = lang.code === "en" ? '<html lang="en">' : `<html lang="${lang.code}" data-page-lang="${lang.code}">`;
+          assert.ok(html.includes(tag), `the html element says ${lang.code}`);
+          assert.ok(html.includes(`<span aria-current="page" lang="${lang.code}">`), "the list of languages marks this one");
+        } catch (err) {
+          throw new Error(`${page.path}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+  });
+
+  await check("titles and descriptions are unique within each language, titles at most 75 characters and descriptions 50 to 230", () => {
+    for (const lang of others) {
+      const pages = [...rendered.get(lang.code)!.values()].map((r) => r.page);
+      const titles = pages.map((p) => p.title);
+      const descriptions = pages.map((p) => p.description);
+      assert.equal(new Set(titles).size, titles.length, `${lang.code}: unique titles`);
+      assert.equal(new Set(descriptions).size, descriptions.length, `${lang.code}: unique descriptions`);
+      for (const p of pages) {
+        assert.ok(p.title.length <= 75, `${p.path}: title of ${p.title.length} characters: ${p.title}`);
+        assert.ok(p.title.endsWith(" | Rodeo"), `${p.path}: the title ends with the site's name`);
+        assert.ok(p.description.length >= 50 && p.description.length <= 230, `${p.path}: description of ${p.description.length} characters`);
+      }
+    }
+  });
+
+  await check("hreflang: each version of a page lists the same alternates, every language and an x-default, each a page that exists", () => {
+    for (const base of basePaths()) {
+      const want: [string, string][] = languages.flatMap((lang) => hreflangsOf(lang.code).map((tag): [string, string] => [tag, `${BASE_URL}${lang.prefix}${base}`]));
+      want.push(["x-default", `${BASE_URL}${base}`]);
+      for (const lang of languages) {
+        const got = alternatesOf(rendered.get(lang.code)!.get(base)!.html);
+        assert.deepEqual(got, want, `${lang.prefix}${base}: its alternates`);
+      }
+      for (const [, href] of want) {
+        const path = href.slice(BASE_URL.length);
+        const lang = languages.find((l) => l.prefix && path.startsWith(`${l.prefix}/`)) ?? ENGLISH;
+        assert.ok(pageExists(path, lang), `${href} is a page`);
+      }
+    }
+  });
+
+  await check("every link on every page in another language stays in that language, and goes to a page that exists", () => {
+    for (const lang of others) {
+      for (const { page, html } of rendered.get(lang.code)!.values()) {
+        const body = mainPart(html).replace(/<nav class="cv-langs"[\s\S]*?<\/nav>/, "");
+        for (const m of body.matchAll(/href="(\/[^"]*)"/g)) {
+          if (m[1] === "/") continue;
+          assert.ok(pageExists(m[1], lang), `${page.path} links to ${m[1]}`);
+        }
+      }
+    }
+  });
+
+  await check("the list of languages under each page links its versions in the other languages", () => {
+    const html = rendered.get("de")!.get("/convert/dwg-to-pdf")!.html;
+    for (const lang of languages) {
+      if (lang.code === "de") continue;
+      assert.ok(html.includes(`<a href="${lang.prefix}/convert/dwg-to-pdf" hreflang="${lang.code}" lang="${lang.code}">${escapeHtml(lang.name)}</a>`), lang.code);
+    }
+  });
+
+  await check("no English sentence of four words or more is left on any page in another language", () => {
+    const english = [...words.keys()].map(englishOf).filter((en) => !en.includes("{") && en.split(" ").length >= 4);
+    for (const lang of others) {
+      for (const base of basePaths()) {
+        const text = visibleText(mainPart(rendered.get(lang.code)!.get(base)!.html));
+        const left = english.filter((en) => text.includes(en));
+        assert.deepEqual(left, [], `${lang.prefix}${base}`);
+      }
+    }
+  });
+
+  await check("the editor's translator leaves every block of a page's own text alone, and only the header and the converter follow the visitor", () => {
+    for (const lang of [ENGLISH, others[0]]) {
+      const html = rendered.get(lang.code)!.get("/convert/dwg-to-pdf")!.html;
+      // drop each kept block (they don't nest), then what is left of main's text is the header's and the tool's
+      let rest = mainPart(html);
+      for (;;) {
+        const at = rest.search(/<(div|section)\b[^>]*\bdata-i18n-keep\b/);
+        if (at < 0) break;
+        const tag = /^<(div|section)/.exec(rest.slice(at))![1];
+        let depth = 0;
+        const re = new RegExp(`<${tag}\\b|</${tag}>`, "g");
+        re.lastIndex = at;
+        let end = -1;
+        for (let m = re.exec(rest); m; m = re.exec(rest)) {
+          depth += m[0].startsWith("</") ? -1 : 1;
+          if (depth === 0) {
+            end = m.index + m[0].length;
+            break;
+          }
+        }
+        assert.ok(end > at, "a kept block closes");
+        rest = rest.slice(0, at) + rest.slice(end);
+      }
+      const left = visibleText(rest.replace(/<noscript>[\s\S]*?<\/noscript>/, ""));
+      assert.equal(left, `Rodeo${sayIn(lang)("Open the editor")}`, `${lang.code}: only the header is left (the brand and the editor link)`);
+    }
+  });
+
+  await check("the sitemap lists every page in every language once", () => {
+    const xml = sitemapXml(BASE_URL, languages);
+    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+    assert.equal(locs.length, basePaths().length * languages.length);
+    assert.equal(new Set(locs).size, locs.length, "no repeated address");
+    assert.ok(locs.includes(`${BASE_URL}/zh-tw/viewer/sldprt`));
+    assert.ok(locs.includes(`${BASE_URL}/pt-br/convert/dwg-to-pdf`));
+  });
+}
+
 /** One response from the server: its status, redirect target, type, frame policy and body. */
 interface Reply {
   status: number;
@@ -458,6 +621,46 @@ async function serverPart(): Promise<void> {
       assert.equal(r.location, "/viewer");
     });
 
+    await check("GET /de/convert/dwg-to-pdf serves the German page with its own canonical address and every language's", async () => {
+      const r = await ask("/de/convert/dwg-to-pdf");
+      assert.equal(r.status, 200);
+      assert.ok(r.body.includes('<html lang="de" data-page-lang="de">'));
+      assert.ok(r.body.includes(`<link rel="canonical" href="${base}/de/convert/dwg-to-pdf" />`));
+      assert.ok(r.body.includes(`<link rel="alternate" hreflang="x-default" href="${base}/convert/dwg-to-pdf" />`));
+      assert.ok(r.body.includes(`<link rel="alternate" hreflang="ja" href="${base}/ja/convert/dwg-to-pdf" />`));
+      assert.match(r.csp, /frame-ancestors 'self'/);
+    });
+
+    await check("GET /convert lists its versions in every language", async () => {
+      const r = await ask("/convert");
+      assert.equal(alternatesOf(r.body).length, PAGE_LANGUAGES.length + 3 + 1, "17 languages, pt, zh-Hans, zh-Hant and x-default");
+    });
+
+    await check("GET /ja/viewer/rvt and /zh-tw/viewer serve those pages", async () => {
+      const ja = await ask("/ja/viewer/rvt");
+      assert.equal(ja.status, 200);
+      assert.ok(ja.body.includes('<html lang="ja" data-page-lang="ja">'));
+      const tw = await ask("/zh-tw/viewer");
+      assert.equal(tw.status, 200);
+      assert.ok(tw.body.includes('<html lang="zh-TW" data-page-lang="zh-TW">'));
+    });
+
+    await check("a language's addresses redirect as the English ones do, and /pt-BR/ goes to /pt-br/", async () => {
+      const cases: [string, string][] = [
+        ["/de/convert/DWG-to-PDF", "/de/convert/dwg-to-pdf"],
+        ["/de/convert/nope", "/de/convert"],
+        ["/de/convert/dwg-to-pdf/", "/de/convert/dwg-to-pdf"],
+        ["/de/viewer/", "/de/viewer"],
+        ["/pt-BR/convert/dwg-to-pdf", "/pt-br/convert/dwg-to-pdf"],
+        ["/zh-CN/viewer", "/zh-cn/viewer"],
+      ];
+      for (const [from, to] of cases) {
+        const r = await ask(from);
+        assert.equal(r.status, 301, from);
+        assert.equal(r.location, to, from);
+      }
+    });
+
     await check("GET /sitemap-convert.xml serves the sitemap with the viewer pages", async () => {
       const r = await ask("/sitemap-convert.xml");
       assert.equal(r.status, 200);
@@ -465,6 +668,7 @@ async function serverPart(): Promise<void> {
       assert.ok(r.body.includes(`<loc>${base}/convert/rvt-to-ifc</loc>`));
       assert.ok(r.body.includes(`<loc>${base}/viewer</loc>`));
       assert.ok(r.body.includes(`<loc>${base}/viewer/sldprt</loc>`));
+      assert.ok(r.body.includes(`<loc>${base}/ko/viewer/sldprt</loc>`));
     });
   } finally {
     server.kill();
@@ -473,6 +677,7 @@ async function serverPart(): Promise<void> {
 }
 
 await unitPart();
+await languagePart();
 if (process.argv.includes("--server")) await serverPart();
 console.log(failures === 0 ? "convert tests passed" : `${failures} convert test(s) failed`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -5,6 +5,7 @@
 
 import { h } from "../../app/dom.ts";
 import { fileIn, registerMenu, registerUrlHandler, registerWelcome } from "../../app/ext.ts";
+import { language } from "../../app/i18n.ts";
 import { NEEDS_INTERNET, online } from "../../app/online.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
 import { inShell } from "../../platform/shell.ts";
@@ -22,10 +23,15 @@ interface Handoff {
 const DB = "openvwx-convert";
 const STORE = "handoff";
 
-/** The converter's address: its page on this site, or on rodeo.build when the editor runs from a file or in the desktop app (which has no server of its own). */
+/**
+ * The converter's address, in the interface's language (/de/convert): its page on this site, or on
+ * rodeo.build when the editor runs from a file or in the desktop app (which has no server of its own).
+ */
 function converterUrl(): string {
-  if (inShell()) return "https://rodeo.build/convert";
-  return location.protocol === "http:" || location.protocol === "https:" ? "/convert" : "https://rodeo.build/convert";
+  const code = language().code;
+  const path = code === "en" ? "/convert" : `/${code.toLowerCase()}/convert`;
+  if (inShell()) return `https://rodeo.build${path}`;
+  return location.protocol === "http:" || location.protocol === "https:" ? path : `https://rodeo.build${path}`;
 }
 
 /** Opens the converter in a tab of its own. */

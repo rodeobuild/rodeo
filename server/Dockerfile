@@ -29,6 +29,7 @@ RUN mkdir -p /app/web/src/platform /app/web/src/core /app/web/src/convert \
 COPY web/src/platform/protocol.ts /app/web/src/platform/protocol.ts
 COPY web/src/core/splice.ts /app/web/src/core/splice.ts
 COPY web/src/convert/pages.ts /app/web/src/convert/pages.ts
+COPY web/src/convert/i18n /app/web/src/convert/i18n
 COPY web/src/features/gallery/rules.ts /app/web/src/features/gallery/rules.ts
 COPY web/src/features/branches/wire.ts /app/web/src/features/branches/wire.ts
 COPY web/src/features/mcp/wire.ts web/src/features/mcp/rpc.ts /app/web/src/features/mcp/

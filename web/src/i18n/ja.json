@@ -19751,5 +19751,6 @@
   "the file (stopped when the form closed)": "ファイル（フォームを閉じた時点で中止）",
   "the pictures ({0})": "画像（{0}）",
   "{0} (didn't convert)": "{0}（変換できず）",
-  "{0} preview": "{0}のプレビュー"
+  "{0} preview": "{0}のプレビュー",
+  "This page in your language": "このページを日本語で"
 }
