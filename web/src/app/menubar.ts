@@ -1323,7 +1323,7 @@ async function shortcutsDialog(): Promise<void> {
 const SOURCE_URL = "https://github.com/rodeobuild/rodeo";
 
 /** The user guide, published with the source: Help > User Guide. */
-const GUIDE_URL = "https://github.com/rodeobuild/rodeo/blob/main/docs/guide/README.md";
+const GUIDE_URL = "https://rodeo.build/guide";
 
 /** The desktop app's version line for About ("Desktop app 0.1.0 (macOS)"), or null outside the app or when its shell can't say. */
 async function desktopLine(): Promise<string | null> {

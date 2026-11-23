@@ -442,6 +442,12 @@ It reads Vectorworks, Revit projects, Archicad, DWG, DXF, PDF, EMF, IFC, SketchU
 
 The conversion runs in your browser, so the file is never uploaded. A preview shows what came in, in 3D or in plan, with its units, layers, objects, size and what was left out.
 
+Each file's row shows two small pictures: the file as it came in, and the converted file for the format picked. Rodeo makes the second one by reading the converted file back in, so it is also a check that the file opens: when it doesn't, the picture says so in red. Under them a line compares the two (objects and layers before and after). Click either picture to see it large in the preview, where **Original** and **Converted** switch between them, each in 3D or in plan. SVG and PNG files are shown as they are; EPS files and converted files over 300 MB get no picture.
+
+### Reporting a converted file
+
+Under the pictures, **Does the PDF look right?** asks about each converted file. **Looks right** says so; **Report a problem** opens a short report: tick what's wrong (objects missing, wrong place or size, wrong colours or lines and so on), say where, and send. A file that couldn't be read or converted gets **Report this file** instead. The report starts with the original file and the before and after pictures attached, and lists everything else it sends (formats, sizes, object and layer counts, the browser); untick either attachment before sending. Nothing is uploaded unless you send a report, and attached files are deleted after 90 days.
+
 OBJ, STL, PLY and 3DS files don't say their units: choose them, and whether Y is up, on the file's row.
 
 ### Open in Rodeo

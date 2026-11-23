@@ -1,0 +1,245 @@
+/* The check under a converted file and the report dialog (report.ts). Solid panels in the editor's
+   tokens, as the rest of the converter page: no glass, blur or gradients. The buttons are the
+   page's own (cv-btn, cv-btn-primary, cv-btn-quiet, page.css). */
+
+/* the check: one quiet line under the file's row */
+.cv-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.cv-check-text {
+  line-height: 1.4;
+}
+
+.cv-check-btn {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* the report dialog: a solid panel, centred, scrolling on a short screen */
+.cv-report {
+  width: min(460px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font: inherit;
+  font-size: 14px;
+}
+
+.cv-report::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.cv-report-title {
+  margin: 0;
+  padding: 20px 20px 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cv-report-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px 20px 4px;
+}
+
+.cv-report-body > .cv-report-thanks {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cv-report-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cv-report-label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.cv-report-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cv-report-chip {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cv-report-chip:hover {
+  background: var(--fill);
+  color: var(--text);
+}
+
+.cv-report-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.cv-report-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.cv-report-input::placeholder {
+  color: var(--text-3);
+}
+
+.cv-report-message {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+/* the checkboxes and what they say */
+.cv-report-attach,
+.cv-report-pictures {
+  display: grid;
+  gap: 8px;
+}
+
+.cv-report-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cv-report-check input {
+  flex: none;
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+
+.cv-report-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.cv-report-pictures[hidden] {
+  display: none;
+}
+
+.cv-report-thumb {
+  justify-self: start;
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.cv-report-thumb[hidden] {
+  display: none;
+}
+
+/* what else is sent: the values, as the report carries them */
+.cv-report-details {
+  font-size: 13px;
+}
+
+.cv-report-details summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.cv-report-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.cv-report-facts dt {
+  color: var(--text-2);
+}
+
+.cv-report-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cv-report-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cv-report-error[hidden] {
+  display: none;
+}
+
+/* the honeypot: off the screen for people, present for the form */
+.cv-report-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cv-report-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.cv-report-foot .cv-btn {
+  min-width: 96px;
+}
+
+.cv-report-foot .cv-btn[disabled] {
+  cursor: progress;
+}
+
+/* a phone: the dialog takes the width, and the buttons the footer's full width */
+@media (max-width: 600px) {
+  .cv-report-foot .cv-btn {
+    flex: 1 1 0;
+  }
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- the guide's links and assets are written relative to the root, also on /guide/<page> -->
+    <base href="/" />
+    <!-- guide:head -->
+    <title>Rodeo user guide: draw, model and render in your browser</title>
+    <meta name="description" content="How to use Rodeo, the drawing and 3D modelling app at rodeo.build." />
+    <!-- /guide:head -->
+    <meta name="theme-color" content="#1d1d1d" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- the editor's theme, before the first paint (as convert.html does) -->
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem("openvwx.theme") || "dark";
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
+    <link rel="stylesheet" href="./src/guide/guide.css" />
+  </head>
+  <body>
+    <header class="g-top">
+      <a class="g-brand" href="/"><img src="/icon.svg" alt="" width="24" height="24" />Rodeo</a>
+      <a class="g-where" href="/guide">User guide</a>
+      <nav class="g-top-links" aria-label="Rodeo">
+        <a href="/">Open the editor</a>
+        <a href="/convert">Convert files</a>
+      </nav>
+    </header>
+    <div class="g-layout">
+      <!-- guide:nav -->
+      <!-- /guide:nav -->
+      <main class="g-main">
+        <!-- guide:body -->
+        <!-- /guide:body -->
+        <!-- guide:pager -->
+        <!-- /guide:pager -->
+      </main>
+      <!-- guide:toc -->
+      <!-- /guide:toc -->
+    </div>
+    <footer class="g-foot">
+      <!-- guide:foot -->
+      <!-- /guide:foot -->
+    </footer>
+  </body>
+</html>

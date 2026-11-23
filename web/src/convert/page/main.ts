@@ -6,13 +6,14 @@
 
 import { h } from "../../app/dom.ts";
 import { startLanguage } from "../../app/i18n.ts";
-import { MAX_PNG_SIDE, svgToPng } from "../../export/png.ts";
+import { canvasBlob, MAX_PNG_SIDE, svgToPng } from "../../export/png.ts";
 import { zipFiles } from "../../export/zip.ts";
 import { summaryLine } from "../describe.ts";
 import { formatById, formatOfName } from "../formats.ts";
 import type { DrawingSummary, Unit } from "../types.ts";
 import { handOff } from "./handoff.ts";
 import type { PreviewMesh } from "./preview3d.ts";
+import { type ConvertCase, renderCheck } from "./report.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
 // the interface in the language chosen in the editor (or the browser's), as the page builds
@@ -41,6 +42,16 @@ const LAYERS_SHOWN = 5;
 const TYPES_SHOWN = 5;
 /** What the page says when the worker stopped on a file, most likely for want of memory. */
 const OUT_OF_MEMORY = "Your browser ran out of memory reading this file. The command line has more room:";
+/** A picture in the strip is this many CSS pixels; it is drawn at twice that, so it stays sharp on a dense screen. */
+const TILE_W = 112;
+const TILE_H = 84;
+/** A converted file bigger than this is not read back for a preview: its tile says so. */
+const PEEK_BYTES = 300 * 1024 * 1024;
+const TOO_LARGE = "Too large to preview";
+/** What a converted file's tile says when the file can't be read back. The reason follows in the tile's text and in afterError. */
+const READ_BACK = "Couldn't read the converted file back";
+/** Which side of a file the big preview shows: the file as it was, or the file converted to the format picked. */
+type Side = "before" | "after";
 
 /** A converted file the page keeps: its bytes, what the writer left out, and a link to download it. */
 interface Result {
@@ -48,6 +59,29 @@ interface Result {
   readonly bytes: Uint8Array;
   readonly notes: readonly string[];
   readonly url: string;
+}
+
+/** What a converted file shows on the page: its picture, the read-back plan, model and summary, or why there are none. */
+interface After {
+  /** the small picture for the strip (a PNG), or null */
+  readonly picture: Blob | null;
+  /** the whole converted file as an image, for an SVG or a PNG, which the big preview shows as it is */
+  readonly image: Blob | null;
+  /** the plan read back from the converted file, or null */
+  readonly svg: string | null;
+  /** the model read back from the converted file, or null */
+  readonly mesh: PreviewMesh | null;
+  /** the summary read back from the converted file, or null when it was not read back */
+  readonly summary: DrawingSummary | null;
+  /** what the tile says when there is no picture */
+  readonly note: string;
+  /** why the converted file couldn't be read back, or null */
+  readonly error: string | null;
+}
+
+/** An after with nothing to show but its note (and the reason it couldn't be read back, if it wasn't). */
+function noneAfter(note: string, error: string | null = null): After {
+  return { picture: null, image: null, svg: null, mesh: null, summary: null, note, error };
 }
 
 /** Keeps a converted file, with its download link made once. */
@@ -147,16 +181,119 @@ class Client {
     this.inFlight = null;
     this.worker?.terminate();
     this.worker = null;
-    if (job) job.reject(new Lost());
+    // a read-back that stopped the worker is refused for good, so that it isn't tried again after each restart
+    if (job) job.reject(job.message.type === "peek" ? new Error("the converter stopped reading the file back, most likely for want of memory") : new Lost());
     for (const j of waiting) j.reject(new Lost());
-    this.crashed(job?.owner ?? null);
+    // a read-back owns no file on the page: its failure is its own, and the files are read again
+    this.crashed(job && job.message.type !== "peek" ? job.owner : null);
   }
 }
 
 const client = new Client(onCrash);
 
+/**
+ * A tile of a file's strip: a small picture, or a note in its place, its caption under it, and a click
+ * that shows its side of the file in the preview. The picture's object URL is released when it changes.
+ */
+class Tile {
+  readonly el: HTMLElement;
+  private readonly button: HTMLButtonElement;
+  private readonly box: HTMLElement;
+  private readonly cap: HTMLElement;
+  private url: string | null = null;
+  // what the tile shows now, so a redraw of the same thing costs nothing
+  private blob: Blob | null = null;
+  private note = "";
+  private warn = false;
+  private loading = false;
+
+  constructor(side: Side, caption: string, pick: () => void) {
+    this.box = h("span", { cls: "cv-tile-box" });
+    this.button = h("button", { cls: "cv-tile", attrs: { type: "button" } }, this.box);
+    this.button.addEventListener("click", pick);
+    this.cap = h("span", { cls: "cv-tile-cap", text: caption });
+    this.el = h("div", { cls: `cv-tile-wrap cv-tile-${side}` }, this.button, this.cap);
+    this.setCaption(caption);
+  }
+
+  /** Sets the caption under the tile, which is also the name the tile is picked by. */
+  setCaption(text: string): void {
+    this.cap.textContent = text;
+    this.button.setAttribute("aria-label", `${text} preview`);
+  }
+
+  /** Shows a picture, or a note in its place (a warning when `warn`), or the busy state while `loading`. */
+  show(s: { blob?: Blob | null; note?: string; warn?: boolean; loading?: boolean }): void {
+    const blob = s.blob ?? null;
+    const note = s.note ?? "";
+    const warn = s.warn === true;
+    const loading = s.loading === true;
+    if (blob === this.blob && note === this.note && warn === this.warn && loading === this.loading) return;
+    this.blob = blob;
+    this.note = note;
+    this.warn = warn;
+    this.loading = loading;
+    this.release();
+    this.button.classList.toggle("is-loading", loading);
+    if (blob) {
+      this.url = URL.createObjectURL(blob);
+      this.box.replaceChildren(h("img", { attrs: { src: this.url, alt: "" } }));
+    } else {
+      this.box.replaceChildren(h("span", { cls: warn ? "cv-tile-note is-warn" : "cv-tile-note", text: note }));
+    }
+  }
+
+  /** Releases the picture's link: the tile is being removed. */
+  dispose(): void {
+    this.release();
+    this.blob = null;
+    this.box.replaceChildren();
+  }
+
+  private release(): void {
+    if (this.url) URL.revokeObjectURL(this.url);
+    this.url = null;
+  }
+}
+
+/**
+ * A small picture of a file: a still of its model when it has one, else its plan drawn small. Null when
+ * neither can be drawn. A browser without WebGL gets the plan; the still's module loads only when needed.
+ */
+async function pictureOf(mesh: PreviewMesh | null, svg: string | null): Promise<Blob | null> {
+  if (mesh) {
+    try {
+      const { thumb3d } = await import("./thumb.ts");
+      return await thumb3d(mesh, TILE_W * 2, TILE_H * 2);
+    } catch {
+      // no WebGL, or a model that won't draw: the plan below stands in for it
+    }
+  }
+  if (!svg) return null;
+  try {
+    return await svgToPng(svg, TILE_W * 2, TILE_H * 2);
+  } catch {
+    return null;
+  }
+}
+
+/** The tile's note for a format with no picture: "No preview for EPS". */
+function noPreviewText(format: string): string {
+  return `No preview for ${formatLabel(format)}`;
+}
+
+/** A count and its word, as the comparison line says it: "1 object", "1,234 objects". */
+function countOf(n: number, word: string): string {
+  return `${fmt(n)} ${n === 1 ? word : `${word}s`}`;
+}
+
+/** What a drawing holds in brief, for the comparison line: "1,234 objects · 12 layers". */
+function contentsOf(s: DrawingSummary): string {
+  return `${countOf(s.totalObjects, "object")} · ${countOf(s.layers.length, "layer")}`;
+}
+
 /** A file on the page: its read, what the read says (a summary, a plan and a 3D model), and what it converts to, by format. */
-class Row {
+export class Row {
   readonly file: File;
   readonly name: string;
   readonly el: HTMLLIElement;
@@ -177,6 +314,8 @@ class Row {
   mesh: PreviewMesh | null = null;
   /** the preview tab the file opens on */
   tab: "3d" | "plan" = "3d";
+  /** the side of the preview the file shows: the file as it was, or the converted file for the format picked */
+  side: Side = "before";
   /** why the file can't be read, or null */
   readError: string | null = null;
   /** true when the browser ran out of memory on the file, so the page offers the command line */
@@ -189,8 +328,24 @@ class Row {
   readonly pending = new Set<string>();
   /** the files made, by format */
   readonly results = new Map<string, Result>();
+  /** what each converted file shows, by format, once it is checked by reading it back */
+  readonly afters = new Map<string, After>();
+  /** the formats being checked now */
+  private readonly checking = new Set<string>();
+  /** the small picture of the file as it was read, or null until it is made */
+  private beforePic: Blob | null = null;
+  /** true while that picture is being made */
+  private beforeMaking = false;
+  /** counts the picture makes: an answer to an earlier one is thrown away */
+  private picSeq = 0;
+  private readonly beforeTile = new Tile("before", "Original", () => showSide(this, "before"));
+  private readonly afterTile = new Tile("after", "", () => showSide(this, "after"));
+  private readonly compareEl: HTMLElement = h("p", { cls: "cv-compare", hidden: true });
+  /** an empty place under the strip, for the file check that goes there */
+  readonly checkEl: HTMLElement = h("div", { cls: "cv-file-check" });
 
   private readonly statusEl: HTMLElement;
+  private readonly stripEl: HTMLElement;
   private readonly notesEl: HTMLElement;
   private readonly errorEl: HTMLElement;
   private readonly actionsEl: HTMLElement;
@@ -203,18 +358,29 @@ class Row {
     this.units = id === "stl" ? "mm" : "m";
     this.yUp = id === "obj";
     this.statusEl = h("div", { cls: "cv-file-status" });
+    this.stripEl = h(
+      "div",
+      { cls: "cv-strip" },
+      this.beforeTile.el,
+      h("span", { cls: "cv-arrow", text: "→", attrs: { "aria-hidden": "true" } }),
+      this.afterTile.el,
+      this.compareEl,
+    );
     this.notesEl = h("p", { cls: "cv-file-notes", hidden: true });
     this.errorEl = h("p", { cls: "cv-file-error", hidden: true, attrs: { role: "alert" } });
     this.actionsEl = h("div", { cls: "cv-file-actions" });
     const children: Node[] = [
       h("div", { cls: "cv-file-head" }, h("span", { cls: "cv-file-name", text: file.name }), h("span", { cls: "cv-file-size", text: sizeText(file.size) })),
       this.statusEl,
+      this.stripEl,
+      this.checkEl,
       this.notesEl,
     ];
     if (id && ASKS.has(id)) children.push(this.optionsBar());
     if (file.size >= LARGE_FILE) children.push(h("p", { cls: "cv-note", text: "Large file: your browser may run out of memory. The command line has more room." }));
     children.push(this.errorEl, this.actionsEl);
     this.el = h("li", { cls: "cv-file" }, ...children);
+    this.el.dataset.side = this.side;
     this.el.addEventListener("click", (e) => {
       // a control in the row does its own thing; a click on the rest of the row picks the file for the preview
       if (e.target instanceof Element && e.target.closest("button, a, select, input, label")) return;
@@ -223,6 +389,26 @@ class Row {
       if (matchMedia("(max-width: 899px)").matches) previewEl.scrollIntoView({ block: "start" });
     });
     this.render();
+  }
+
+  /** The small picture of the file as it was read (a still of its model, else its plan), or null when there is none or it isn't read. */
+  beforePicture(): Blob | null {
+    return this.beforePic;
+  }
+
+  /** The small picture of the file converted to `format` (a PNG), or null when there is none. */
+  afterPicture(format: string): Blob | null {
+    return this.afters.get(format)?.picture ?? null;
+  }
+
+  /** The summary of the file converted to `format`, read back from the converted bytes, or null when it wasn't read back. */
+  afterSummary(format: string): DrawingSummary | null {
+    return this.afters.get(format)?.summary ?? null;
+  }
+
+  /** Why the file converted to `format` couldn't be read back, or null when it could, or was never checked. */
+  afterError(format: string): string | null {
+    return this.afters.get(format)?.error ?? null;
   }
 
   /** The units and up axis of a file that doesn't say its own: changing either reads the file again. */
@@ -269,6 +455,7 @@ class Row {
     this.step = "Reading the file";
     this.readError = null;
     this.outOfMemory = false;
+    this.clearBefore();
     this.render();
 
     let bytes: Uint8Array;
@@ -302,6 +489,7 @@ class Row {
       this.mesh = reply.mesh;
       this.tab = reply.mesh ? "3d" : "plan";
       this.state = "ready";
+      void this.makeBefore();
       this.render();
       if (selected === this) renderPreview();
       refreshBar();
@@ -316,6 +504,7 @@ class Row {
   fail(message: string, outOfMemory = false): void {
     this.dropDrawing();
     this.clearConversions();
+    this.clearBefore();
     this.state = "failed";
     this.readError = message;
     this.outOfMemory = outOfMemory;
@@ -332,6 +521,7 @@ class Row {
     this.summary = null;
     this.svg = null;
     this.mesh = null;
+    this.clearBefore();
     this.state = "reading";
     this.step = "Reading the file";
     this.render();
@@ -342,11 +532,14 @@ class Row {
     return !this.removed && this.readError === null;
   }
 
-  /** Takes the file off the page: its drawing and conversions go. */
+  /** Takes the file off the page: its drawing, pictures and conversions go. */
   dispose(): void {
     this.removed = true;
     this.dropDrawing();
     this.clearConversions();
+    this.clearBefore();
+    this.beforeTile.dispose();
+    this.afterTile.dispose();
     this.el.remove();
   }
 
@@ -362,12 +555,40 @@ class Row {
     this.results.clear();
     this.errors.clear();
     this.pending.clear();
+    this.afters.clear();
+    this.checking.clear();
     this.gen++;
   }
 
-  /** Makes the file in `format`, unless it has been made or is being made. A result stays until the file is read again or its units change. */
+  /** Forgets the original's picture: a new one is made when the file is read again. */
+  private clearBefore(): void {
+    this.picSeq++;
+    this.beforePic = null;
+    this.beforeMaking = false;
+  }
+
+  /** Makes the picture of the file as it was read. An answer to an earlier read's picture is thrown away. */
+  private async makeBefore(): Promise<void> {
+    const seq = ++this.picSeq;
+    this.beforeMaking = true;
+    this.renderStrip();
+    const picture = await pictureOf(this.mesh, this.svg);
+    if (seq !== this.picSeq || this.removed) return;
+    this.beforePic = picture;
+    this.beforeMaking = false;
+    this.renderStrip();
+  }
+
+  /**
+   * Makes the file in `format`, unless it has been made or is being made. A result stays until the file is read
+   * again or its units change. A made file is only checked again: its check may have been lost to a restart.
+   */
   async convert(format: string): Promise<void> {
-    if (this.state !== "ready" || this.results.has(format) || this.pending.has(format)) return;
+    if (this.state !== "ready" || this.pending.has(format)) return;
+    if (this.results.has(format)) {
+      void this.checkResult(format);
+      return;
+    }
     const gen = this.gen;
     this.pending.add(format);
     this.errors.delete(format);
@@ -380,6 +601,7 @@ class Row {
         return;
       }
       this.results.set(format, made);
+      void this.checkResult(format);
     } catch (err) {
       if (gen === this.gen && !(err instanceof Lost)) this.errors.set(format, messageOf(err));
     } finally {
@@ -389,8 +611,9 @@ class Row {
     }
   }
 
-  /** Shows the file as it is now: its status, the writer's notes, its problem and its actions. */
+  /** Shows the file as it is now: its strip, its status, the writer's notes, its problem and its actions. */
   render(): void {
+    this.renderStrip();
     this.renderStatus();
     const made = this.results.get(chosen);
     this.notesEl.hidden = !made || made.notes.length === 0;
@@ -408,6 +631,129 @@ class Row {
     }
     this.actionsEl.replaceChildren(...this.actions());
     this.el.classList.toggle("is-failed", this.state === "failed");
+  }
+
+  /**
+   * Shows the strip: the original's picture, the converted file's picture for the format picked, and the
+   * line that compares the two when both have a summary.
+   */
+  private renderStrip(): void {
+    // a file that couldn't be read has nothing to show either side: its problem says why
+    this.stripEl.hidden = this.state === "failed";
+    const label = formatLabel(chosen);
+    this.afterTile.setCaption(label);
+    if (this.state === "reading" || this.beforeMaking) this.beforeTile.show({ loading: true });
+    else this.beforeTile.show(this.beforePic ? { blob: this.beforePic } : { note: "No preview" });
+
+    const after = this.afters.get(chosen) ?? null;
+    if (!this.results.has(chosen)) this.afterTile.show(this.pending.has(chosen) ? { loading: true } : { note: this.state === "ready" ? "Not converted" : "" });
+    else if (!after) this.afterTile.show(this.checking.has(chosen) ? { loading: true } : { note: "Not checked yet" });
+    else if (after.picture) this.afterTile.show({ blob: after.picture });
+    else this.afterTile.show({ note: after.note, warn: after.error !== null });
+
+    const before = this.state === "ready" ? this.summary : null;
+    const text = before && after?.summary ? `Original: ${contentsOf(before)} → ${label}: ${contentsOf(after.summary)}` : "";
+    this.compareEl.hidden = text === "";
+    this.compareEl.textContent = text;
+    this.renderCheck();
+  }
+
+  /** The line under the strip that asks whether the converted file looks right, or offers to report a file that failed (report.ts). */
+  private renderCheck(): void {
+    const c = this.caseFor(chosen);
+    if (c) renderCheck(this.checkEl, c);
+    else this.checkEl.replaceChildren();
+    this.checkEl.hidden = c === null;
+  }
+
+  /**
+   * What a report about this file converted to `format` carries, or null while there is nothing to ask:
+   * the file is still being read or converted, or its converted file is still being read back (its
+   * picture and whether it opened belong in the report).
+   */
+  private caseFor(format: string): ConvertCase | null {
+    const from = formatOfName(this.name) ?? this.name.slice(this.name.lastIndexOf(".") + 1).toLowerCase();
+    if (this.state === "failed") {
+      return { file: this.file, from, to: null, output: null, before: null, after: null, error: this.readError, notes: [], picture: async () => null };
+    }
+    if (this.state !== "ready") return null;
+    const made = this.results.get(format);
+    const failed = this.errors.get(format) ?? null;
+    if ((!made && failed === null) || (made && !this.afters.has(format))) return null;
+    const after = this.afters.get(format) ?? null;
+    const before = this.beforePic;
+    return {
+      file: this.file,
+      from,
+      to: format,
+      output: made ? { name: made.name, size: made.bytes.byteLength } : null,
+      before: this.summary,
+      after: after?.summary ?? null,
+      error: failed ?? after?.error ?? null,
+      notes: made?.notes ?? [],
+      picture: () => pairPicture(before, after?.picture ?? null, formatLabel(format)),
+    };
+  }
+
+  /**
+   * Reads a converted file back and keeps what it shows: its picture, and its plan or model for the big
+   * preview. The file is checked once per conversion. A check stopped by a restart is made again when the
+   * format is picked again, since its read-back was never answered.
+   */
+  private async checkResult(format: string): Promise<void> {
+    const made = this.results.get(format);
+    if (!made || this.checking.has(format) || this.afters.has(format)) return;
+    const gen = this.gen;
+    this.checking.add(format);
+    this.renderStrip();
+    if (selected === this) renderPreview();
+    try {
+      const after = await this.afterOf(format, made);
+      if (gen === this.gen && !this.removed) this.afters.set(format, after);
+    } catch (err) {
+      if (!(err instanceof Lost) && gen === this.gen && !this.removed) this.afters.set(format, noneAfter(READ_BACK, messageOf(err)));
+    } finally {
+      if (gen === this.gen) this.checking.delete(format);
+      this.renderStrip();
+      if (selected === this) renderPreview();
+    }
+  }
+
+  /**
+   * What a converted file shows: an SVG or a PNG as an image, a file the page can read back read by the
+   * worker (a peek, which keeps no drawing), and anything else a note. Throws only when a restart stops it.
+   */
+  private async afterOf(format: string, made: Result): Promise<After> {
+    if (format === "png") {
+      const png = new Blob([made.bytes as BlobPart], { type: "image/png" });
+      return { ...noneAfter(""), picture: png, image: png };
+    }
+    if (format === "svg") {
+      const picture = await pictureOf(null, new TextDecoder().decode(made.bytes));
+      const image = new Blob([made.bytes as BlobPart], { type: "image/svg+xml" });
+      return { ...noneAfter(picture ? "" : noPreviewText(format)), picture, image };
+    }
+    const info = formatById(format);
+    if (!info || info.readExtensions.length === 0) return noneAfter(noPreviewText(format));
+    if (made.bytes.byteLength > PEEK_BYTES) return noneAfter(TOO_LARGE);
+    let reply: FromWorker;
+    try {
+      reply = await client.run(this, { type: "peek", id: ++readSeq, name: made.name, bytes: made.bytes });
+    } catch (err) {
+      if (err instanceof Lost) throw err;
+      return noneAfter(READ_BACK, messageOf(err));
+    }
+    if (reply.type !== "peeked") throw new Error("the converter answered out of turn");
+    const picture = await pictureOf(reply.mesh, reply.svg);
+    return {
+      picture,
+      image: null,
+      svg: reply.svg,
+      mesh: reply.mesh,
+      summary: reply.summary,
+      note: picture ? "" : noPreviewText(format),
+      error: null,
+    };
   }
 
   /** Shows what the file is doing: its step while it is read, or what it holds once it is. */
@@ -495,9 +841,9 @@ let chosen = FALLBACK_TO;
 let readChain: Promise<void> = Promise.resolve();
 /** The id of the latest read, which is also the id of its drawing in the worker. */
 let readSeq = 0;
-/** The 3D preview and the plan's object URL on screen. Each redraw takes the last ones down first. */
+/** The 3D preview and the object URL of the plan or converted image on screen. Each redraw takes the last ones down first. */
 let view3d: { dispose(): void } | null = null;
-let planUrl: string | null = null;
+let imageUrl: string | null = null;
 let previewGen = 0;
 /** How many dragged things are over the window, so the drop zone lights up until they all leave. */
 let dragDepth = 0;
@@ -580,11 +926,22 @@ function queueRead(row: Row): void {
   readChain = readChain.then(() => row.read()).catch((err: unknown) => console.error(err));
 }
 
-/** Picks the file the preview shows (null for none) and marks its row. */
+/** Picks the file the preview shows (null for none) and marks its row and the side it shows. */
 function selectFile(row: Row | null): void {
   selected = row;
-  for (const r of rows) r.el.classList.toggle("is-selected", r === row);
+  for (const r of rows) {
+    r.el.classList.toggle("is-selected", r === row);
+    r.el.dataset.side = r.side;
+  }
   renderPreview();
+}
+
+/** Shows one side of a file in the preview, the file as it was or as converted, and picks the file. */
+function showSide(row: Row, side: Side): void {
+  row.side = side;
+  selectFile(row);
+  // on a narrow screen the preview sits under the list, so bring it into view
+  if (matchMedia("(max-width: 899px)").matches) previewEl.scrollIntoView({ block: "start" });
 }
 
 /** Takes a file off the page: its drawing and conversions go, and the preview moves to the first file left. */
@@ -623,38 +980,68 @@ function onCrash(owner: Row | null): void {
   refreshBar();
 }
 
-/** Draws the preview of the picked file: its 3D model or its plan, with its facts. A file not yet read shows none. */
+/**
+ * Draws the preview of the picked file: the file as it was, or the converted file once it is made, with its
+ * 3D model or plan and its facts. The Original | Converted switch shows once the file is converted (or is being
+ * converted) to the format picked. A file not yet read shows none.
+ */
 function renderPreview(): void {
   const gen = ++previewGen;
   view3d?.dispose();
   view3d = null;
-  if (planUrl) URL.revokeObjectURL(planUrl);
-  planUrl = null;
+  if (imageUrl) URL.revokeObjectURL(imageUrl);
+  imageUrl = null;
   const row = selected;
   if (!row || row.state !== "ready" || !row.summary) {
     previewEl.hidden = true;
     previewEl.replaceChildren();
     return;
   }
-  const summary = row.summary;
-  const mesh = row.mesh;
-  const svg = row.svg;
-  // the tab the file opens on, or the one it has when the other has nothing to show
-  const use3d = mesh !== null && (row.tab === "3d" || svg === null);
-  const tabs: HTMLButtonElement[] = [];
-  if (mesh) tabs.push(tabButton(row, "3d", "3D", use3d));
-  if (svg) tabs.push(tabButton(row, "plan", "Plan", !use3d));
 
+  // the row marks the side on show, so its tile is the one outlined
+  row.el.dataset.side = row.side;
+  const hasConverted = row.results.has(chosen) || row.pending.has(chosen);
+  const converted = hasConverted && row.side === "after";
+  const after = converted ? (row.afters.get(chosen) ?? null) : null;
+  // what the side on show has: its model, its plan and its summary
+  const view = converted
+    ? { mesh: after?.mesh ?? null, svg: after?.svg ?? null, summary: after?.summary ?? null }
+    : { mesh: row.mesh, svg: row.svg, summary: row.summary };
+
+  const sides: HTMLButtonElement[] = [];
+  if (hasConverted) {
+    sides.push(sideTab(row, "before", "Original", !converted));
+    sides.push(sideTab(row, "after", `Converted (${formatLabel(chosen)})`, converted));
+  }
+  const tabs: HTMLButtonElement[] = [];
   const stage = h("div", { cls: "cv-stage" });
-  let body: Node[];
-  if (use3d && mesh) {
+  let body: Node[] = [];
+  if (converted && !row.results.has(chosen)) {
+    body = [h("p", { cls: "cv-note", text: `Converting to ${formatLabel(chosen)}…` })];
+  } else if (converted && !after) {
+    body = [h("p", { cls: "cv-note", text: "Checking the converted file…" })];
+  } else if (converted && after?.image) {
+    imageUrl = URL.createObjectURL(after.image);
+    stage.append(h("img", { attrs: { src: imageUrl, alt: `Converted ${row.name}` } }));
     body = [stage];
-    if (mesh.capped) body.push(h("p", { cls: "cv-note", text: "Preview shows part of the model." }));
-    void show3d(stage, mesh, gen);
-  } else if (svg) {
-    planUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    stage.append(h("img", { attrs: { src: planUrl, alt: `Plan of ${row.name}` } }));
-    body = [stage];
+  } else if (view.mesh || view.svg) {
+    // the tab the file opens on, or the one it has when the other has nothing to show
+    const use3d = view.mesh !== null && (row.tab === "3d" || view.svg === null);
+    if (view.mesh) tabs.push(tabButton(row, "3d", "3D", use3d));
+    if (view.svg) tabs.push(tabButton(row, "plan", "Plan", !use3d));
+    if (use3d && view.mesh) {
+      body = [stage];
+      if (view.mesh.capped) body.push(h("p", { cls: "cv-note", text: "Preview shows part of the model." }));
+      void show3d(stage, view.mesh, gen);
+    } else if (view.svg) {
+      imageUrl = URL.createObjectURL(new Blob([view.svg], { type: "image/svg+xml" }));
+      stage.append(h("img", { attrs: { src: imageUrl, alt: `Plan of ${row.name}` } }));
+      body = [stage];
+    }
+  } else if (converted && after) {
+    // a converted file with nothing to draw: its note, and why it couldn't be read back
+    body = [h("p", { cls: "cv-note", text: after.note })];
+    if (after.error) body.push(h("p", { cls: "cv-note is-warn", text: after.error }));
   } else {
     body = [h("p", { cls: "cv-note", text: "No preview for this file." })];
   }
@@ -662,10 +1049,25 @@ function renderPreview(): void {
   previewEl.hidden = false;
   previewEl.replaceChildren(
     h("h2", { cls: "cv-preview-name", text: row.name }),
+    h("div", { cls: "cv-tabs cv-sides", hidden: sides.length === 0 }, ...sides),
     h("div", { cls: "cv-tabs", hidden: tabs.length === 0 }, ...tabs),
     ...body,
-    h("dl", { cls: "cv-facts" }, ...factNodes(summary)),
+    ...(view.summary ? [h("dl", { cls: "cv-facts" }, ...factNodes(view.summary))] : []),
   );
+}
+
+/** A button over the preview that picks the file as it was or as converted, marked when it is the side showing. */
+function sideTab(row: Row, side: Side, label: string, on: boolean): HTMLButtonElement {
+  const b = button(
+    label,
+    () => {
+      row.side = side;
+      renderPreview();
+    },
+    on ? "cv-tab is-on" : "cv-tab",
+  );
+  b.setAttribute("aria-pressed", String(on));
+  return b;
 }
 
 /** Draws the 3D model in the stage once the preview's code has loaded. A browser without WebGL gets a line saying so. */
@@ -794,6 +1196,47 @@ function factNodes(s: DrawingSummary): Node[] {
 function extentOf(s: DrawingSummary): string {
   const parts = summaryLine(s).split(" · ");
   return parts.length > 3 ? parts.slice(3).join(" · ") : "None";
+}
+
+/** The before and after pictures side by side, captioned, as one PNG for a report; null when there is neither. */
+async function pairPicture(before: Blob | null, after: Blob | null, label: string): Promise<Blob | null> {
+  if (!before && !after) return null;
+  const w = TILE_W * 3;
+  const h = TILE_H * 3;
+  const gap = 64;
+  const caption = 40;
+  const [a, b] = await Promise.all([before ? createImageBitmap(before) : null, after ? createImageBitmap(after) : null]);
+  const canvas = document.createElement("canvas");
+  canvas.width = w * 2 + gap;
+  canvas.height = h + caption;
+  const g = canvas.getContext("2d");
+  if (!g) return null;
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.textAlign = "center";
+  const side = (img: ImageBitmap | null, x: number, text: string): void => {
+    g.fillStyle = "#ececea";
+    g.fillRect(x, 0, w, h);
+    if (img) {
+      const scale = Math.min(w / img.width, h / img.height);
+      g.drawImage(img, x + (w - img.width * scale) / 2, (h - img.height * scale) / 2, img.width * scale, img.height * scale);
+    } else {
+      g.fillStyle = "#777777";
+      g.font = "18px system-ui, sans-serif";
+      g.fillText("No picture", x + w / 2, h / 2);
+    }
+    g.fillStyle = "#333333";
+    g.font = "18px system-ui, sans-serif";
+    g.fillText(text, x + w / 2, h + 27);
+  };
+  side(a, 0, "Original");
+  side(b, w + gap, label);
+  g.fillStyle = "#666666";
+  g.font = "32px system-ui, sans-serif";
+  g.fillText("→", w + gap / 2, h / 2 + 10);
+  a?.close();
+  b?.close();
+  return canvasBlob(canvas, "image/png");
 }
 
 /** A button with a label and a click handler. */

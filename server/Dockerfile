@@ -18,6 +18,8 @@ WORKDIR /app
 COPY server/package.json server/package-lock.json /app/server/
 RUN cd /app/server && npm ci --omit=dev
 COPY server/src /app/server/src
+# the user guide's markdown, read by server/src/guide.ts (GUIDE_DIR defaults to ../../docs/guide from there)
+COPY docs/guide /app/docs/guide
 
 # The server imports these from the web source at run time, by relative path. The
 # package.json marks them as ES modules, as they are in the repository.

@@ -23,7 +23,7 @@ registerUrlHandler("url", (address, p, ctx) => {
 });
 
 /** The guide's section on share links, embeds and opening a file from its address. */
-const EMBED_GUIDE = "https://github.com/rodeobuild/rodeo/blob/main/docs/guide/files.md#sharing-and-embedding";
+const EMBED_GUIDE = "https://rodeo.build/guide/files#sharing-and-embedding";
 
 registerWelcome(
   () =>

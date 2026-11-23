@@ -22,6 +22,27 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-23T12:11:00Z",
+    "user-guide-on-site",
+    "The user guide on rodeo.build",
+    `The user guide now has its own pages at rodeo.build/guide, with every page one click from the side menu.
+- Help › User Guide and the start screen's footer open it.
+- Each page has its contents on the right, next and previous links at the bottom, and works on a phone.
+- The converter has a page for each kind of file it opens, such as rodeo.build/viewer/vwx and /viewer/dwg, and each conversion's page says what comes across and what doesn't.`,
+    "sheet",
+  ),
+  release(
+    "2026-11-23T12:10:00Z",
+    "convert-previews-reports",
+    "Before and after pictures in the converter",
+    `The converter shows each file before and after it is converted, so you can see it came out right before you download it.
+- Each file has a small picture of the original and one of the converted file, made by reading the converted file back in. If it doesn't open again, the picture says so.
+- A line compares the two: objects and layers before and after.
+- Click a picture to see it large, and switch between Original and Converted in 3D or in plan.
+- Does it look right? Answer under each file. Report a problem sends the file and the pictures to us, so we can fix the converter. You see everything that goes before you send it.`,
+    "filecheck",
+  ),
+  release(
     "2026-11-23T12:09:00Z",
     "doors-windows-any-wall",
     "Doors and windows in any wall",

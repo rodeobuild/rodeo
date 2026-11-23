@@ -56,6 +56,15 @@ host with no server.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Sign in with Google" (redirect URI `PUBLIC_URL/api/auth/oauth/google/callback`) |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | "Sign in with Microsoft" (common tenant; `…/oauth/microsoft/callback`) |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | "Sign in with GitHub" (`…/oauth/github/callback`) |
+| `INDEXNOW_KEY` | the IndexNow key (8 to 128 letters, digits or hyphens). Unset, the server keeps one in `DATA_DIR/indexnow-key.txt` (made the first time) |
+| `INDEXNOW_ENDPOINT` | where the IndexNow pass posts the URLs (default `https://api.indexnow.org/indexnow`); tests point it at a stub |
+
+Search engines (`server/src/seo.ts`): the site serves `/sitemap.xml` (an index of `/sitemap-pages.xml`,
+`/sitemap-convert.xml`, `/sitemap-guide.xml` and `/sitemap-gallery.xml`), `/robots.txt`, `/llms.txt`, and the
+key file at `/<key>.txt`. In production on an https address, a minute after start the server reads its own
+sitemaps and posts the pages that are new or changed since the last pass to IndexNow (Bing, Yandex, Seznam,
+and the search that feeds ChatGPT). The list of what was sent is `DATA_DIR/indexnow-sent.json`; a failed post
+is tried again on the next start. It is never called from development or tests.
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Rodeo Plus; webhook at `PUBLIC_URL/api/billing/webhook` (events `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`) |
 | `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_YEARLY` | the plan's Stripe price ids |
 | `SUPPORTER_MONTHLY_LABEL`, `SUPPORTER_YEARLY_LABEL` | prices as shown, default `£2/month`, `£15/year` |

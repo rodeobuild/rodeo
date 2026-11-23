@@ -349,6 +349,128 @@ body {
   margin: 0;
 }
 
+/* the strip: the file as it was, an arrow, and the file as converted, each a tile with a caption under it;
+   the line comparing the two sits under the tiles and wraps to the full width. The tiles keep a light
+   neutral so a plan (white paper) and a model's still both sit on them. */
+.cv-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.cv-tile-wrap {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cv-tile {
+  display: block;
+  width: 112px;
+  height: 84px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #ececea;
+  overflow: hidden;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cv-tile:hover {
+  border-color: var(--text-3);
+}
+
+.cv-tile-box {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.cv-tile-box img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cv-tile-note {
+  padding: 6px;
+  color: #5c5c5c;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.cv-tile-note.is-warn {
+  color: #a3201a;
+}
+
+/* a tile being made pulses softly; a reader who asks for less motion sees it held still */
+.cv-tile.is-loading .cv-tile-box {
+  animation: cv-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cv-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-tile.is-loading .cv-tile-box {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.cv-tile-cap {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.cv-arrow {
+  color: var(--text-3);
+  font-size: 16px;
+}
+
+.cv-compare {
+  flex-basis: 100%;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* the picked file's tile is outlined: the original's, or the converted one's, as the preview shows */
+.cv-file.is-selected[data-side="before"] .cv-tile-before .cv-tile,
+.cv-file.is-selected[data-side="after"] .cv-tile-after .cv-tile {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* the file check goes under the strip; an empty one takes no room */
+.cv-file-check:empty {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .cv-tile {
+    width: 88px;
+    height: 66px;
+  }
+}
+
 /* the preview: the 3D model or the plan, then the facts. The stage has an explicit shape (16:10),
    which the 3D preview fills, so its canvas gets a height to draw into. */
 .cv-preview {

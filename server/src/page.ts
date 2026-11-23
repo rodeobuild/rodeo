@@ -13,6 +13,8 @@ export interface PageExtras {
   readonly body?: string;
   /** a class added to <body> */
   readonly bodyClass?: string;
+  /** the page is still the editor's own (the home page's head), so the service worker may keep it as its offline copy */
+  readonly shell?: boolean;
 }
 
 export type PageHook = (url: URL) => PageExtras | null;

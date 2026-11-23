@@ -251,7 +251,7 @@ try {
   assert.equal(await download.text(), "drawing B");
 
   // ---- 11. sitemap, robots, and the pages' head ------------------------------------
-  assert.ok((await text(null, "GET", "/sitemap.xml")).includes(cabin.path), "the sitemap lists the drawing");
+  assert.ok((await text(null, "GET", "/sitemap-gallery.xml")).includes(cabin.path), "the gallery sitemap lists the drawing");
   assert.ok((await text(null, "GET", "/robots.txt")).includes("Sitemap:"));
   if (existsSync(join(import.meta.dirname, "../../web/dist/gallery.html"))) {
     const page = await call(null, "GET", `/gallery/${entryId}/x`);

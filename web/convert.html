@@ -32,6 +32,7 @@
       }
     </script>
     <link rel="stylesheet" href="./src/convert/page/page.css" />
+    <link rel="stylesheet" href="./src/convert/page/seo.css" />
   </head>
   <body>
     <main class="cv">
@@ -47,9 +48,11 @@
         <div id="cv-app"></div>
         <noscript><p class="cv-note">The converter needs JavaScript: it runs in your browser so your files stay on your computer.</p></noscript>
       </section>
+      <!-- convert:about -->
+      <!-- /convert:about -->
       <section class="cv-section" aria-labelledby="cv-links-h">
-        <h2 id="cv-links-h">Popular conversions</h2>
         <!-- convert:links -->
+        <h2 id="cv-links-h">Popular conversions</h2>
         <!-- /convert:links -->
       </section>
       <section class="cv-section">
@@ -59,6 +62,7 @@
       </section>
       <section class="cv-section cv-faq">
         <h2>Questions</h2>
+        <!-- convert:faq -->
         <details>
           <summary>Are my files uploaded?</summary>
           <p>No. The converter runs in your browser: your files are read and written on your computer and never sent anywhere.</p>
@@ -79,6 +83,7 @@
           <summary>Can I convert many files, or script it?</summary>
           <p>Yes: <code class="cv-cli">npx @rodeo.build/cli convert "plans/*.dwg" --to pdf --out pdfs</code> converts a folder at a time on your computer, and --json prints results for scripts.</p>
         </details>
+        <!-- /convert:faq -->
       </section>
       <footer class="cv-foot">
         <p>On the command line: <code class="cv-cli">npx @rodeo.build/cli convert model.rvt model.ifc</code></p>

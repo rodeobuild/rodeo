@@ -66,16 +66,33 @@ function devGallery(): Plugin {
   };
 }
 
-// Dev-only: the converter (convert.html) at /convert and /convert/<from>-to-<to>, as the server
-// serves it in production (server/src/convert.ts, which also writes each page's title and links).
+// Dev-only: the converter (convert.html) at /convert and /convert/<from>-to-<to>, and the file viewers
+// at /viewer and /viewer/<id>, as the server serves them in production (server/src/convert.ts, which
+// also writes each page's title, text and links).
 function devConvert(): Plugin {
   return {
     name: "openvwx-dev-convert",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        const m = /^\/convert(?:\/[a-z0-9]+-to-[a-z0-9]+)?\/?(\?.*)?$/i.exec(req.url ?? "");
+        const m = /^\/(?:convert(?:\/[a-z0-9]+-to-[a-z0-9]+)?|viewer(?:\/[a-z0-9]+)?)\/?(\?.*)?$/i.exec(req.url ?? "");
         if (m) req.url = `/convert.html${m[1] ?? ""}`;
+        next();
+      });
+    },
+  };
+}
+
+// Dev-only: the user guide (guide.html) at /guide and /guide/<page>, as the server serves it in production
+// (server/src/guide.ts, which also fills in each page's text; the dev server has no guide text to fill).
+function devGuide(): Plugin {
+  return {
+    name: "openvwx-dev-guide",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        const m = /^\/guide(?:\/[a-z0-9-]+)?\/?(\?.*)?$/i.exec(req.url ?? "");
+        if (m) req.url = `/guide.html${m[1] ?? ""}`;
         next();
       });
     },
@@ -85,7 +102,7 @@ function devConvert(): Plugin {
 // Relative base so the build also works from file:// inside Electron/Tauri.
 export default defineConfig({
   base: "./",
-  plugins: [devSample(), devAdmin(), devGallery(), devConvert()],
+  plugins: [devSample(), devAdmin(), devGallery(), devConvert(), devGuide()],
   // /api (and the collaboration socket) go to the openvwx server in development (docs/PLATFORM.md)
   server: { port: 5173, strictPort: true, proxy: { "/api": { target: "http://localhost:8080", ws: true } } },
   build: {
@@ -93,7 +110,7 @@ export default defineConfig({
     sourcemap: true,
     // render-worker.html is the cloud render worker's page (cloudrender/worker.py), beside the
     // editor; admin.html is the admin page, served at /admin; gallery.html is the public gallery,
-    // served at /gallery; convert.html is the converter, served at /convert
+    // served at /gallery; convert.html is the converter, served at /convert; guide.html is the user guide, served at /guide
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, "index.html"),
@@ -101,6 +118,7 @@ export default defineConfig({
         admin: resolve(import.meta.dirname, "admin.html"),
         gallery: resolve(import.meta.dirname, "gallery.html"),
         convert: resolve(import.meta.dirname, "convert.html"),
+        guide: resolve(import.meta.dirname, "guide.html"),
       },
     },
   },

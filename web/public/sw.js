@@ -5,8 +5,9 @@
 // - the app shell ("./" and "./index.html") is precached at install
 // - /assets/* (hashed by the build, so never stale) is cache-first, filled as used
 // - page navigations are network-first; the cached index.html is the offline fallback
-//   (not for the admin page, /admin, the gallery, /gallery, or the converter, /convert, which
-//   are left to the network; nor is a share or embed link's own page kept as the shell)
+//   (not for the admin page, /admin, the gallery, /gallery, the converter, /convert and /viewer,
+//   or the user guide, /guide, which are left to the network; nor is a share or embed link's own
+//   page kept as the shell)
 // - /api/* is never cached
 // Cache names carry the build; the old ones go when the new worker activates.
 
@@ -20,6 +21,8 @@ const API = new URL("./api/", self.registration.scope).pathname;
 const ADMIN = new URL("./admin", self.registration.scope).pathname;
 const GALLERY = new URL("./gallery", self.registration.scope).pathname;
 const CONVERT = new URL("./convert", self.registration.scope).pathname;
+const VIEWER = new URL("./viewer", self.registration.scope).pathname;
+const GUIDE = new URL("./guide", self.registration.scope).pathname;
 const OAUTH = new URL("./oauth/", self.registration.scope).pathname;
 const WELL_KNOWN = new URL("./.well-known/", self.registration.scope).pathname;
 
@@ -54,6 +57,9 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === GALLERY || url.pathname.startsWith(`${GALLERY}/`) || url.pathname === `${GALLERY}.html`) return;
   // nor the converter's pages, which the server writes per conversion; caching one as the shell would open it offline in place of the editor
   if (url.pathname === CONVERT || url.pathname === `${CONVERT}.html` || url.pathname.startsWith(`${CONVERT}/`)) return;
+  if (url.pathname === VIEWER || url.pathname.startsWith(`${VIEWER}/`)) return;
+  // nor the user guide's pages, also written by the server
+  if (url.pathname === GUIDE || url.pathname === `${GUIDE}.html` || url.pathname.startsWith(`${GUIDE}/`)) return;
   // nor the OAuth sign-in pages and metadata: server-written, never the editor's shell
   if (url.pathname.startsWith(OAUTH) || url.pathname.startsWith(WELL_KNOWN)) return;
   if (req.mode === "navigate") {

@@ -150,8 +150,8 @@ export function registerStatic(app: Hono): void {
     if (extras) {
       const html = injectPage(await readFile(target, "utf8"), extras);
       c.header("Content-Length", String(Buffer.byteLength(html)));
-      // the service worker keeps only the plain page as its offline copy (public/sw.js)
-      c.header("X-Openvwx-Page", "extras");
+      // the service worker keeps only the editor's own page as its offline copy (public/sw.js)
+      if (!extras.shell) c.header("X-Openvwx-Page", "extras");
       return c.body(html);
     }
     return c.body(fileStream(target));

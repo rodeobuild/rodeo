@@ -1,0 +1,91 @@
+/* The text under the converter and the viewer (the about sections, the steps, the breadcrumb trail
+   and the related links). It uses page.css's tokens and classes, with solid colours, as the rest of the page does. */
+
+/* the trail above the headline: Rodeo › Convert › DWG to PDF */
+.cv-crumbs {
+  color: var(--text-2);
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.cv-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cv-crumbs li + li::before {
+  color: var(--text-3);
+  content: "›";
+  margin: 0 8px;
+}
+
+.cv-crumbs a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.cv-crumbs a:hover {
+  color: var(--accent);
+}
+
+.cv-crumbs [aria-current="page"] {
+  color: var(--text);
+}
+
+/* the sections between the hero and the links: each has a heading, then its paragraphs, steps or bullets */
+.cv-about {
+  max-width: 72ch;
+}
+
+.cv-about p,
+.cv-about li {
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.cv-about p {
+  margin: 0 0 12px;
+}
+
+.cv-steps,
+.cv-list {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.cv-steps li,
+.cv-list li {
+  margin: 0 0 8px;
+}
+
+.cv-steps li {
+  color: var(--text);
+}
+
+.cv-list {
+  list-style: disc;
+}
+
+.cv-about code.cv-cli {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* links in the running text are underlined, as the questions' links are */
+.cv-about a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--text-3);
+  text-underline-offset: 3px;
+}
+
+.cv-about a:hover {
+  color: var(--accent);
+}

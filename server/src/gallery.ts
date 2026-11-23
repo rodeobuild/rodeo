@@ -1,7 +1,7 @@
 // The public gallery (rodeo.build/gallery): the drawings their owners published, each a snapshot
 // of one version with a public share link the viewer (?embed=) reads. Here: the listing, tags and
 // an entry with its remixes, covers and downloads, the gallery's pages with their link previews,
-// the sitemap and robots.txt, and the helpers galleryPublish.ts and galleryModeration.ts share
+// the gallery's sitemap, and the helpers galleryPublish.ts and galleryModeration.ts share
 // (rows, share links, hiding).
 
 import { readFile } from "node:fs/promises";
@@ -28,7 +28,6 @@ import {
   normalizeTag,
   PAGE_SIZE,
   parseGalleryPath,
-  robotsTxt,
   sitemapXml,
   slugOf,
   trendingScore,
@@ -459,7 +458,8 @@ export function registerGallery(app: Hono): void {
   app.get("/gallery", galleryPage);
   app.get("/gallery/*", galleryPage);
 
-  app.get("/sitemap.xml", (c) => {
+  // the gallery's sitemap: the index and robots.txt are seo.ts's
+  app.get("/sitemap-gallery.xml", (c) => {
     const rows = all<EntryRow>(`SELECT e.* FROM gallery_entries e WHERE ${VISIBLE} ORDER BY e.updated_at DESC LIMIT 5000`);
     const xml = sitemapXml(
       config.publicUrl,
@@ -468,11 +468,5 @@ export function registerGallery(app: Hono): void {
     c.header("Content-Type", "application/xml; charset=utf-8");
     c.header("Cache-Control", "public, max-age=3600");
     return c.body(xml);
-  });
-
-  app.get("/robots.txt", (c) => {
-    c.header("Content-Type", "text/plain; charset=utf-8");
-    c.header("Cache-Control", "public, max-age=3600");
-    return c.body(robotsTxt(config.publicUrl));
   });
 }

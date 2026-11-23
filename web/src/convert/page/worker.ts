@@ -20,16 +20,21 @@ import { occtLib } from "../../import/occt.ts";
 import { rhinoLib } from "../../import/rhino3dm.ts";
 import type { PreviewMesh } from "./preview3d.ts";
 
-/** What the page sends the worker. `id` is a read's id (the drawing it makes), or the drawing a write or drop is for. */
+/**
+ * What the page sends the worker. `id` is a read's id (the drawing it makes), or the drawing a write or drop is for.
+ * A peek reads converted bytes back the way a read does, but keeps no drawing: it is the check that an output opens.
+ */
 export type ToWorker =
   | { type: "read"; id: number; name: string; bytes: Uint8Array; options: { units?: Unit; yUp?: boolean } }
   | { type: "write"; id: number; format: string }
+  | { type: "peek"; id: number; name: string; bytes: Uint8Array }
   | { type: "drop"; id: number };
 
 /** What the worker answers. A read or a write answers with the id it was sent with. */
 export type FromWorker =
   | { type: "progress"; id: number; step: string }
   | { type: "read"; id: number; summary: DrawingSummary; svg: string | null; mesh: PreviewMesh | null }
+  | { type: "peeked"; id: number; summary: DrawingSummary; svg: string | null; mesh: PreviewMesh | null }
   | { type: "written"; id: number; name: string; mime: string; bytes: Uint8Array; notes: string[] }
   | { type: "error"; id: number; message: string };
 
@@ -83,15 +88,39 @@ function post(m: FromWorker, transfer: Transferable[] = []): void {
 
 /** Runs one request. */
 async function handle(m: ToWorker): Promise<void> {
-  if (m.type === "drop") {
-    // its solids still waiting for their Parasolid faces go with it
-    const drawing = drawings.get(m.id);
+  switch (m.type) {
+    case "drop": {
+      // its solids still waiting for their Parasolid faces go with it
+      const drawing = drawings.get(m.id);
+      if (drawing) cancelXt(drawing.session.doc);
+      drawings.delete(m.id);
+      return;
+    }
+    case "read":
+      return read(m);
+    case "peek":
+      return peek(m);
+    case "write":
+      return write(m);
+  }
+}
+
+/**
+ * Reads converted bytes back, as a read does, and answers with the summary and previews. The drawing
+ * is not kept: it is dropped as soon as its previews are made, so a check costs no memory after.
+ */
+async function peek(m: Extract<ToWorker, { type: "peek" }>): Promise<void> {
+  let drawing: HeadlessDrawing | null = null;
+  try {
+    drawing = await readAny(m.bytes, m.name);
+    const summary = describe(drawing);
+    const mesh = previewMesh(drawing);
+    const svg = await planSvg(drawing, summary);
+    post({ type: "peeked", id: m.id, summary, svg, mesh }, mesh ? [mesh.positions.buffer, mesh.colors.buffer] : []);
+  } catch (err) {
+    post({ type: "error", id: m.id, message: `Could not read ${m.name} back: ${messageOf(err)}` });
+  } finally {
     if (drawing) cancelXt(drawing.session.doc);
-    drawings.delete(m.id);
-  } else if (m.type === "read") {
-    await read(m);
-  } else {
-    await write(m);
   }
 }
 

@@ -19,6 +19,7 @@ import { registerComments } from "./comments.ts";
 import { config } from "./config.ts";
 import { registerCredit } from "./credit.ts";
 import { registerConvert } from "./convert.ts";
+import { registerGuide } from "./guide.ts";
 import { database, get, openDatabase } from "./db.ts";
 import { registerEmbed } from "./embed.ts";
 import { registerFeedback } from "./feedback.ts";
@@ -36,6 +37,7 @@ import { registerMailbox } from "./mailbox.ts";
 import { registerMerges } from "./merges.ts";
 import { registerRender } from "./render.ts";
 import { registerReports } from "./reports.ts";
+import { registerSeo, startIndexNow } from "./seo.ts";
 import { registerSettings } from "./settings.ts";
 import { registerSharing } from "./sharing.ts";
 import { archiveAssets, registerStatic } from "./static.ts";
@@ -61,6 +63,7 @@ registerUploads(app);
 registerFiles(app);
 registerSharing(app);
 registerEmbed(app);
+registerSeo(app);
 registerGallery(app);
 registerGalleryPublish(app);
 registerGalleryModeration(app);
@@ -85,6 +88,7 @@ registerMailbox(app);
 registerMcp(app);
 registerOAuth(app);
 registerConvert(app);
+registerGuide(app);
 app.all("/api/*", apiNotFound);
 registerStatic(app);
 
@@ -108,6 +112,7 @@ const deps: CollabDeps = {
 setHub(attachCollab(server, deps));
 attachMcp(server, { userFromRequest });
 startHousekeeping();
+startIndexNow(config.port);
 archiveAssets().catch((e: unknown) => console.error("[assets] could not keep this build's assets:", e));
 
 function shutdown(): void {
