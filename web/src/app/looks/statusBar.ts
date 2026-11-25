@@ -6,12 +6,20 @@
 import { h } from "../dom.ts";
 import { language, onLanguage, t } from "../i18n.ts";
 import { dataBar } from "../databar.ts";
-import { setActiveClass, setActiveLayer } from "../commands.ts";
-import { store } from "../state.ts";
+import { attempt, setActiveClass, setActiveLayer } from "../commands.ts";
+import { appContext } from "../ext.ts";
+import { openContextMenu, type Row } from "../menu.ts";
+import { freeName } from "../panels/common.ts";
+import { planRotationDegrees, canRotatePlan, setPlanRotationDegrees } from "../planRotation.ts";
+import { store, type ToolId } from "../state.ts";
 import { toast } from "../toast.ts";
+import { toolDef } from "../toolbar.ts";
+import { planOnScreen } from "../viewTargets.ts";
+import { setZoomPercent } from "../viewbar.ts";
 import { formatLength } from "../units.ts";
-import { commandIcon, commandWhy, lookIcon, refreshButtons, runCommand, track } from "./commands.ts";
-import type { StatusBarSpec, StatusItem } from "./types.ts";
+import { commandChecked, commandEnabled, commandIcon, commandWhy, lookIcon, refreshButtons, runCommand, track } from "./commands.ts";
+import { currentSpec } from "./looks.ts";
+import type { Command, LookButton, LookSpec, RibbonItem, StatusBarSpec, StatusItem } from "./types.ts";
 import "./statusBar.css";
 
 const CHECK_MARK = `<svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M2.5 6.2 5 8.5 9.5 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -176,7 +184,278 @@ export function item(it: StatusItem, offs: (() => void)[]): HTMLElement {
     }
     case "spacer":
       return h("span", { cls: "lk-st-spacer" });
+    case "zoom":
+      return zoomItem(offs);
+    case "rotation":
+      return rotationItem(offs);
+    case "artboards":
+      return artboardsItem(offs);
+    case "tool":
+      return toolItem(offs);
   }
+}
+
+// ---- zoom, rotation, artboards and the tool name (Illustrator's status bar) ----------------
+
+/** A small glyph of a drop-down's arrow, in the box's colour. */
+const DROP_ARROW = `<svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2.5 3.5 5 6.5 7.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/** The zoom steps the drop-down offers, in per cent, as they are written. */
+const ZOOM_STEPS = ["3.13", "6.25", "12.5", "25", "33.33", "50", "66.67", "100", "150", "200", "300", "400", "600", "800", "1200", "1600", "2400", "3200", "6400"];
+
+/** A zoom as the View bar writes it: whole per cents from 10 %, two figures below. */
+function percentText(scale: number): string {
+  const pct = scale * 100;
+  return `${pct >= 10 ? Math.round(pct) : pct.toPrecision(2)}%`;
+}
+
+/** A typed number as the boxes read it: "−45°" or "-45" both give -45. */
+function typedDegrees(text: string): number {
+  return Number(text.replace(/°$/, "").replace("−", "-").trim());
+}
+
+/** A menu row for a menu command by its path, greyed with its own reason as the menu greys it. */
+function menuRow(label: string, path: string): Row {
+  const c: Command = { menu: path };
+  return { label, enabled: () => commandEnabled(c), why: () => commandWhy(c), run: () => runCommand(c) };
+}
+
+/**
+ * The 2D zoom in a box, as the View bar's zoom field shows it: typed then Enter to set it, or picked
+ * from its drop-down of steps. Empty while the 3D view is the one on screen.
+ */
+function zoomItem(offs: (() => void)[]): HTMLElement {
+  const el = h("span", { cls: "lk-st-zoom" });
+  const field = h("input", {
+    cls: "lk-st-field",
+    attrs: { type: "text", inputmode: "decimal", spellcheck: "false", "aria-label": "Zoom", translate: "no" },
+  });
+  const drop = h("button", {
+    cls: "lk-st-drop",
+    title: "Zoom options",
+    html: DROP_ARROW,
+    attrs: { type: "button", "aria-label": "Zoom options", "aria-haspopup": "menu" },
+  });
+  el.append(field, drop);
+  // a box being typed in keeps what is typed until Enter, Escape or a click elsewhere
+  const show = (force = false): void => {
+    const view = appContext()?.view;
+    const on = store.session !== null && planOnScreen() && !!view;
+    field.readOnly = !on;
+    const title = on ? "Zoom of the 2D plan, as a percentage: type one to set it" : "Zoom of the 2D plan: show the plan to set it";
+    if (field.title !== title) field.title = title;
+    if (force || document.activeElement !== field) field.value = on && view ? percentText(view.scale) : "";
+  };
+  show(true);
+  field.addEventListener("focus", () => field.select());
+  field.addEventListener("blur", () => show(true));
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const pct = parseFloat(field.value);
+      if (Number.isFinite(pct) && pct > 0) setZoomPercent(pct);
+      field.blur();
+    } else if (e.key === "Escape") {
+      show(true);
+      field.blur();
+    }
+    e.stopPropagation();
+  });
+  drop.addEventListener("click", () => {
+    const r = drop.getBoundingClientRect();
+    const steps: Row[] = ZOOM_STEPS.map((p) => ({ label: `${p}%`, enabled: () => store.session !== null, run: () => setZoomPercent(Number(p)) }));
+    openContextMenu([...steps, "-", menuRow("Fit Artboard on Screen", "View › Fit to Page Area"), menuRow("Fit All on Screen", "View › Fit to Window")], r.left, r.bottom);
+  });
+  offs.push(store.on(["view", "session", "view3d", "layer"], () => show()));
+  return el;
+}
+
+/** The plan's rotation in a box, typed then Enter, or picked from its drop-down; greyed where the plan can't turn. */
+function rotationItem(offs: (() => void)[]): HTMLElement {
+  const el = h("span", { cls: "lk-st-rotation" });
+  const field = h("input", {
+    cls: "lk-st-field",
+    attrs: { type: "text", inputmode: "decimal", spellcheck: "false", "aria-label": "Rotate View", translate: "no" },
+  });
+  const drop = h("button", {
+    cls: "lk-st-drop",
+    title: "Rotate View options",
+    html: DROP_ARROW,
+    attrs: { type: "button", "aria-label": "Rotate View options", "aria-haspopup": "menu" },
+  });
+  el.append(field, drop);
+  const angles = [0, 15, 30, 45, 60, 90, 180, -15, -30, -45, -60, -90];
+  const show = (force = false): void => {
+    const on = canRotatePlan();
+    const why = on ? "Rotate View" : store.session ? "Rotate View: make a design layer active to turn the plan" : "Rotate View: open a drawing first";
+    el.classList.toggle("off", !on);
+    el.title = why;
+    field.title = why;
+    field.readOnly = !on;
+    field.setAttribute("aria-disabled", String(!on));
+    if (force || document.activeElement !== field) field.value = `${Number(planRotationDegrees().toFixed(2))}°`;
+  };
+  show(true);
+  field.addEventListener("focus", () => field.select());
+  field.addEventListener("blur", () => show(true));
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const deg = typedDegrees(field.value);
+      if (Number.isFinite(deg)) setPlanRotationDegrees(deg);
+      field.blur();
+    } else if (e.key === "Escape") {
+      show(true);
+      field.blur();
+    }
+    e.stopPropagation();
+  });
+  drop.addEventListener("click", () => {
+    const r = drop.getBoundingClientRect();
+    const rows: Row[] = angles.map((d) => ({
+      label: `${d < 0 ? "−" : ""}${Math.abs(d)}°`,
+      enabled: canRotatePlan,
+      run: () => setPlanRotationDegrees(d),
+    }));
+    rows.push("-", { label: "Reset Rotate View", enabled: canRotatePlan, run: () => setPlanRotationDegrees(0) });
+    openContextMenu(rows, r.left, r.bottom);
+  });
+  offs.push(store.on(["view", "session", "layer", "view3d"], () => show()));
+  return el;
+}
+
+/** Arrow glyphs for the artboard buttons: |◀ ◀ ▶ ▶|, drawn here as tiny shapes. */
+const ARTBOARD_ICON = {
+  first: `<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M3 3h1.8v10H3z" fill="currentColor"/><path d="M12.5 3.5 7 8l5.5 4.5z" fill="currentColor"/></svg>`,
+  previous: `<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M11.5 3.5 6 8l5.5 4.5z" fill="currentColor"/></svg>`,
+  next: `<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4.5 3.5 10 8l-5.5 4.5z" fill="currentColor"/></svg>`,
+  last: `<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M3.5 3.5 9 8l-5.5 4.5z" fill="currentColor"/><path d="M12.2 3h1.8v10h-1.8z" fill="currentColor"/></svg>`,
+  // a page with a plus, as on the Artboards panel's New Artboard button
+  add: `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 1.5h6.5L13 5v9.5H3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 7v5M5.5 9.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`,
+};
+
+/** A new sheet layer (artboard), named as Illustrator numbers its artboards, made the active one: its page shows at once. */
+function newArtboard(): void {
+  const r = attempt("New Artboard", (s) => s.createLayer(freeName("Artboard"), "sheet", 1));
+  if (r) setActiveLayer(r.value);
+}
+
+/** The drawing's sheet layers, in their order: the artboards. */
+function sheetLayers(): readonly { readonly id: string; readonly name: string }[] {
+  return (store.session?.doc.layers() ?? []).filter((l) => l.kind === "sheet");
+}
+
+/**
+ * The sheet layers as pages: first, previous, a drop-down of them by number and name, next and
+ * last. Each makes that sheet layer the active one; greyed with its reason while there are none.
+ */
+function artboardsItem(offs: (() => void)[]): HTMLElement {
+  const el = h("span", { cls: "lk-st-artboards" });
+  const none = "This drawing has no sheet layers yet";
+  const sel = h("select", { cls: "lk-st-sheet", attrs: { "aria-label": "Active Artboard", translate: "no" } });
+  sel.title = "Active Artboard";
+  let signature = "";
+  // the index of the active sheet, -1 while a design layer is active
+  let cur = -1;
+  // each arrow with its tooltip and the test that greys it (given the active index and the sheet count)
+  const navs: { readonly btn: HTMLButtonElement; readonly title: string; readonly greyed: (c: number, n: number) => boolean }[] = [];
+  const nav = (title: string, icon: string, to: (c: number) => number, greyed: (c: number, n: number) => boolean): void => {
+    const btn = h("button", { cls: "lk-st-nav", title, html: icon, attrs: { type: "button", "aria-label": title } });
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("off")) return;
+      const target = sheetLayers()[to(cur)];
+      if (target) setActiveLayer(target.id);
+    });
+    navs.push({ btn, title, greyed });
+    el.append(btn);
+  };
+  nav("First Artboard", ARTBOARD_ICON.first, () => 0, (c, n) => n === 0 || c === 0);
+  nav("Previous Artboard", ARTBOARD_ICON.previous, (c) => c - 1, (c) => c <= 0);
+  el.append(sel);
+  nav("Next Artboard", ARTBOARD_ICON.next, (c) => c + 1, (c, n) => c >= n - 1);
+  nav("Last Artboard", ARTBOARD_ICON.last, () => sheetLayers().length - 1, (c, n) => n === 0 || c === n - 1);
+  // the one way to add an artboard here, as the Layers panel stands where Rodeo's Sheet Layers list is
+  const add = h("button", { cls: "lk-st-nav lk-st-new", title: "New Artboard", html: ARTBOARD_ICON.add, attrs: { type: "button", "aria-label": "New Artboard" } });
+  add.addEventListener("click", () => {
+    if (store.session) newArtboard();
+  });
+  el.append(add);
+  sel.addEventListener("change", () => {
+    if (sel.value) setActiveLayer(sel.value);
+  });
+  const show = (): void => {
+    const sheets = sheetLayers();
+    cur = sheets.findIndex((l) => l.id === store.activeLayerId);
+    // a drawing's design layer shows a blank first option, as the drop-down has no sheet to name
+    const sig = sheets.map((l) => `${l.id}\u0001${l.name}`).join("\u0002") + (cur < 0 ? "\u0003blank" : "\u0003sheet");
+    if (sig !== signature) {
+      signature = sig;
+      const options: HTMLOptionElement[] = [];
+      if (cur < 0) options.push(option("", ""));
+      sheets.forEach((l, i) => options.push(option(l.id, `${i + 1}  ${l.name}`)));
+      sel.replaceChildren(...options);
+    }
+    sel.value = cur >= 0 ? (sheets[cur]?.id ?? "") : "";
+    const empty = sheets.length === 0;
+    sel.disabled = empty;
+    add.classList.toggle("off", !store.session);
+    sel.title = empty ? none : "Active Artboard";
+    for (const { btn, title, greyed } of navs) {
+      const off = empty || greyed(cur, sheets.length);
+      btn.classList.toggle("off", off);
+      btn.setAttribute("aria-disabled", String(off));
+      btn.title = empty ? none : title;
+    }
+  };
+  show();
+  offs.push(store.on(["session", "layer"], show));
+  return el;
+}
+
+/** The active tool's name in the look's own words: its toolbox, drawer or toolbar button for this tool and mode; else Rodeo's. */
+function toolItem(offs: (() => void)[]): HTMLElement {
+  const el = h("span", { cls: "lk-st-tool", title: "Current Tool", attrs: { "aria-label": "Current Tool" } });
+  const show = (): void => {
+    const name = toolName(store.tool);
+    if (el.textContent !== name) el.textContent = name;
+  };
+  show();
+  offs.push(store.on(["tool", "modes", "session"], show));
+  return el;
+}
+
+/** Every button the current look shows, its drop-down buttons included. */
+function everyLookButton(spec: LookSpec): LookButton[] {
+  const out: LookButton[] = [];
+  const add = (b: LookButton): void => {
+    out.push(b);
+    for (const m of b.more ?? []) add(m);
+  };
+  const addItem = (item: RibbonItem): void => {
+    if ("label" in item) add(item);
+    else item.forEach(add);
+  };
+  for (const g of spec.toolbox?.groups ?? []) g.buttons.forEach(add);
+  spec.toolbox?.drawer?.buttons.forEach(add);
+  for (const tab of spec.toolbars?.tabs ?? []) for (const b of tab.buttons) if (b !== "-") add(b);
+  for (const tab of spec.ribbon?.tabs ?? []) {
+    for (const panel of tab.panels) {
+      panel.items.forEach(addItem);
+      panel.extra?.forEach(addItem);
+      if (panel.launcher) add(panel.launcher);
+    }
+  }
+  spec.ribbon?.quickAccess?.forEach(add);
+  return out;
+}
+
+/** The tool's name as the look writes it: the button for this tool in its mode, else one without a mode, else any; then Rodeo's label. */
+function toolName(tool: ToolId): string {
+  const same = everyLookButton(currentSpec()).filter((b) => "tool" in b.do && b.do.tool === tool);
+  const modeOf = (c: Command): string | undefined => ("tool" in c ? c.mode : undefined);
+  const best =
+    same.find((b) => modeOf(b.do) !== undefined && commandChecked(b.do)) ??
+    same.find((b) => modeOf(b.do) === undefined) ??
+    same[0];
+  return best?.label ?? toolDef(tool)?.label ?? String(tool);
 }
 
 /** A toggle: its word, a check box then its word, or its icon alone; lit while its command is checked. */

@@ -223,3 +223,116 @@
 .lk-st-spacer {
   flex: 1 1 auto;
 }
+
+/* ---- zoom and rotation boxes: a typed field with a drop-down arrow beside it ------------------ */
+
+.lk-st-zoom,
+.lk-st-rotation {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.lk-st-field {
+  box-sizing: border-box;
+  width: 64px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 3px;
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+}
+
+.lk-st-field:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.lk-st-field[readonly] {
+  opacity: 0.5;
+}
+
+.lk-st-drop,
+.lk-st-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+}
+
+.lk-st-drop:hover,
+.lk-st-nav:hover {
+  color: var(--lk-status-on);
+  background: var(--lk-status-on-bg);
+}
+
+.lk-st-zoom.off,
+.lk-st-rotation.off,
+.lk-st-artboards.off {
+  opacity: 0.45;
+}
+
+/* ---- artboards: four arrows round a drop-down of the sheets ------------------------------------ */
+
+.lk-st-artboards {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.lk-st-nav.off,
+.lk-st-drop.off {
+  opacity: 0.45;
+  background: transparent;
+}
+
+.lk-st-sheet {
+  box-sizing: border-box;
+  width: 160px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 3px;
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+  font: inherit;
+  cursor: default;
+}
+
+.lk-st-sheet:disabled {
+  opacity: 0.5;
+}
+
+/* ---- the active tool's name, in a box -------------------------------------------------------- */
+
+.lk-st-tool {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 180px;
+  height: 18px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 3px;
+  background: var(--lk-field);
+  color: var(--lk-field-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

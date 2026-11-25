@@ -1,0 +1,323 @@
+/* View › Work Like › Illustrator: its dark Essentials chrome. Every rule sits under
+   :root[data-look="illustrator"], so Rodeo's own look and the other applications are untouched.
+   The greys are Illustrator 2026's: panels and bars #323232, the tab strips and title bars #282828,
+   borders #1e1e1e, hover #3e3e3e, fields #1e1e1e with a #4a4a4a border, and Spectrum blue #378ef0
+   for focus, checked marks and the hovered menu row. */
+
+:root[data-look="illustrator"] {
+  /* the type: Segoe UI, small, as Illustrator's panels and status bar set it */
+  --lk-font: "Segoe UI", system-ui, sans-serif;
+  --lk-font-size: 11px;
+  /* the menu bar, the Mode bar's options row and the status bar */
+  --lk-bar: #323232;
+  --lk-bar-text: #d6d6d6;
+  --lk-bar-border: #1e1e1e;
+  /* the title bar (not used here: the look has none) */
+  --lk-title: #282828;
+  --lk-title-text: #d6d6d6;
+  /* the tab strips of the panels and the document tabs, the front tab lifted */
+  --lk-tabs: #282828;
+  --lk-tab-text: #9a9a9a;
+  --lk-tab-active: #323232;
+  --lk-tab-active-text: #ffffff;
+  /* the panels: their title bars darker, their section rules the border's colour */
+  --lk-panel: #323232;
+  --lk-panel-title: #9a9a9a;
+  --lk-panel-title-bar: #282828;
+  --lk-panel-sep: #1e1e1e;
+  /* the blue for focus and the lit parts */
+  --lk-accent: #378ef0;
+  --lk-accent-text: #ffffff;
+  /* buttons: a grey hover, the pressed tool a near-black well with a light icon */
+  --lk-btn-hover: #3e3e3e;
+  --lk-btn-hover-border: transparent;
+  --lk-btn-on: #1e1e1e;
+  --lk-btn-on-border: transparent;
+  --lk-btn-text: #d6d6d6;
+  --lk-icon-size: 18px;
+  --lk-icon-large: 30px;
+  --lk-radius: 2px;
+  /* fields: the Control panel's drop-downs and the layer search */
+  --lk-field: #1e1e1e;
+  --lk-field-text: #d6d6d6;
+  --lk-field-border: #4a4a4a;
+  /* the status bar: grey text, the lit zoom box and its selected step in white on near-black */
+  --lk-status: #323232;
+  --lk-status-text: #9a9a9a;
+  --lk-status-on: #ffffff;
+  --lk-status-on-bg: #1e1e1e;
+  /* the toolbox down the left: one column on the panel grey */
+  --lk-toolbox: #323232;
+  --lk-toolbox-border: #1e1e1e;
+}
+
+/* ---- the menu bar and its drop-downs ---------------------------------------------------------- */
+
+:root[data-look="illustrator"] .menu-strip {
+  background: #323232;
+  border-bottom: 1px solid #1e1e1e;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .menu-strip-title {
+  color: #d6d6d6;
+  cursor: default;
+}
+
+:root[data-look="illustrator"] .menu-strip-title:hover,
+:root[data-look="illustrator"] .menu-strip-title.open {
+  background: #3e3e3e;
+  color: #ffffff;
+}
+
+:root[data-look="illustrator"] .menu-panel {
+  background: #323232;
+  border: 1px solid #1e1e1e;
+  color: #d6d6d6;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+:root[data-look="illustrator"] .menu-item {
+  color: #d6d6d6;
+  cursor: default;
+}
+
+:root[data-look="illustrator"] .menu-item:hover:not([aria-disabled="true"]) {
+  background: #378ef0;
+  color: #ffffff;
+}
+
+:root[data-look="illustrator"] .menu-item.checked:not(:hover) {
+  background: #3e3e3e;
+}
+
+:root[data-look="illustrator"] .menu-item[aria-disabled="true"] {
+  color: #6b6b6b;
+}
+
+:root[data-look="illustrator"] .menu-keys,
+:root[data-look="illustrator"] .menu-why {
+  color: #9a9a9a;
+}
+
+:root[data-look="illustrator"] .menu-sep {
+  border-color: #1e1e1e;
+}
+
+/* ---- the Mode bar as the Control panel: a row of labelled drop-downs under the menus ---------- */
+
+:root[data-look="illustrator"] .lk-options-slot {
+  height: 30px;
+  background: #323232;
+  border-bottom: 1px solid #1e1e1e;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"][data-lk-mode-fields="menus"] .lk-options-slot #modebar {
+  height: 28px;
+  min-height: 28px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"][data-lk-mode-fields="menus"] #modebar .mb-field-label {
+  color: #d6d6d6;
+  font-size: 11px;
+}
+
+:root[data-look="illustrator"][data-lk-mode-fields="menus"] #modebar .mb-field .mb-menu {
+  height: 20px;
+  min-width: 96px;
+  border: 1px solid #4a4a4a;
+  border-radius: 0;
+  background: #1e1e1e;
+  color: #d6d6d6;
+  font-size: 11px;
+  cursor: default;
+}
+
+:root[data-look="illustrator"][data-lk-mode-fields="menus"] #modebar .mb-field .mb-menu:hover {
+  border-color: #6a6a6a;
+  background: #1e1e1e;
+}
+
+:root[data-look="illustrator"] .lk-options-slot .lk-btn {
+  color: #d6d6d6;
+}
+
+/* ---- the toolbox: one column of tools down the left, a thin line between its groups --------- */
+
+:root[data-look="illustrator"] .lk-toolbox {
+  width: 40px;
+  padding: 6px 4px 8px;
+  background: #323232;
+  border-right: 1px solid #1e1e1e;
+  color: #d6d6d6;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-look="illustrator"] .lk-toolbox .lk-btn.lk-icon-only {
+  width: 30px;
+  height: 30px;
+  border-radius: 2px;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .lk-toolbox .lk-btn.lk-icon-only:hover:not(.off) {
+  background: #3e3e3e;
+}
+
+/* the tool in front: a near-black well with a light icon */
+:root[data-look="illustrator"] .lk-btn.on {
+  color: #ffffff;
+}
+
+:root[data-look="illustrator"] .lk-toolbox .lk-btn.on {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+
+:root[data-look="illustrator"] .lk-toolbox .lk-btn-more {
+  color: #9a9a9a;
+}
+
+/* the flyout's small corner marks: a dim triangle, lit with its tool */
+:root[data-look="illustrator"] .lk-btn-more:hover {
+  background: #3e3e3e;
+  color: #ffffff;
+}
+
+/* ---- the status bar: 24 px high, small text, the zoom box, rotation and artboard navigation --- */
+
+:root[data-look="illustrator"] .lk-statusbar {
+  height: 24px;
+  min-height: 24px;
+  background: #323232;
+  border-top: 1px solid #1e1e1e;
+  color: #9a9a9a;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+}
+
+:root[data-look="illustrator"] .lk-st-text,
+:root[data-look="illustrator"] .lk-st-hint {
+  color: #9a9a9a;
+  font-size: 11px;
+}
+
+:root[data-look="illustrator"] .lk-st-zoom,
+:root[data-look="illustrator"] .lk-st-rotation {
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .lk-st-zoom input,
+:root[data-look="illustrator"] .lk-st-rotation input {
+  height: 18px;
+  background: #1e1e1e;
+  border: 1px solid #4a4a4a;
+  border-radius: 0;
+  color: #d6d6d6;
+  font: inherit;
+}
+
+:root[data-look="illustrator"] .lk-st-zoom input:focus,
+:root[data-look="illustrator"] .lk-st-rotation input:focus {
+  outline: 1px solid #378ef0;
+  outline-offset: -1px;
+}
+
+:root[data-look="illustrator"] .lk-st-nav {
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .lk-st-nav:disabled,
+:root[data-look="illustrator"] .lk-st-nav.off {
+  color: #6b6b6b;
+}
+
+:root[data-look="illustrator"] .lk-st-toggle.on,
+:root[data-look="illustrator"] .lk-st-button:hover {
+  color: #ffffff;
+  background: #1e1e1e;
+}
+
+/* ---- the palettes docked right: Properties with Layers and Libraries as its tabs --------------- */
+
+:root[data-look="illustrator"] .dock {
+  background: #323232;
+  color: #d6d6d6;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+}
+
+:root[data-look="illustrator"] .dock-right {
+  border-left: 1px solid #1e1e1e;
+}
+
+:root[data-look="illustrator"] .pal-head {
+  background: #282828;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .pal.tabbed .pal-head {
+  background: #282828;
+}
+
+:root[data-look="illustrator"] .pal-title {
+  color: #d6d6d6;
+  font-weight: 600;
+}
+
+:root[data-look="illustrator"] .pal-htab {
+  color: #9a9a9a;
+}
+
+:root[data-look="illustrator"] .pal-htab:hover {
+  color: #ffffff;
+}
+
+:root[data-look="illustrator"] .pal-htab.active {
+  background: #323232;
+  color: #ffffff;
+}
+
+/* a palette's rows: fields and buttons in Illustrator's dark greys */
+:root[data-look="illustrator"] .dock .btn {
+  background: #3e3e3e;
+  border-color: #4a4a4a;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .dock input,
+:root[data-look="illustrator"] .dock select {
+  background: #1e1e1e;
+  border: 1px solid #4a4a4a;
+  color: #d6d6d6;
+}
+
+:root[data-look="illustrator"] .dock input:focus,
+:root[data-look="illustrator"] .dock select:focus {
+  outline: 1px solid #378ef0;
+  outline-offset: -1px;
+}
+
+/* ---- the document tabs of open drawings: a dark strip, the front tab in the panel grey ----------- */
+
+:root[data-look="illustrator"] .doc-tabs {
+  background: #282828;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+:root[data-look="illustrator"] .doc-tab {
+  color: #9a9a9a;
+}
+
+:root[data-look="illustrator"] .doc-tab.front {
+  background: #323232;
+  color: #ffffff;
+}
+
+/* Fill and Stroke at the toolbox's foot and the All Tools drawer are styled in bars.css, under this
+   look's tokens above. */

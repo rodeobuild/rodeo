@@ -22,6 +22,20 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-26T12:00:00Z",
+    "work-like-illustrator",
+    "Work Like Illustrator",
+    `View › Work Like › Illustrator lays Rodeo out the way Adobe Illustrator is laid out, for people who draw in Illustrator.
+- Illustrator's dark window and menus: File, Edit, Object, Type, Select, Effect, View, Window and Help, each holding the Rodeo commands that do the same job, under Illustrator's names (Bring to Front, Create Outlines, Fit Artboard in Window).
+- A column of tools down the left, sorted as Illustrator's Getting Started toolbar sorts them, with more tools behind each small triangle and All Tools behind the … at its foot.
+- Fill and Stroke at the foot of the tools: X, Shift+X and D work as in Illustrator, on the selection or on what you draw next.
+- Properties, Layers and Libraries on the right, with Illustrator's Layers panel: eyes, locks, colours and the current layer's corner mark.
+- Illustrator's keys: V, A, P, M, L, T, R, O, Ctrl+G, Ctrl+2, Ctrl+3, Ctrl+] and the rest.
+- Sheet layers are artboards: white on a dark canvas, with the zoom, the view's rotation and artboard arrows in the status bar at the foot.
+- In other languages, the tools have the names Illustrator's own version gives them there.`,
+    "workspace",
+  ),
+  release(
     "2026-11-23T12:12:00Z",
     "convert-pages-languages",
     "The converter in your language",

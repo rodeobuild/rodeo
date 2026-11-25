@@ -16,6 +16,8 @@ export interface LookCanvas {
    * as SketchUp has only its 3D view; absent or false for the others
    */
   readonly start3d?: boolean;
+  /** the colour round a sheet layer's page, so the page shows as a white artboard on it (Illustrator); absent for the others */
+  readonly artboard?: string;
 }
 
 let canvas: LookCanvas | null = null;

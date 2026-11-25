@@ -281,3 +281,242 @@
 .lk-toolbox .lk-initials {
   font-size: 8px;
 }
+
+/* ---- Fill and Stroke: two squares at the toolbox's foot, the buttons under them (fillStroke.ts) -- */
+
+/* Illustrator's one-column toolbox is 40 px, too narrow for Fill and Stroke's 46 px block: it widens to 54 px when it carries the block */
+:root[data-look="illustrator"] .lk-toolbox:has(> .lk-fs) {
+  width: 54px;
+}
+
+.lk-fs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 46px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--lk-panel-sep);
+}
+
+.lk-fs-art {
+  position: relative;
+  width: 44px;
+  height: 42px;
+  flex: none;
+}
+
+.lk-fs-square {
+  position: absolute;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--lk-bar-border);
+  border-radius: 0;
+  cursor: default;
+  z-index: 1;
+}
+
+/* the two squares overlap, the fill's up and to the left of the stroke's, as Illustrator draws them */
+.lk-fs-fill {
+  top: 4px;
+  left: 4px;
+}
+
+/* the hollow stroke square: a thick border in the pen's colour, the fill showing through */
+.lk-fs-stroke {
+  top: 16px;
+  left: 16px;
+  border-width: 5px;
+  background: transparent;
+}
+
+/* the square in front is drawn over the other */
+.lk-fs-square.lk-front {
+  z-index: 2;
+  box-shadow: 0 0 0 1px var(--lk-accent);
+}
+
+.lk-fs-cross {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lk-fs-swap,
+.lk-fs-default {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lk-bar-text);
+  cursor: default;
+}
+
+.lk-fs-swap {
+  top: 2px;
+  left: 30px;
+}
+
+.lk-fs-default {
+  top: 30px;
+  left: 2px;
+}
+
+.lk-fs-swap:hover,
+.lk-fs-default:hover {
+  color: var(--lk-accent);
+}
+
+.lk-fs-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.lk-fs-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--lk-field-border);
+  border-radius: 2px;
+  background: var(--lk-field);
+  color: var(--lk-bar-text);
+  cursor: default;
+}
+
+.lk-fs-tool:hover {
+  background: var(--lk-btn-hover);
+}
+
+/* ---- the All Tools drawer: a "…" at the toolbox's foot, the panel beside the toolbox ---------- */
+
+.lk-toolbox-drawer {
+  display: block;
+  box-sizing: border-box;
+  width: 46px;
+  height: 16px;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--lk-field-border);
+  border-radius: var(--lk-radius);
+  background: var(--lk-field);
+  color: var(--lk-bar-text);
+  font: inherit;
+  line-height: 1;
+  cursor: default;
+}
+
+.lk-toolbox-drawer:hover,
+.lk-toolbox-drawer.active {
+  background: var(--lk-btn-hover);
+}
+
+.lk-drawer {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 230px;
+  max-height: calc(100vh - 8px);
+  background: var(--lk-panel);
+  color: var(--lk-bar-text);
+  border: 1px solid var(--lk-bar-border);
+  box-shadow: var(--shadow);
+  font-family: var(--lk-font);
+  font-size: var(--lk-font-size);
+  user-select: none;
+  cursor: default;
+}
+
+.lk-drawer * {
+  cursor: default;
+}
+
+.lk-drawer-title {
+  flex: none;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--lk-panel-sep);
+  font-weight: 600;
+}
+
+.lk-drawer-list {
+  overflow-y: auto;
+  padding: 4px;
+  scrollbar-width: thin;
+}
+
+.lk-drawer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--lk-radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.lk-drawer-row:hover {
+  background: var(--lk-btn-hover);
+}
+
+.lk-drawer-row.on {
+  background: var(--lk-tab-active);
+  color: var(--lk-tab-active-text);
+}
+
+.lk-drawer-row.off {
+  opacity: 0.45;
+}
+
+.lk-drawer-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.lk-drawer-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.lk-drawer-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lk-drawer-key {
+  flex: none;
+  color: var(--lk-panel-title);
+}

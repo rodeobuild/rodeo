@@ -34,24 +34,34 @@ const WIDTH: Record<LayerColumn, string> = {
   count: "56px",
 };
 
+/** Illustrator's Layers panel packs its columns tighter: eye, lock, name, then the 8 px colour square. */
+const ILLUSTRATOR_WIDTH: Partial<Record<LayerColumn, string>> = {
+  visible: "26px",
+  lock: "26px",
+  name: "minmax(60px, 1fr)",
+  color: "26px",
+};
+
 /** The titles each style shows over its columns. A column without a title is not shown in that style. */
 const TITLES: Record<Style, Partial<Record<LayerColumn, string>>> = {
   rhino: { name: "Name", current: "Current", visible: "On", lock: "Lock", color: "Color", linetype: "Linetype", lineweight: "Print Width", count: "Objects" },
   autocad: { current: "Status", name: "Name", visible: "On", lock: "Lock", color: "Color", linetype: "Linetype", lineweight: "Lineweight" },
   sketchup: { visible: "", name: "Name", linetype: "Dashes", color: "Color" },
+  illustrator: { visible: "", lock: "", name: "Name", color: "" },
 };
 
 /** SketchUp's Tags list shows only these columns, in this order. */
 const SKETCHUP_COLUMNS: readonly LayerColumn[] = ["visible", "name", "linetype", "color"];
 
 /** Each style's row height in px. */
-const ROW_HEIGHT: Record<Style, number> = { rhino: 20, autocad: 22, sketchup: 26 };
+const ROW_HEIGHT: Record<Style, number> = { rhino: 20, autocad: 22, sketchup: 26, illustrator: 28 };
 
 /** Words each style's buttons and search field use for a layer (SketchUp says tag). */
 const WORDS: Record<Style, { add: string; del: string; search: string; noun: string }> = {
   rhino: { add: "New Layer", del: "Delete", search: "Filter layers", noun: "layers" },
   autocad: { add: "New Layer", del: "Delete Layer", search: "Search for layer", noun: "layers" },
   sketchup: { add: "Add Tag", del: "Delete Tag", search: "Search for tag", noun: "tags" },
+  illustrator: { add: "Create New Layer", del: "Delete Selection", search: "", noun: "layers" },
 };
 
 /** Wraps path markup in the 16px line-icon frame: stroke currentColor, no fill. */
@@ -70,6 +80,7 @@ const ICON = {
   eyeOff: icon('<path d="M1.5 8c1.6-2.7 3.7-4.2 6.5-4.2S12.9 5.3 14.5 8c-1.6 2.7-3.7 4.2-6.5 4.2S3.1 10.7 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/>'),
   lockClosed: icon('<rect x="3.2" y="7.2" width="9.6" height="6.6" rx="1.2"/><path d="M5.3 7.2V5.2a2.7 2.7 0 0 1 5.4 0v2"/>'),
   lockOpen: icon('<rect x="3.2" y="7.2" width="9.6" height="6.6" rx="1.2"/><path d="M5.3 7.2V5.2a2.7 2.7 0 0 1 5.2-1"/>'),
+  emptyBox: icon('<rect x="3.5" y="3.5" width="9" height="9" rx="1"/>'),
 };
 
 /** The columns a style shows, in the order the spec gives them; the name always shows. */
@@ -81,6 +92,11 @@ function columnsFor(spec: LayerTableSpec): LayerColumn[] {
 /** A class's name as the table shows it: None under the look's own word for it. */
 function displayName(c: ClassInfo, none: string): string {
   return c.name === NONE_NAME ? none : c.name;
+}
+
+/** The colour a class draws with, as a CSS colour (transparent when the drawing gives none). */
+function classColor(c: ClassInfo): string {
+  return c.attrs ? store.session?.doc.color(c.attrs.penFore) ?? "transparent" : "transparent";
 }
 
 /** The linetype a class draws with: its dash style's name, or Continuous for a solid line. */
@@ -100,10 +116,12 @@ function lineweightName(c: ClassInfo): string {
 /** Fills `into` with the table and keeps it up to date; returns the call that takes it down. */
 export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => void {
   const cols = columnsFor(spec);
-  const template = cols.map((c) => WIDTH[c]).join(" ");
+  const widths = spec.style === "illustrator" ? ILLUSTRATOR_WIDTH : WIDTH;
+  const template = cols.map((c) => widths[c] ?? WIDTH[c]).join(" ");
   const titles = TITLES[spec.style];
   const words = WORDS[spec.style];
   const rowHeight = ROW_HEIGHT[spec.style];
+  const illustrator = spec.style === "illustrator";
   let filter = "";
   let selected: number | null = null;
 
@@ -121,14 +139,42 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
   const delBtn = toolButton(ICON.trash, words.del, () => void deleteSelected());
   const setBtn = spec.style === "autocad" ? toolButton(ICON.check, "Set Current", () => makeSelectedCurrent()) : null;
   const toolbar = h("div", { cls: "lt-toolbar" }, addBtn, delBtn, setBtn, search);
+  // Illustrator's panel has no search field or header row: its count and the two buttons sit in a foot.
+  // The buttons move into the foot, so it is built only for this style.
+  const count = h("span", { cls: "lt-count" });
+  const footer = illustrator ? h("div", { cls: "lt-footer" }, count, addBtn, delBtn) : null;
 
   const head = h("div", { cls: "lt-head", attrs: { style: `grid-template-columns: ${template}` } });
   for (const c of cols) head.append(h("div", { cls: `lt-cell lt-h-${c}`, text: titles[c] ?? "" }));
   const list = h("div", { cls: "lt-body" });
+  if (illustrator) {
+    // The first click on a name redraws its row, and the browser then sends no dblclick, so the second
+    // press on a name opens its editor here. One listener on the list survives the redraws.
+    const renameFrom = (e: Event): void => {
+      const target = e.target as HTMLElement;
+      const row = target.closest<HTMLElement>(".lt-row");
+      const host = row?.querySelector<HTMLElement>(".lt-name");
+      const c = row ? classAt(Number(row.dataset.index)) : undefined;
+      // no second editor over one the second press has already opened
+      if (!c || !host || c.name === NONE_NAME || host.querySelector("input") || !target.closest(".lt-name")) return;
+      renameClass(c, host);
+    };
+    list.addEventListener("mousedown", (e) => {
+      if (e.detail !== 2) return;
+      // keep the focus the editor takes: the press's own default would move it off the new field
+      e.preventDefault();
+      renameFrom(e);
+    });
+    list.addEventListener("dblclick", renameFrom);
+  }
 
   const parts: HTMLElement[] = [];
   if (spec.style === "autocad") parts.push(caption);
-  parts.push(toolbar, head, list);
+  if (illustrator && footer) {
+    parts.push(list, footer);
+  } else {
+    parts.push(toolbar, head, list);
+  }
   root.replaceChildren(...parts);
   into.replaceChildren(root);
 
@@ -140,7 +186,8 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
   const renameInRow = (index: number): void => {
     const host = list.querySelector<HTMLElement>(`[data-index="${index}"] .lt-name`);
     host?.scrollIntoView({ block: "nearest" });
-    host?.dispatchEvent(new MouseEvent("dblclick"));
+    // Illustrator's rename listens on the list, so its double-click has to bubble up to it
+    host?.dispatchEvent(new MouseEvent("dblclick", { bubbles: illustrator }));
   };
 
   /** Makes a new class (named by Rodeo's free-name rule) and opens its name to edit. */
@@ -189,7 +236,8 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
         }
         case "visible": {
           const on = c.visibility !== "hidden";
-          const svg = spec.style === "sketchup" ? (on ? ICON.eye : ICON.eyeOff) : ICON.bulb;
+          // Illustrator's eye shows only while the class is on; a hidden class's cell stays empty.
+          const svg = illustrator ? ICON.eye : spec.style === "sketchup" ? (on ? ICON.eye : ICON.eyeOff) : ICON.bulb;
           const label = on ? "On" : "Off";
           const btn = h("button", {
             cls: `lt-icon lt-vis${on ? "" : " off"}`,
@@ -204,7 +252,7 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
           const locked = c.visibility === "grayed";
           const btn = h("button", {
             cls: `lt-icon lt-lock${locked ? " on" : ""}`,
-            html: locked ? ICON.lockClosed : ICON.lockOpen,
+            html: locked ? ICON.lockClosed : illustrator ? ICON.emptyBox : ICON.lockOpen,
             title: locked ? "Locked: shown, not picked. Click to unlock" : "Click to lock: shown, not picked",
             attrs: { type: "button", "aria-label": `${locked ? "Locked" : "Unlocked"}: ${displayName(c, none)}` },
           });
@@ -213,12 +261,24 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
         }
         case "color": {
           const sw = h("span", { cls: "lt-swatch" });
-          sw.style.background = c.attrs ? store.session?.doc.color(c.attrs.penFore) ?? "transparent" : "transparent";
+          sw.style.background = classColor(c);
           return h("div", { cls: "lt-cell lt-c-color", attrs: { "data-col": col } }, sw);
         }
         case "name": {
           const name = h("span", { cls: "lt-name", text: displayName(c, none), attrs: { translate: "no" } });
-          if (!isNone) name.addEventListener("dblclick", () => renameClass(c, name));
+          // Illustrator's double-click is handled once on the list (see below): a click on the name redraws its row
+          if (!isNone && !illustrator) name.addEventListener("dblclick", () => renameClass(c, name));
+          if (illustrator) {
+            // the thin stripe in the class's colour sits before the name, as Illustrator's does
+            const stripe = h("span", { cls: "lt-stripe" });
+            stripe.style.background = classColor(c);
+            const cellEl = h("div", { cls: "lt-cell lt-c-name", attrs: { "data-col": col } }, stripe, name);
+            // a click on the name makes the class current; a click on the open name editor does not
+            cellEl.addEventListener("click", () => {
+              if (c.index !== store.activeClassIndex && !cellEl.querySelector("input")) setActiveClass(c.index);
+            });
+            return cellEl;
+          }
           return h("div", { cls: "lt-cell lt-c-name", attrs: { "data-col": col } }, name);
         }
         case "linetype": {
@@ -244,6 +304,8 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
     const row = h("div", { cls: classes.join(" "), attrs: { "data-index": String(c.index) } }, ...cols.map(cell));
     row.style.gridTemplateColumns = template;
     row.addEventListener("click", () => {
+      // a click on a row whose name is being edited belongs to the edit, not a new selection
+      if (illustrator && row.querySelector("input")) return;
       selected = c.index;
       render();
     });
@@ -279,6 +341,7 @@ export function mountLayerTable(into: HTMLElement, spec: LayerTableSpec): () => 
     if (shown.length === 0) {
       list.append(h("div", { cls: "lt-empty", text: all.length > 0 ? `No matching ${words.noun}` : `No ${words.noun}` }));
     }
+    if (illustrator) count.textContent = `${all.length} ${all.length === 1 ? "Layer" : "Layers"}`;
     const sel = classAt(selected);
     addBtn.disabled = !s;
     delBtn.disabled = !sel || sel.name === NONE_NAME;

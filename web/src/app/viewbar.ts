@@ -288,8 +288,20 @@ function percent(scale: number): string {
   return `${pct >= 10 ? Math.round(pct) : pct.toPrecision(2)}%`;
 }
 
+/** Sets the 2D plan's zoom to a percentage the way the zoom field does; mountViewBar sets it up. */
+let setZoomTo: ((pct: number) => void) | null = null;
+
+/** Zooms the 2D plan to `pct` per cent (the plan comes up first when the 3D view shows), for the status bar's zoom box. */
+export function setZoomPercent(pct: number): void {
+  if (Number.isFinite(pct) && pct > 0) setZoomTo?.(pct);
+}
+
 export function mountViewBar(deps: ViewBarDeps): void {
   const { view, scene } = deps;
+  setZoomTo = (pct) => {
+    if (store.view3d) deps.topPlan();
+    zoomBy(view, pct / 100 / view.scale);
+  };
   const undoBtn = setIcon("btn-undo", UI_ICON.undo, undo);
   const redoBtn = setIcon("btn-redo", UI_ICON.redo, redo);
 

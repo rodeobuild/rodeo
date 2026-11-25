@@ -4,6 +4,7 @@
 // menu row is checked or their palette shows, and grey out while their menu row is off.
 
 import { h } from "../dom.ts";
+import { onLanguage, t } from "../i18n.ts";
 import { PALETTE_ICON, TOOL_ICON, UI_ICON } from "../icons.ts";
 import { menuItemAt, runMenuCommand } from "../menubar.ts";
 import { store, type ToolId } from "../state.ts";
@@ -236,10 +237,23 @@ export function selectionKind(): string {
   return /(s|x|ch|sh)$/i.test(name) ? `${name}es` : `${name}s`;
 }
 
-/** The text of a key for a tooltip: "Line (L)". */
-function tipOf(b: LookButton): string {
-  return b.keys ? `${b.label} (${b.keys})` : b.label;
+/**
+ * A button's tooltip with its key, "Line (L)", in the interface's language: the label and the key
+ * each looked up on their own, as the menus' tooltips are (menuKeys.ts), since the two together are
+ * no text a language's file has.
+ */
+export function buttonTip(b: LookButton): string {
+  return b.keys ? `${t(b.label)} (${t(b.keys)})` : t(b.label);
 }
+
+/** The buttons whose tooltip names a key, re-titled when the language changes. */
+const titled = new Set<{ el: HTMLElement; b: LookButton }>();
+onLanguage(() => {
+  for (const entry of titled) {
+    if (entry.el.isConnected) entry.el.title = buttonTip(entry.b);
+    else titled.delete(entry);
+  }
+});
 
 /** The buttons on screen, re-read as the tool, selection, snapping or view change. */
 const live = new Set<{ el: HTMLElement; c: Command }>();
@@ -290,9 +304,10 @@ export function lookButton(b: LookButton, opts: { iconOnly?: boolean; size?: "la
   const size = opts.size ?? b.size;
   const btn = h("button", {
     cls: `lk-btn${size ? ` lk-${size}` : ""}${opts.iconOnly ? " lk-icon-only" : ""}`,
-    title: tipOf(b),
+    title: buttonTip(b),
     attrs: { type: "button", "aria-label": b.label },
   });
+  if (b.keys) titled.add({ el: btn, b });
   btn.append(h("span", { cls: "lk-btn-icon", html: commandIcon(b) }));
   if (!opts.iconOnly) btn.append(h("span", { cls: "lk-btn-label", text: b.label }));
   btn.addEventListener("click", () => {

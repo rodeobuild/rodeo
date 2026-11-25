@@ -76,6 +76,8 @@ const SKETCHUP_X_AXIS = "#e5484d";
 const SKETCHUP_Y_AXIS = "#30a46c";
 /** a sheet layer's page boundary */
 const PAGE_EDGE = "rgba(60, 70, 90, 0.45)";
+/** the page boundary of a look with an artboard (Illustrator), drawn over its dark surround */
+const ARTBOARD_EDGE = "rgba(0, 0, 0, 0.6)";
 /** minor steps per major line */
 const GRID_MAJOR_EVERY = 5;
 /** grid lines closer than this (CSS px) are not drawn */
@@ -433,11 +435,23 @@ export class Renderer {
     const H = view.height;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = paper;
+    // a look with an artboard (Illustrator) shows a sheet's page on a surround of its own colour, on
+    // the screen only: exports and the pictures of other canvases keep the paper
+    const page = this.onScreen() ? this.activePage() : null;
+    const surround = page ? lookCanvas()?.artboard : undefined;
+    ctx.fillStyle = surround ?? paper;
     ctx.fillRect(0, 0, W, H);
     if (!scene.document) {
       this.kept = null;
       return;
+    }
+    if (page && surround) {
+      // the whole visible canvas is the surround, so the page is the only part to fill, in its own
+      // document coordinates; the grid is drawn after, so it shows over the page
+      ctx.setTransform(...view.matrix(dpr));
+      ctx.fillStyle = paper;
+      ctx.fillRect(-page.width / 2, -page.height / 2, page.width, page.height);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     this.drawGrid();
@@ -505,6 +519,7 @@ export class Renderer {
       this.canvas.height,
       this.dpr,
       this.view.rotation,
+      lookCanvas()?.artboard,
     ];
   }
 
@@ -1595,13 +1610,24 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** The active layer's page (Page Setup) when it is a sheet layer with one; null otherwise. */
+  private activePage(): PageSize | null {
+    const layer = store.activeLayerId ? this.scene.layer(store.activeLayerId) : undefined;
+    return layer?.kind === "sheet" && layer.page ? layer.page : null;
+  }
+
+  /** Whether this renderer's canvas is shown on the screen, as the editor's own and its panes are. */
+  private onScreen(): boolean {
+    return this.canvas.isConnected;
+  }
+
   /** A sheet layer's page (Page Setup), centred on its origin: a 1 px outline under its drawing. */
   private drawPage(page: PageSize): void {
     const { ctx } = this;
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.setLineDash([]);
-    ctx.strokeStyle = PAGE_EDGE;
+    ctx.strokeStyle = lookCanvas()?.artboard ? ARTBOARD_EDGE : PAGE_EDGE;
     ctx.lineWidth = 1 / this.view.scale;
     ctx.strokeRect(-page.width / 2, -page.height / 2, page.width, page.height);
     ctx.restore();

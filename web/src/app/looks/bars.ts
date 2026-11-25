@@ -4,7 +4,9 @@
 // look button from commands.ts, so it runs and lights exactly as it does on the ribbon.
 import "./bars.css";
 import { h } from "../dom.ts";
-import { lookButton } from "./commands.ts";
+import { toast } from "../toast.ts";
+import { buttonTip, commandIcon, commandWhy, lookButton, refreshButtons, runCommand, track } from "./commands.ts";
+import { mountFillStroke } from "./fillStroke.ts";
 import type { LookButton, ToolbarSpec, ToolboxGroup, ToolboxSpec } from "./types.ts";
 
 /** A button as a toolbar or toolbox draws it: the ribbon's large or small size never applies here. */
@@ -149,6 +151,89 @@ function groupTitle(g: ToolboxGroup, group: HTMLElement): HTMLElement | null {
   return band;
 }
 
+/** A drawer row's name, icon and key: a button that runs its command (and says why when it is greyed), then the drawer closes. */
+function drawerRow(b: LookButton, done: () => void): HTMLElement {
+  const row = h(
+    "button",
+    { cls: "lk-drawer-row", attrs: { type: "button", "aria-label": b.label, title: buttonTip(b) } },
+    h("span", { cls: "lk-drawer-icon", html: commandIcon(b) }),
+    h("span", { cls: "lk-drawer-name", text: b.label }),
+    h("span", { cls: "lk-drawer-key", text: b.keys ?? "" }),
+  );
+  row.addEventListener("click", () => {
+    if (row.classList.contains("off")) {
+      const why = commandWhy(b.do);
+      if (why) toast(why);
+      return;
+    }
+    runCommand(b.do);
+    refreshButtons();
+    done();
+  });
+  track(row, b.do);
+  return row;
+}
+
+/**
+ * The toolbox's "…" button (Edit Toolbar) and its drawer of more tools: a panel beside the toolbox,
+ * level with the button and kept on the screen. A row runs its tool and closes the drawer; so do
+ * Escape, a click elsewhere, a resize and `close` (the look going down).
+ */
+function drawerButton(d: NonNullable<ToolboxSpec["drawer"]>, side: ToolboxSpec["side"], box: HTMLElement): { readonly el: HTMLElement; readonly close: () => void } {
+  const btn = h("button", {
+    cls: "lk-toolbox-drawer",
+    text: "…",
+    title: "Edit Toolbar",
+    attrs: { type: "button", "aria-label": "Edit Toolbar", "aria-haspopup": "dialog", "aria-expanded": "false" },
+  });
+  let panel: HTMLElement | null = null;
+
+  const close = (): void => {
+    if (!panel) return;
+    panel.remove();
+    panel = null;
+    btn.classList.remove("active");
+    btn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", onDown, true);
+    document.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", close);
+  };
+  const onDown = (e: PointerEvent): void => {
+    const at = e.target as Node;
+    if (panel && !panel.contains(at) && !btn.contains(at)) close();
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape" && panel) close();
+  };
+
+  const open = (): void => {
+    close();
+    panel = h(
+      "div",
+      { cls: "lk-drawer", attrs: { role: "dialog", "aria-label": d.title } },
+      h("div", { cls: "lk-drawer-title", text: d.title }),
+      h("div", { cls: "lk-drawer-list" }, ...d.buttons.map((b) => drawerRow(b, close))),
+    );
+    document.body.append(panel);
+    // beside the toolbox, its top level with the button, and kept on the screen
+    const shown = panel;
+    const pr = shown.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    const top = Math.min(btn.getBoundingClientRect().top, window.innerHeight - pr.height - 4);
+    const left = side === "left" ? boxRect.right + 4 : boxRect.left - pr.width - 4;
+    shown.style.left = `${Math.round(Math.max(4, Math.min(left, window.innerWidth - pr.width - 4)))}px`;
+    shown.style.top = `${Math.round(Math.max(4, top))}px`;
+    btn.classList.add("active");
+    btn.setAttribute("aria-expanded", "true");
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+  };
+
+  btn.addEventListener("click", () => (panel ? close() : open()));
+  return { el: btn, close };
+}
+
 /** Builds the toolbox column into `into` (#lk-left or #lk-right); returns the call that takes it down. */
 export function mountToolbox(into: HTMLElement, spec: ToolboxSpec): () => void {
   const classes = ["lk-toolbox", `lk-cols-${spec.columns}`, `lk-toolbox-${spec.side}`];
@@ -164,6 +249,15 @@ export function mountToolbox(into: HTMLElement, spec: ToolboxSpec): () => void {
     group.append(grid);
     box.append(group);
   }
+  // Illustrator's Fill and Stroke, then the "…" that opens the All Tools drawer, at the column's foot
+  const fillStroke = spec.fillStroke ? mountFillStroke() : null;
+  if (fillStroke) box.append(fillStroke.el);
+  const drawer = spec.drawer ? drawerButton(spec.drawer, spec.side, box) : null;
+  if (drawer) box.append(drawer.el);
   into.append(box);
-  return () => box.remove();
+  return () => {
+    drawer?.close();
+    fillStroke?.unmount();
+    box.remove();
+  };
 }

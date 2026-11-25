@@ -12,7 +12,7 @@
 import type { ToolId } from "../state.ts";
 import type { PaneArrangement } from "../viewPanes.ts";
 
-export type LookId = "rodeo" | "rhino" | "sketchup" | "revit" | "archicad" | "autocad" | "vectorworks";
+export type LookId = "rodeo" | "rhino" | "sketchup" | "revit" | "archicad" | "autocad" | "illustrator" | "vectorworks";
 
 /**
  * What a button, a key or a typed command does: picks one of Rodeo's tools, runs one of Rodeo's
@@ -97,6 +97,17 @@ export interface ToolboxSpec {
   /** a caption over the column ("Toolbox") */
   readonly title?: string;
   readonly groups: readonly ToolboxGroup[];
+  /**
+   * Illustrator's Fill and Stroke at the column's foot: the fill's square over the stroke's hollow
+   * one (the one in front is the one Color, Gradient and None act on), the swap arrow, the default
+   * squares, and the Color, Gradient and None buttons under them (fillStroke.ts does the work).
+   */
+  readonly fillStroke?: true;
+  /**
+   * A "…" button at the column's foot that drops a drawer of more tools beside it, each with its
+   * name and key (Illustrator's Edit Toolbar, which opens its All Tools drawer)
+   */
+  readonly drawer?: { readonly title: string; readonly buttons: readonly LookButton[] };
 }
 
 /** A group of the toolbox's tools under its title. */
@@ -217,7 +228,21 @@ export type StatusItem =
   /** a box typed lengths and values go in (SketchUp's Measurements): it shows what the data bar shows */
   | { readonly kind: "measurements"; readonly label: string }
   /** pushes what follows to the far end */
-  | { readonly kind: "spacer" };
+  | { readonly kind: "spacer" }
+  /**
+   * the 2D view's zoom as a percentage in a box: typed (then Enter) or picked from its drop-down of
+   * steps (Illustrator's zoom box at the foot of the document window); empty while the 3D view shows
+   */
+  | { readonly kind: "zoom" }
+  /** the plan's rotation in degrees, typed or picked from a drop-down (Illustrator's Rotate View box); greyed where the plan can't turn */
+  | { readonly kind: "rotation" }
+  /**
+   * the sheet layers as pages, Illustrator's artboard navigation: first, previous, a drop-down of
+   * them by number and name, next and last; each makes that sheet layer the active one
+   */
+  | { readonly kind: "artboards" }
+  /** the active tool's name in the look's own words (its toolbox, drawer or toolbar button for that tool and mode), else Rodeo's */
+  | { readonly kind: "tool" };
 
 export interface StatusBarSpec {
   /** one row, or more stacked (Rhino's Osnap row above its status bar) */
@@ -376,6 +401,11 @@ export interface LookSpec {
    * Wireframe]", each a menu), the navigation bar under the view cube and the UCS icon at its bottom-left
    */
   readonly viewportControls?: boolean;
+  /**
+   * The colour round a sheet layer's page, which then shows as a white artboard on it (Illustrator's
+   * canvas); the page's inside keeps the paper colour. Design layers have no page and keep the paper.
+   */
+  readonly artboard?: string;
 }
 
 /** One column of a layer table: what each layer's row shows there. */
@@ -401,6 +431,6 @@ export type LookPanel =
    * Properties Manager and SketchUp's Tags list them. `none` is the name Rodeo's class None goes by
    * ("Default", "0", "Untagged"); `style` picks the look of the rows and the buttons over them.
    */
-  | { readonly kind: "layerTable"; readonly style: "rhino" | "autocad" | "sketchup"; readonly columns: readonly LayerColumn[]; readonly none: string }
+  | { readonly kind: "layerTable"; readonly style: "rhino" | "autocad" | "sketchup" | "illustrator"; readonly columns: readonly LayerColumn[]; readonly none: string }
   /** a tree of the project's views, sheets and resources: Revit's Project Browser, Archicad's Navigator Project Map */
   | { readonly kind: "browser"; readonly style: "revit" | "archicad" };

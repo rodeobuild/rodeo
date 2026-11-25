@@ -254,3 +254,113 @@
   padding: 0;
   width: 100%;
 }
+
+/* Illustrator: no header row or search field; a 28 px row with the eye and lock, a stripe in the
+   class's colour before the name, a small colour square at the right, and the current row in a
+   grey highlight with a small triangle in its top-right corner. The count and two buttons sit in a foot. */
+.lk-layer-table[data-style="illustrator"] {
+  --lt-current: #4b4b4b;
+  --lt-marker: var(--lk-bar-text);
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-row {
+  position: relative;
+  padding: 0 6px 0 0;
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-row:hover:not(.selected):not(.current) {
+  background: var(--lt-hover);
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-row.selected:not(.current) {
+  background: var(--lt-sel);
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-row.current {
+  background: var(--lt-current);
+}
+
+/* the current layer's marker: a filled triangle filling the row's top-right corner */
+.lk-layer-table[data-style="illustrator"] .lt-row.current::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  background: linear-gradient(to bottom left, var(--lt-marker) 50%, transparent 50%);
+  pointer-events: none;
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-c-visible,
+.lk-layer-table[data-style="illustrator"] .lt-c-lock,
+.lk-layer-table[data-style="illustrator"] .lt-c-color {
+  justify-content: center;
+  padding: 0;
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-c-name {
+  padding: 0 4px 0 0;
+  gap: 6px;
+}
+
+/* the thin stripe in the class's colour, the height of the row's middle */
+.lk-layer-table[data-style="illustrator"] .lt-stripe {
+  flex: 0 0 3px;
+  align-self: stretch;
+  margin: 5px 0;
+  width: 3px;
+  background: var(--lk-accent);
+}
+
+/* the eye and lock are plain, with a little more room than the rest of the table */
+.lk-layer-table[data-style="illustrator"] .lt-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-icon.lt-lock:not(.on) {
+  opacity: 0.6;
+}
+
+/* hidden: the eye stays out of the way; it shows faintly under the pointer so the toggle can be found */
+.lk-layer-table[data-style="illustrator"] .lt-vis.off svg {
+  opacity: 0;
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-vis.off:hover svg {
+  opacity: 0.35;
+}
+
+/* the colour square at the right */
+.lk-layer-table[data-style="illustrator"] .lt-swatch {
+  width: 8px;
+  height: 8px;
+  border: 0;
+}
+
+/* the foot: the count at the left, the two buttons at the right */
+.lk-layer-table[data-style="illustrator"] .lt-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 4px 0 8px;
+  border-top: 1px solid var(--lk-panel-sep);
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lk-bar-text);
+}
+
+.lk-layer-table[data-style="illustrator"] .lt-footer .lt-tool {
+  width: 24px;
+  height: 24px;
+}

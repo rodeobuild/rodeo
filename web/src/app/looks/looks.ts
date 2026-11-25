@@ -1,7 +1,8 @@
 // View › Work Like: Rodeo laid out as another application its users already know, so they can
-// start drawing without learning a new interface: Rhino, SketchUp, Revit, Archicad, AutoCAD or
-// Vectorworks, or Rodeo's own. A look (types.ts) brings that application's menu bar and what is in
-// each menu, its words for things, where its panels sit, its ribbon, toolbars, toolbox, command
+// start drawing without learning a new interface: Rhino, SketchUp, Revit, Archicad, AutoCAD,
+// Illustrator or Vectorworks, or Rodeo's own. A look (types.ts) brings that application's menu
+// bar and what is in each menu, its words for things, where its panels sit, its ribbon, toolbars,
+// toolbox, command
 // line and status bar, its keys and two-key shortcuts, how its mouse moves the 3D view and the
 // colours of its chrome and drawing area, its layer table or project browser, the bars under its
 // drawing and its grid. Everything still runs Rodeo's own tools and commands, with Rodeo's own
@@ -35,6 +36,7 @@ export const LOOKS: readonly { readonly id: LookId; readonly name: string; reado
   { id: "rodeo", name: "Rodeo", load: async () => RODEO },
   { id: "archicad", name: "Archicad", load: () => import("./archicad.ts").then((m) => m.look) },
   { id: "autocad", name: "AutoCAD", load: () => import("./autocad.ts").then((m) => m.look) },
+  { id: "illustrator", name: "Illustrator", load: () => import("./illustrator.ts").then((m) => m.look) },
   { id: "revit", name: "Revit", load: () => import("./revit.ts").then((m) => m.look) },
   { id: "rhino", name: "Rhino", load: () => import("./rhino.ts").then((m) => m.look) },
   { id: "sketchup", name: "SketchUp", load: () => import("./sketchup.ts").then((m) => m.look) },
@@ -321,7 +323,7 @@ async function putUp(chosen: LookSpec): Promise<void> {
   setLookView(look.id === "rodeo" ? null : look.mouse, look.background3d ?? null, look.id === "rodeo" ? null : ownsKey);
   setPaper(look.paper ?? null);
   setLookCanvas(
-    look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true, grid3d: look.grid3d ?? false, axes3d: look.axes3d, start3d: look.start3d ?? false },
+    look.id === "rodeo" ? null : { gridColors: look.gridColors, viewCube: look.viewCube ?? true, grid3d: look.grid3d ?? false, axes3d: look.axes3d, start3d: look.start3d ?? false, artboard: look.artboard },
   );
   const names = look.paneNames;
   setPaneNames(names ? (kind, view) => (kind === "plan" ? names.plan : view === null ? names.turned : (names.views[view] ?? view)) : null);
