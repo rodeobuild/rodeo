@@ -2859,12 +2859,13 @@ export function buildModelTree(doc: Model): ModelTree {
 
 /**
  * A symbol definition's 3D geometry in its own coordinates, walked as a layer is: the objects it
- * holds are the top-level ones. Its layerId is "".
+ * holds are the top-level ones. Its layerId is "" unless `layerId` names it: the open definition
+ * is shown as the layer it is edited as.
  */
-export function buildSymbolModel3d(doc: Model, def: Rec): Mesh3D[] {
+export function buildSymbolModel3d(doc: Model, def: Rec, layerId = ""): Mesh3D[] {
   const out: Mesh3D[] = [];
   // drawn in full, as an export writes it once
-  const ctx: Ctx = { doc, ...walkResources(doc), layerId: "", out, depth: 0, texture: -1, recessed: false, repeat: 1 };
+  const ctx: Ctx = { doc, ...walkResources(doc), layerId, out, depth: 0, texture: -1, recessed: false, repeat: 1 };
   walk(ctx, def, IDENTITY, null);
   return out;
 }

@@ -906,6 +906,8 @@ export class Model implements VwxDocument {
   /** the name indexes of the drawing's wall styles */
   private wallStyles: Set<number> | null = null;
   private meshes: Mesh3D[] | null = null;
+  /** model3d(): the layers' meshes (`meshes`) with the open definition's after them, while one is open */
+  private withOpen: Mesh3D[] | null = null;
   /** the 3D conversion resolution the meshes were built at (turnStepsGeneration) */
   private meshesAt = 0;
   /** the Parasolid generation the meshes were built at (parasolidGeneration) */
@@ -1023,6 +1025,7 @@ export class Model implements VwxDocument {
     this.materials = null;
     this.wallStyles = null;
     this.meshes = null;
+    this.withOpen = null;
     this.lights = null;
     this.idx = null;
     this.planViews.clear();
@@ -1169,6 +1172,8 @@ export class Model implements VwxDocument {
     if (next !== this.openDef) {
       this.openDef = next;
       this.idx = null;
+      // the 3D model holds the open definition's meshes: the layers' stay as they were built
+      this.withOpen = null;
     }
     return def ? guidOf(def) : null;
   }
@@ -2203,11 +2208,17 @@ export class Model implements VwxDocument {
 
   model3d(): Mesh3D[] {
     // built again when Preferences change the 3D conversion resolution, or Parasolid faces arrive
-    if (this.meshesAt !== turnStepsGeneration() || this.meshesXt !== parasolidGeneration()) this.meshes = null;
+    if (this.meshesAt !== turnStepsGeneration() || this.meshesXt !== parasolidGeneration()) this.meshes = this.withOpen = null;
     this.meshesAt = turnStepsGeneration();
     this.meshesXt = parasolidGeneration();
+    if (!this.meshes) this.withOpen = null;
     this.meshes ??= buildModel3d(this);
-    return this.meshes;
+    // the open symbol definition (openSymbol) is drawn too, as the layer it is edited as; opening
+    // or leaving one builds only its meshes, not the layers' again
+    const open = this.openDef === null ? undefined : this.symbols.get(this.openDef);
+    if (!open) return this.meshes;
+    this.withOpen ??= [...this.meshes, ...buildSymbolModel3d(this, open, guidOf(open))];
+    return this.withOpen;
   }
 
   model3dTree(): ModelTree {

@@ -24,6 +24,8 @@ Instances are drawn through their placement matrix and can be moved, rotated and
 
 **Modify › Edit Symbol** (or double-click an instance, or **Edit Symbol** on its Resources tile) opens the definition in place of the layers, at its insertion point, for every tool to edit. Each change reaches every instance and undoes as usual.
 
+In the 3D view, Edit Symbol shows the symbol's 3D alone, fitted in the window, and the plan behind it is fitted to the symbol too, for when you switch to 2D. Exit Symbol brings the whole drawing back in 3D, seen as it was before.
+
 **Exit Symbol** (the bar over the drawing, Modify, or <kbd>⌘]</kbd>) goes back to the layer and view it came from.
 
 ## Resources

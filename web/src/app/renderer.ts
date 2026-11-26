@@ -57,6 +57,9 @@ export function setInteractiveColors(c: { readonly selection: string; readonly p
   PRESELECT = c.preselect;
   SNAP_COLOR = c.snap;
 }
+/** The area an object fills, and how: its outline, or its outline with holes (even-odd). */
+type FillArea = { readonly path: Path2D; readonly rule: CanvasFillRule };
+
 const PEN_DEFAULT = "#1d1d1f";
 // the pen of a locked object in plan (View > Lock Selection): grey, as Rhino draws locked objects
 const LOCKED_PEN = "#9b9b9b";
@@ -849,7 +852,9 @@ export class Renderer {
     } else if (geom.path) {
       // opacities multiply into whatever alpha the layer/class already set (grayed)
       const alpha = ctx.globalAlpha;
-      if (attrs && attrs.fillPattern !== 0 && fillsShape(shape) && !obj.wireframe && attrs.fillOpacity > 0) {
+      // a hole is drawn as its outline only: its parent's fill leaves it open
+      const hole = this.scene.isHole(obj);
+      if (!hole && attrs && attrs.fillPattern !== 0 && fillsShape(shape) && !obj.wireframe && attrs.fillOpacity > 0) {
         // solid fills paint the fill background colour and tiles draw over it; hatches paint
         // their own ground and lines, and gradients replace the fill with a colour ramp
         ctx.globalAlpha = alpha * Math.min(1, attrs.fillOpacity / 100);
@@ -866,14 +871,17 @@ export class Renderer {
               : back);
         // a bitmap's pixels stay crisp
         ctx.imageSmoothingEnabled = !bits;
-        ctx.fill(geom.path);
+        // a polyline with holes fills its outline less them (even-odd), so they stay open
+        const holed = this.scene.holedFill(obj);
+        const area: FillArea = holed ? { path: holed, rule: "evenodd" } : { path: geom.path, rule: "nonzero" };
+        ctx.fill(area.path, area.rule);
         ctx.imageSmoothingEnabled = true;
         // world-sized patterns shrink with whatever placed the object (a viewport's drawing does);
         // a page-sized hatch keeps its size on the sheet, so the layer's scale enlarges it
         const k = obj.patternScale ?? 1;
-        if (hatch) this.drawHatch(geom, hatch, fillMap, dx, dy, hatch.page ? layerScale : k);
+        if (hatch) this.drawHatch(geom, area, hatch, fillMap, dx, dy, hatch.page ? layerScale : k);
         const tile = this.scene.tile(attrs.fillPattern);
-        if (tile) this.drawTile(geom, tile, fillMap, pen, dx, dy, k);
+        if (tile) this.drawTile(geom, area, tile, fillMap, pen, dx, dy, k);
       }
       if (attrs) ctx.globalAlpha = alpha * Math.min(1, attrs.penOpacity / 100);
       ctx.strokeStyle = pen;
@@ -1183,9 +1191,9 @@ export class Renderer {
    * closer than a few pixels at this zoom are left out, as their ground colour already reads as
    * the fill. `dx`, `dy` is the move the object is drawn with.
    */
-  private drawHatch(geom: Geom, hatch: HatchFill, map: FillMapping | undefined, dx: number, dy: number, k: number): void {
+  private drawHatch(geom: Geom, area: FillArea, hatch: HatchFill, map: FillMapping | undefined, dx: number, dy: number, k: number): void {
     const b = geom.bbox;
-    if (!b || !geom.path) return;
+    if (!b) return;
     // the visible part of the shape, in the shape's own coordinates, then in the hatch's
     const view = this.cull;
     const visible: BBox = {
@@ -1252,7 +1260,7 @@ export class Renderer {
     if (segs === 0) return;
     const { ctx } = this;
     ctx.save();
-    ctx.clip(geom.path);
+    ctx.clip(area.path, area.rule);
     ctx.transform(frame.a, frame.b, frame.c, frame.d, frame.e, frame.f);
     ctx.lineWidth = 1 / s;
     // a stipple's dashes are specks a fraction of a pixel long; round caps would blot each into a dot
@@ -1296,9 +1304,9 @@ export class Renderer {
    * drawn with, and `k` the scale the tile is drawn at without a mapping. Repeats too small to
    * read at this zoom are left out, and the number of repeats is capped as hatch segments are.
    */
-  private drawTile(geom: Geom, tile: TileFill, map: FillMapping | undefined, color: string, dx: number, dy: number, k: number): void {
+  private drawTile(geom: Geom, area: FillArea, tile: TileFill, map: FillMapping | undefined, color: string, dx: number, dy: number, k: number): void {
     const b = geom.bbox;
-    if (!b || !geom.path || tile.shapes.length === 0) return;
+    if (!b || tile.shapes.length === 0) return;
     const { u, v } = tile;
     const frame = tileFrame(map && mappingFits(map, b) ? map : undefined, tile, k);
     // the repeats on screen, in CSS px
@@ -1358,7 +1366,7 @@ export class Renderer {
     if (cells === 0) return;
     const { ctx } = this;
     ctx.save();
-    ctx.clip(geom.path);
+    ctx.clip(area.path, area.rule);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1 / this.px;
     ctx.stroke(path);

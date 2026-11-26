@@ -427,6 +427,8 @@ export class App {
   private renderMode3d: RenderMode = "shaded";
   /** the 3D view's model no longer matches the document */
   private stale3d = true;
+  /** the 3D camera from before Edit Symbol, back in place when the symbol is left */
+  private camBeforeSymbol: CameraState | null = null;
   /** the last 3D build ran out of memory: edits don't try it again, only asking for 3D or opening another drawing does */
   private memory3dFull = false;
   /** the model was built while the 3D view was hidden (for a floating pane): its first showing frames it */
@@ -1354,6 +1356,8 @@ export class App {
       return;
     }
     const layer = from.layerId ? this.scene.layer(from.layerId) : undefined;
+    // the 3D camera the drawing had before the first symbol opened, back in place when the symbol is left
+    if (!store.symbolEdit) this.camBeforeSymbol = this.live3d && this.view3d ? this.view3d.cameraState() : null;
     store.symbolEdit = {
       index,
       from,
@@ -1361,7 +1365,16 @@ export class App {
       layer: { id, name: symbolNameOf(s.doc, index), title: "", kind: "design", scale: layer?.kind === "design" ? layer.scale : 1, visibility: "visible", objectCount: 0 },
     };
     this.switchedSymbol(id);
+    // the 3D view shows the symbol alone, fitted; the plan is fitted too, for when the view is switched to 2D
+    this.refresh3dModel();
     this.fit();
+    if (store.view3d) this.fitPlan();
+  }
+
+  /** The 3D model is built again at its next showing, or now when the 3D view is in use. */
+  private refresh3dModel(): void {
+    this.stale3d = true;
+    if (this.seen3d) this.update3d();
   }
 
   /**
@@ -1399,6 +1412,8 @@ export class App {
   private exitSymbol(): void {
     const e = store.symbolEdit;
     if (!e) return;
+    const cam = this.camBeforeSymbol;
+    this.camBeforeSymbol = null;
     store.session?.doc.openSymbol(null);
     store.session?.doc.openAnnotations(null);
     store.symbolEdit = null;
@@ -1407,6 +1422,14 @@ export class App {
     this.view.cy = e.from.cy;
     this.view.scale = e.from.scale;
     store.emit("view");
+    // viewport annotations leave the 3D view as they were
+    if (e.viewport) return;
+    // the whole drawing comes back in 3D, from the camera it had before Edit Symbol
+    this.refresh3dModel();
+    if (this.live3d && this.view3d) {
+      if (cam) this.view3d.setCameraState(cam);
+      else this.view3d.fit();
+    }
   }
 
   /** After opening or leaving a symbol: redraw everything, with `layerId` active and nothing selected. */
@@ -1451,6 +1474,11 @@ export class App {
       this.view3d.fit();
       return;
     }
+    this.fitPlan(animate);
+  }
+
+  /** The plan fitted to what the active layer draws; also run behind the 3D view, so 2D shows the same thing when switched to. */
+  private fitPlan(animate = false): void {
     const b = this.scene.drawnBounds(store.activeLayerId);
     const change = (): void => {
       if (b) {

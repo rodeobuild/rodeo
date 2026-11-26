@@ -27,6 +27,7 @@ import { graysOthers, snapsToOthers, store } from "./state.ts";
 import { hiddenObjects } from "./hiddenObjects.ts";
 import { lockedObjects } from "./lockedObjects.ts";
 import { buildGeom, type Geom } from "./shapes.ts";
+import { holesOf, isHoleOf } from "./holes.ts";
 import { activeColouring, designLayerStyles } from "./space/colour.ts";
 
 /** Vectorworks' object types: a wall, and the plug-in objects and symbols set in one */
@@ -116,6 +117,8 @@ export class Scene {
   private readonly tops = new Map<string, string>();
   private readonly topEntryCache = new Map<string, { readonly from: readonly ObjectInfo[]; readonly entries: readonly TopEntry[] }>();
   private readonly geoms = new Map<string, Geom>();
+  /** fill outlines of polylines with holes, by the polyline's id (see holedFill) */
+  private readonly holeFills = new Map<string, { readonly children: readonly ObjectInfo[]; readonly geom: Geom; readonly path: Path2D | null }>();
   /** world-unit dash arrays keyed by "style@layerScale"; null = draw solid */
   private readonly dashes = new Map<string, readonly number[] | null>();
   private readonly images = new Map<string, ImageEntry>();
@@ -138,6 +141,7 @@ export class Scene {
     this.doc = doc;
     this.fills = null;
     this.geoms.clear();
+    this.holeFills.clear();
     this.releaseImages();
     this.clearDerived();
     this.indexes.clear();
@@ -557,6 +561,40 @@ export class Scene {
       if (kids) for (const k of kids) stack.push(k);
     }
     return box;
+  }
+
+  /** Whether an object is a hole of the polyline it sits in: drawn as an outline, never filled. */
+  isHole(obj: ObjectInfo): boolean {
+    if (obj.parentId === null) return false;
+    return isHoleOf(obj, this.doc?.object(obj.parentId) ?? null);
+  }
+
+  /**
+   * The fill outline of a polyline with holes: its own outline and each hole's, to be filled
+   * even-odd so the holes stay open. Null when it has none, and then its own outline fills as usual.
+   * Cached per polyline until its children or its geometry change.
+   */
+  holedFill(obj: ObjectInfo): Path2D | null {
+    if (obj.kind !== "polyline") return null;
+    const children = this.index(obj.layerId).children.get(obj.id);
+    if (!children) return null;
+    const geom = this.geometry(obj);
+    if (!geom?.path) return null;
+    const cached = this.holeFills.get(obj.id);
+    if (cached && cached.children === children && cached.geom === geom) return cached.path;
+    const holes: Path2D[] = [];
+    for (const h of holesOf(obj, children)) {
+      const p = this.geometry(h)?.path;
+      if (p) holes.push(p);
+    }
+    let path: Path2D | null = null;
+    if (holes.length > 0) {
+      path = new Path2D();
+      path.addPath(geom.path);
+      for (const h of holes) path.addPath(h);
+    }
+    this.holeFills.set(obj.id, { children, geom, path });
+    return path;
   }
 
   /** Cached geometry for a drawable object; null for containers. */

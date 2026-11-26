@@ -19825,5 +19825,9 @@
   "A free account, one click away on the start screen, with what it adds: cloud drawings, version history, share links and embeds, editing together.": "免费账户，在起始页上一键即可创建，附带以下功能：云端图形、版本历史、共享链接与嵌入、多人同时编辑。",
   "Signing in no longer costs you an open drawing. Google's pages open in a small window, an emailed link opens in its own tab, and the editor signs in by itself.": "登录不会再让你丢失已打开的图形。Google 页面会在小窗口中打开，邮件中的登录链接会在独立的标签页中打开，编辑器会自动完成登录。",
   "Not signed in, with work under way? A card offers to save the drawing to the cloud. Closing it puts it off for a week.": "尚未登录，但图形正在编辑中？卡片会提供将图形保存到云端的选项。关闭后一周内不再显示。",
-  "Sign in is on the first row of every Work Like layout, and the newest releases show on the start screen once you are signed in.": "每个仿照软件布局的第一行都有登录，登录后起始页会显示最新发布内容。"
+  "Sign in is on the first row of every Work Like layout, and the newest releases show on the start screen once you are signed in.": "每个仿照软件布局的第一行都有登录，登录后起始页会显示最新发布内容。",
+  "Edit Symbol in 3D, holes in polylines": "在三维视图中编辑符号，多段线中的孔洞",
+  "Fixes from your reports.": "根据你的报告进行的修复。",
+  "Edit Symbol works in the 3D view: the symbol's 3D shows alone, fitted in the window, where the view used to go empty. Exit Symbol brings the whole drawing back, seen as it was.": "编辑符号在三维视图中可用：符号的三维模型单独显示并适配窗口，之前这里是空白的。退出符号会恢复整个图纸，并按原样显示。",
+  "Polylines with holes, as Vectorworks' Clip Surface makes them, leave their holes open: what is under them shows through, on screen and in PDF exports, where the holes used to fill again.": "带孔的多段线，如由 Vectorworks 的剪切曲面生成的，其孔洞会保持开放：孔洞下方的内容会透出来，无论在屏幕上还是 PDF 导出中；之前这些孔洞会被重新填满。"
 }

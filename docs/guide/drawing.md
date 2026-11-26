@@ -59,6 +59,8 @@ The **Polyline** tool (<kbd>Y</kbd>) places each vertex as one of five kinds (ke
 - an arc rounding the corner
 - a point an arc passes through
 
+A polyline from Vectorworks can have holes (Clip Surface makes them): its fill runs round them, so what is under it shows through, on screen and in PDF exports.
+
 ### Spiral
 
 The **Spiral** tool (<kbd>⇧S</kbd>: circle the centre to add loops) draws a smooth polyline.

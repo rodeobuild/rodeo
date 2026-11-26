@@ -33,6 +33,7 @@ import type {
   Visibility,
   VwxDocument,
 } from "../core/types.ts";
+import { childrenByParent, holesOf, isHoleOf } from "../app/holes.ts";
 import { type PdfImage, pdfImage } from "./pdfImage.ts";
 import { arcPoint, findLayer, shownBounds, unionBounds } from "./svg.ts";
 
@@ -136,6 +137,10 @@ interface Item {
   markers?: MarkerPath[];
   /** the drop shadow it casts; consecutive items with the same one cast it together */
   shadow?: DropShadow;
+  /** a hole of its parent polyline: drawn as an outline, never filled */
+  hole?: true;
+  /** a polyline's holes, as drawn: its fill runs round them, even-odd, so they stay open */
+  holes?: Outline[];
 }
 
 /** Maps world coordinates to page points: x_pt = x * k + ox, y_pt = y * k + oy. */
@@ -284,7 +289,9 @@ function collect(
       if (shown.visibility === "hidden") continue;
       const vpClasses = shown.via?.classes ?? vp.classes;
       const m = shown.via ? composeAffine(vp.m, shown.via.m) : vp.m;
-      for (const obj of doc.objects(shown.id)) {
+      const shownObjects = doc.objects(shown.id);
+      const kids = childrenByParent(shownObjects);
+      for (const obj of shownObjects) {
         if (!obj.shape) continue;
         const own = vpClasses.get(obj.classIndex) ?? classes.get(obj.classIndex)?.visibility ?? "visible";
         const visibility = withContainers(own, obj, (i) => vpClasses.get(i) ?? classes.get(i)?.visibility);
@@ -303,6 +310,7 @@ function collect(
           ...(style ? { style } : {}),
           ...(obj.shadow ? { shadow: obj.shadow } : {}),
           ...markersOf(obj, shape, perInch),
+          ...holeParts(doc, obj, kids, (s) => mapShape(s, m)),
         });
         boxes.push(box);
       }
@@ -310,6 +318,7 @@ function collect(
   }
   // sections and details draw from their caches, which their data visualisations can restyle
   const styles = layer.kind === "sheet" ? doc.viewportStyles(layer.id) : null;
+  const kids = childrenByParent(doc.objects(layer.id));
   for (const obj of doc.objects(layer.id)) {
     if (!obj.shape) continue;
     const visibility = withContainers(classes.get(obj.classIndex)?.visibility ?? "visible", obj, (i) => classes.get(i)?.visibility);
@@ -326,10 +335,27 @@ function collect(
       ...(style ? { style } : {}),
       ...(obj.shadow ? { shadow: obj.shadow } : {}),
       ...markersOf(obj, obj.shape, perInch),
+      ...holeParts(doc, obj, kids, (s) => s),
     });
     boxes.push(box);
   }
   return { items, box: unionBounds(boxes) };
+}
+
+/**
+ * Hole marks for an item: `hole` when the object is a hole of its parent polyline, and `holes` the
+ * outlines of a polyline's own holes, mapped as the polyline is drawn (`shapeOf`).
+ */
+function holeParts(doc: VwxDocument, obj: ObjectInfo, kids: ReadonlyMap<string, ObjectInfo[]>, shapeOf: (s: Shape) => Shape): { hole?: true; holes?: Outline[] } {
+  const parts: { hole?: true; holes?: Outline[] } = {};
+  if (obj.parentId !== null && isHoleOf(obj, doc.object(obj.parentId))) parts.hole = true;
+  const holes: Outline[] = [];
+  for (const h of holesOf(obj, kids.get(obj.id))) {
+    const g = h.shape ? geometryOf(shapeOf(h.shape)) : null;
+    if (g?.kind === "path") holes.push(g);
+  }
+  if (holes.length > 0) parts.holes = holes;
+  return parts;
 }
 
 /** Item.markers for an object drawn as `shape`, `perInch` world mm to the paper inch; nothing when it has none. */
@@ -542,7 +568,7 @@ function drawItem(item: Item, f: Frame, ctx: Ctx): string {
   let paint = pen ? "S" : "n";
   let fillAlpha = 1;
   let fillColour: string | null = null;
-  if (a && a.fillPattern !== 0 && (g.kind === "path" ? g.fills : g.closed)) {
+  if (a && a.fillPattern !== 0 && !item.hole && (g.kind === "path" ? g.fills : g.closed)) {
     // solid fills paint the fill background colour (see core/attrs.ts); a hatch its own ground,
     // without its lines; a bitmap pattern the mix of its two colours its bits make
     paint = pen ? "B" : "f";
@@ -569,7 +595,13 @@ function drawItem(item: Item, f: Frame, ctx: Ctx): string {
   ops.push(`${num(width)} w`, `${penColour} RG`);
   if (fillColour) ops.push(fillColour);
   if (dash) ops.push(`[${dash.map((d) => num(d)).join(" ")}] 0 d`);
-  ops.push(...pathOps(g, f), paint, "Q");
+  const outline = pathOps(g, f);
+  if (fillColour && item.holes) {
+    // the fill is the outline less its holes (even-odd), so they stay open; the outline is stroked on its own
+    ops.push(...outline, ...item.holes.flatMap((h) => pathOps(h, f)), "f*");
+    if (pen) ops.push(...outline, "S");
+  } else ops.push(...outline, paint);
+  ops.push("Q");
   if (pen && item.markers) ops.push(...markerOps(item.markers, item.clip, f, ctx, penColour, width, penAlpha));
   return ops.join("\n");
 }
@@ -630,7 +662,7 @@ function shadowOps(items: readonly Item[], i: number, perInch: number, f: Frame,
     const g = item.geom;
     if (g.kind === "text") texts.push(...textOps(g, f, ctx));
     else if (g.kind === "image") filled.push(...pathOps(boxOutline(g.box), f));
-    else if (item.attrs && item.attrs.fillPattern !== 0 && (g.kind === "path" ? g.fills : g.closed)) filled.push(...pathOps(counterClockwise(g), f));
+    else if (item.attrs && item.attrs.fillPattern !== 0 && !item.hole && (g.kind === "path" ? g.fills : g.closed)) filled.push(...pathOps(counterClockwise(g), f));
     else if (drawsPen(item.attrs)) outlined.push(...pathOps(g, f));
   }
   const ops = ["q", ...clipOps(items[i].clip, f)];

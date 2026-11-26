@@ -22,6 +22,15 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-26T12:20:00Z",
+    "feedback-fixes-symbols-holes",
+    "Edit Symbol in 3D, holes in polylines",
+    `Fixes from your reports.
+- Edit Symbol works in the 3D view: the symbol's 3D shows alone, fitted in the window, where the view used to go empty. Exit Symbol brings the whole drawing back, seen as it was.
+- Polylines with holes, as Vectorworks' Clip Surface makes them, leave their holes open: what is under them shows through, on screen and in PDF exports, where the holes used to fill again.`,
+    "solids",
+  ),
+  release(
     "2026-11-26T12:10:00Z",
     "start-screen",
     "A new start screen",
