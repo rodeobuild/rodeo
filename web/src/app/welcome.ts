@@ -1,16 +1,19 @@
 /// <reference types="vite/client" />
-// The start hub: one card over the whole editor, which shows faded behind it, until a drawing is
+// The start screen: one card over the whole editor, which shows faded behind it, until a drawing is
 // open (and over open ones from Window > Home Screen, with a button, Esc or a click beside the card
-// back). Open a file (or drop one anywhere, fileio.ts), the drawings opened lately, and the blocks
-// features register (account at the header's end, the cloud's Recent drawings, the sponsor, the
-// footer's links). It steps aside while a file loads, so the loading card shows. The markup is in
-// index.html. "Try sample" exists only in the dev server, where Vite serves
-// ../samples/sample.vwx at /__sample.vwx.
+// back). Its first column starts work: open a file (or drop one anywhere, fileio.ts), a new drawing,
+// the drawings opened lately. Its second shows what Rodeo can be: the Work Like picker
+// (looks/picker.ts), then the blocks features register there (the free account for someone not
+// signed in, the latest news). Features also add the account control at the header's end, the
+// cloud's Recent drawings, the sponsor and the footer's links. It steps aside while a file loads, so
+// the loading card shows. The markup is in index.html. "Try sample" exists only in the dev server,
+// where Vite serves ../samples/sample.vwx at /__sample.vwx.
 
 import { byId, h } from "./dom.ts";
 import { registerWelcome, type RecentFile, type ShowRecent } from "./ext.ts";
 import { language, languagePicker } from "./i18n.ts";
 import { isLoading, onLoading } from "./loading.ts";
+import { lookPicker } from "./looks/picker.ts";
 import { type RecentEntry, onRecentChange, recentList } from "./recent.ts";
 import { store } from "./state.ts";
 import { errorMessage, toast } from "./toast.ts";
@@ -53,6 +56,8 @@ export function mountWelcome(root: HTMLElement, actions: WelcomeActions): void {
   root.addEventListener("click", (e) => {
     if (e.target === root) hideHome();
   });
+  // the second column starts with the Work Like picker; features' blocks come after it (ext.ts)
+  byId("welcome-side-slot").prepend(lookPicker());
   byId("welcome-open").addEventListener("click", () => actions.openPicker());
   byId("welcome-new").addEventListener("click", () => actions.newDrawing());
   byId("welcome-template").addEventListener("click", () => actions.newFromTemplate());
@@ -118,6 +123,7 @@ export function recentSource(): ShowRecent {
 function mountRecent(actions: WelcomeActions): void {
   const section = byId("welcome-recent");
   const list = byId("welcome-recent-list");
+  const points = byId("welcome-points");
   paintRecent = (): void => {
     const here: RecentFile[] = recentList().map((entry) => ({
       name: entry.name,
@@ -128,6 +134,8 @@ function mountRecent(actions: WelcomeActions): void {
     }));
     const files = [...here, ...featureFiles.flat()].sort((a, b) => b.at - a.at).slice(0, RECENT_SHOWN);
     section.hidden = files.length === 0;
+    // what Rodeo is, for someone with nothing on the list yet
+    points.hidden = files.length > 0;
     list.replaceChildren(...files.map(recentRow));
   };
   onRecentChange(paintRecent);

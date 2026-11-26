@@ -14,6 +14,7 @@ import { startAutosync } from "./autosync.ts";
 import { openCloudBrowser } from "./browser.ts";
 import { cloudOffered, openCloudDrawing, saveDrawingToCloud } from "./cloud.ts";
 import { historyPalette, showHistory } from "./history.ts";
+import { watchForKeeping } from "./keep.ts";
 import { openShareDialog } from "./share.ts";
 import { cloudOpenButton, watchCloudRecent } from "./welcome.ts";
 import "./urls.ts";
@@ -76,5 +77,8 @@ registerWelcome(cloudOpenButton, "open");
 registerRecentFiles(watchCloudRecent);
 
 void serverConfig().then((cfg) => {
-  if (cfg) startAutosync();
+  if (!cfg) return;
+  startAutosync();
+  // someone not signed in, with work to lose, is offered the cloud once (keep.ts)
+  watchForKeeping();
 });

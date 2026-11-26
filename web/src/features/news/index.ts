@@ -7,9 +7,10 @@
 import "./news.css";
 import "./banner.ts";
 import { registerMenu, registerWelcome } from "../../app/ext.ts";
-import { newsLink } from "./news.ts";
+import { newsBlock, newsLink } from "./news.ts";
 import { openNewsPanel } from "./panel.ts";
 
 registerWelcome(() => newsLink(openNewsPanel), "foot");
+registerWelcome(() => newsBlock(openNewsPanel), "side");
 
 registerMenu("Help", () => [{ label: "What's New…", run: openNewsPanel }], { after: "Keyboard Shortcuts…" });

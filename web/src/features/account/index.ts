@@ -2,7 +2,7 @@
 // registers with app/ext.ts when imported. Everything shows only when the server answers
 // /api/config; with no server (a static host) nothing does.
 
-import { onReady, registerMenu, registerTopBar, registerUrlHandler, registerWelcome } from "../../app/ext.ts";
+import { onReady, registerBarEnd, registerMenu, registerTopBar, registerUrlHandler, registerWelcome } from "../../app/ext.ts";
 import type { Row } from "../../app/menu.ts";
 import { toast } from "../../app/toast.ts";
 import { currentUser, refreshUser } from "../../platform/api.ts";
@@ -10,7 +10,9 @@ import { config, loadConfig } from "./config.ts";
 import { balanceBeforeTopUp, creditTerms, formatCredit } from "./credit.ts";
 import { openFundingDialog } from "./funding.ts";
 import { adCard } from "./ad.ts";
+import { announceSignIn, watchSignIn } from "./authSignal.ts";
 import { donateLink } from "./hub.ts";
+import { joinCard } from "./join.ts";
 import { accountSlot } from "./topbar.ts";
 import "./account.css";
 
@@ -41,10 +43,22 @@ registerUrlHandler("signed-in", () => {
   void booted.then(() => {
     if (!config()) return;
     const user = currentUser();
-    if (user) toast(`Signed in as ${user.name || user.email}`, "info");
-    else toast("Sign-in did not complete. Try again.");
+    if (user) {
+      toast(`Signed in as ${user.name || user.email}`, "info");
+      // an emailed link opens here in a tab of its own: the tab that asked for it, and its drawing, sign in too
+      announceSignIn();
+    } else toast("Sign-in did not complete. Try again.");
   });
 });
+
+// a sign-in link that was used before or has run out returns with ?signin=failed
+registerUrlHandler("signin", (value) => {
+  dropParam("signin");
+  if (value === "failed") toast("That sign-in link has been used or has run out. Ask for a new one.");
+});
+
+// a sign-in made in another page of this browser (a provider's window, an emailed link's tab) reaches this one
+watchSignIn();
 
 // a Rodeo Plus checkout returns with ?billing=success or ?billing=cancel
 registerUrlHandler("billing", (value) => {
@@ -84,9 +98,13 @@ registerUrlHandler("credit", (value) => {
 });
 
 registerTopBar(() => accountSlot("topbar"), "right");
+// a look of View › Work Like without the top bar has it at the end of its menu or title bar
+registerBarEnd(() => accountSlot("bar"));
 
-// the start hub: Sign in or the avatar in its header, its one ad under Recent, and Donate in its footer
+// the start screen: Sign in or the avatar in its header, the free account in its second column for
+// someone not signed in, its one ad under Recent, and Donate in its footer
 registerWelcome(() => accountSlot("hub"), "head");
+registerWelcome(joinCard, "side");
 registerWelcome(adCard, "main");
 registerWelcome(donateLink, "foot");
 

@@ -18,6 +18,7 @@
 import "./looks.css";
 import type { Palettes, TopGroupId } from "../dock.ts";
 import { h } from "../dom.ts";
+import { barEndElements } from "../ext.ts";
 import { setTerms } from "../i18n.ts";
 import { openContextMenu, type Row } from "../menu.ts";
 import { setLookMenus } from "../menuLayout.ts";
@@ -161,6 +162,14 @@ export function currentLook(): LookId {
   return current;
 }
 
+const lookListeners = new Set<(id: LookId) => void>();
+
+/** Calls `fn` whenever the look changes (View › Work Like, the start screen's picker), once it is up; returns a function that stops it. */
+export function onLookChange(fn: (id: LookId) => void): () => void {
+  lookListeners.add(fn);
+  return () => lookListeners.delete(fn);
+}
+
 /** The look on now, its whole spec (Rodeo's while it is Rodeo). */
 export function currentSpec(): LookSpec {
   return spec;
@@ -259,13 +268,18 @@ function mountTitle(into: HTMLElement, look: LookSpec): Unmount {
     if (el) watch.observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
   }
   sync();
-  const bar = h("div", { cls: "lk-titlebar" }, h("div", { cls: "lk-title-start" }, appBtn, qat), h("div", { cls: "lk-title-mid" }, name, dot), h("div", { cls: "lk-title-end" }));
+  // what features add at the bar's end (the account control: the applications have their sign-in here), built once
+  titleEnd ??= barEndElements();
+  const bar = h("div", { cls: "lk-titlebar" }, h("div", { cls: "lk-title-start" }, appBtn, qat), h("div", { cls: "lk-title-mid" }, name, dot), h("div", { cls: "lk-title-end" }, ...titleEnd));
   into.append(bar);
   return () => {
     watch.disconnect();
     bar.remove();
   };
 }
+
+/** the title bar's end, kept from one look's title bar to the next */
+let titleEnd: HTMLElement[] | null = null;
 
 // ---- applying a look ------------------------------------------------------------------------
 
@@ -447,6 +461,7 @@ export function setLook(id: LookId): Promise<void> {
       setGrid({ show: true });
     } else startOf(next);
     await putUp(next);
+    for (const fn of [...lookListeners]) fn(id);
   });
   return switching;
 }

@@ -3,9 +3,11 @@
 // Window > Top Bar > Menu Bar shows it (the Dense and Classic workspaces do). A press on a title
 // drops its menu; while one is down, moving over another title drops that one instead, as a
 // native menu bar does. The titles follow the menus as they stand: the ones features add, and
-// the order Window > Menus… sets.
+// the order Window > Menus… sets. At the row's end goes what features put there (ext.ts
+// registerBarEnd: the account control), shown while the top bar that usually holds it is not.
 
 import { h } from "./dom.ts";
+import { barEndElements } from "./ext.ts";
 import { closeContextMenu, openContextMenu, type Row } from "./menu.ts";
 import "./menuStrip.css";
 
@@ -13,6 +15,8 @@ export function mountMenuStrip(strip: HTMLElement, menus: () => readonly { reado
   let drawn = "";
   /** the title whose menu is down */
   let open: HTMLButtonElement | null = null;
+  // what features add at the row's end (the account control), kept as the titles are drawn again
+  const end = h("div", { cls: "menu-strip-end" }, ...barEndElements());
 
   const render = (): void => {
     const defs = menus();
@@ -21,6 +25,7 @@ export function mountMenuStrip(strip: HTMLElement, menus: () => readonly { reado
     drawn = key;
     strip.replaceChildren(
       ...defs.map((d) => h("button", { cls: "menu-strip-title", text: d.title, attrs: { type: "button", "aria-haspopup": "menu", "data-title": d.title, "data-i18n": `Menu › ${d.title}` } })),
+      end,
     );
   };
 

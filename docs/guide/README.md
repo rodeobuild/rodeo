@@ -4,7 +4,7 @@ How to use Rodeo, the drawing and 3D modelling app at [rodeo.build](https://rode
 
 ## Getting around
 
-- [Files: opening, saving and tabs](files.md): opening and saving drawings, autosave, tabs, new drawings and templates, units and file information, sharing and embedding drawings, the Gallery, and the desktop app for macOS, Windows and Linux.
+- [Files: opening, saving and tabs](files.md): the start screen, opening and saving drawings, autosave, accounts and signing in, tabs, new drawings and templates, units and file information, sharing and embedding drawings, the Gallery, and the desktop app for macOS, Windows and Linux.
 - [Branches, compare and merge](branches.md): branches of cloud drawings, comparing versions, merge requests and blame.
 - [The workspace](workspace.md): the window's layout, the Agents panel, zooming and panning, snapping, the grid and rulers, preferences, palettes and workspaces, Work Like (Rodeo laid out as Archicad, AutoCAD, Illustrator, Revit, Rhino, SketchUp or Vectorworks), view panes, the menus at a glance and utilities.
 - [Layers and classes](layers-classes.md): design and sheet layers, classes, visibility, the Organization dialog, saved views, and class and layer mapping.

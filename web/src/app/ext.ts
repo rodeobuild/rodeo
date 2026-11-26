@@ -242,8 +242,8 @@ export interface PluginWidget {
 /** The widgets a plug-in greys or hides, by id; those missing are enabled and shown. */
 export type PluginWidgetStates = ReadonlyMap<number, { readonly enabled: boolean; readonly visible: boolean }>;
 
-/** The start screen's places for features' blocks: the header's end, beside Open file, under Recent, and the footer. */
-export type WelcomeSlot = "head" | "open" | "main" | "foot";
+/** The start screen's places for features' blocks: the header's end, beside Open file, under Recent, its second column (under the Work Like picker) and the footer. */
+export type WelcomeSlot = "head" | "open" | "main" | "side" | "foot";
 
 /** A drawing a feature lists on the start screen's Recent list, beside those opened from this computer. */
 export interface RecentFile {
@@ -267,6 +267,7 @@ const view3dHooks: ((v: View3D) => void)[] = [];
 const welcome: { build: () => HTMLElement; slot: WelcomeSlot }[] = [];
 const recentSources: ((show: ShowRecent) => void)[] = [];
 const topBar: { build: () => HTMLElement; side: "left" | "right" }[] = [];
+const barEnds: (() => HTMLElement)[] = [];
 const ready: ((ctx: AppContext) => void)[] = [];
 const docHooks: ((session: EditSession | null, source: DocumentSource | null) => void)[] = [];
 const fileHooks: ((f: FileIn) => void)[] = [];
@@ -310,7 +311,7 @@ export function on3d(fn: (v: View3D) => void): void {
   view3dHooks.push(fn);
 }
 
-/** Adds a block to the start screen: at the header's end ("head"), beside Open file ("open"), under Recent ("main") or in the footer ("foot"). */
+/** Adds a block to the start screen: at the header's end ("head"), beside Open file ("open"), under Recent ("main"), in its second column ("side") or in the footer ("foot"). */
 export function registerWelcome(build: () => HTMLElement, slot: WelcomeSlot = "main"): void {
   welcome.push({ build, slot });
 }
@@ -318,6 +319,20 @@ export function registerWelcome(build: () => HTMLElement, slot: WelcomeSlot = "m
 /** Lists a feature's drawings on the start screen's Recent list: `watch` gets the function that shows them, to call whenever they change. */
 export function registerRecentFiles(watch: (show: ShowRecent) => void): void {
   recentSources.push(watch);
+}
+
+/**
+ * Adds an element to the end of the window's first row where the top bar is not on show: the menu
+ * bar's row of titles, and the title bar a look puts up (View › Work Like). The account control
+ * goes there, as those applications show their own sign-in. `build` is called once for each row.
+ */
+export function registerBarEnd(build: () => HTMLElement): void {
+  barEnds.push(build);
+}
+
+/** The elements features add to the end of a menu or title bar, built for one bar. */
+export function barEndElements(): HTMLElement[] {
+  return barEnds.map((build) => build());
 }
 
 /** Adds an element to the top bar, at the start of its left or right end. */

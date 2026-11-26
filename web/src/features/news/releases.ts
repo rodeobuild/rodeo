@@ -22,6 +22,19 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-26T12:10:00Z",
+    "start-screen",
+    "A new start screen",
+    `Rodeo opens on a new start screen: open a file on one side, and see what Rodeo can be on the other.
+- Work like the app you know: a picture of each layout (Rodeo, Archicad, AutoCAD, Illustrator, Revit, Rhino, SketchUp, Vectorworks). Click one and Rodeo rearranges itself, as View › Work Like does.
+- The first time you open another application's file, a small card offers that application's layout: "Used to Revit?".
+- A free account, one click away on the start screen, with what it adds: cloud drawings, version history, share links and embeds, editing together.
+- Signing in no longer costs you an open drawing. Google's pages open in a small window, an emailed link opens in its own tab, and the editor signs in by itself.
+- Not signed in, with work under way? A card offers to save the drawing to the cloud. Closing it puts it off for a week.
+- Sign in is on the first row of every Work Like layout, and the newest releases show on the start screen once you are signed in.`,
+    "start",
+  ),
+  release(
     "2026-11-26T12:00:00Z",
     "work-like-illustrator",
     "Work Like Illustrator",

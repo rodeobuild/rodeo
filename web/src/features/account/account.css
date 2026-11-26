@@ -82,6 +82,39 @@
   letter-spacing: 0.02em;
 }
 
+/* at the end of a menu or title bar (a look without the top bar): small, in the bar's own colours */
+.acct-strip {
+  margin-left: 0;
+}
+
+.acct-strip-signin {
+  height: 20px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.acct-strip-signin:hover {
+  background: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.acct-strip .acct-avatar {
+  width: 20px;
+  height: 20px;
+}
+
+.acct-strip .acct-initials {
+  font-size: 9px;
+}
+
 /* ---- dialogs ------------------------------------------------------------- */
 
 .menu-dialog.account-dialog {
@@ -463,4 +496,252 @@
 
 .hub-ad-carbon a:hover {
   color: var(--text);
+}
+
+/* ---- what a free account adds (benefits.ts): an icon and a few words each ---- */
+
+.acct-benefits {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.acct-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.acct-benefit-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--fill-strong);
+  color: var(--text);
+}
+
+.acct-benefit-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* the start screen's: the short words in two columns */
+.acct-benefits-short {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+/* ---- the start screen's account block (join.ts) ---- */
+
+.hub-join-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.hub-join-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hub-join-actions .btn {
+  flex: 1 1 0;
+  min-width: max-content;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.hub-join-fine {
+  margin: -4px 0 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+/* ---- the sign-in dialog (signin.ts): what an account adds beside the ways in ---- */
+
+.menu-dialog.signin-dialog {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  /* the first row takes the box's height (the second is the error line), so the ways in sit in its middle */
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: min(740px, 100%);
+  padding: 0;
+  overflow: auto;
+  animation: signin-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes signin-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-dialog.signin-dialog {
+    animation: none;
+  }
+}
+
+/* the shell's own title and button row: this dialog has its heading and its close button inside */
+.signin-dialog > .menu-dialog-title,
+.signin-dialog > .menu-dialog-actions {
+  display: none;
+}
+
+.signin-aside {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  grid-row: 1 / span 2;
+  padding: 28px 24px;
+  border-right: 1px solid var(--divider);
+  border-radius: 13px 0 0 13px;
+  background: var(--fill);
+}
+
+.signin-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.signin-aside-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.signin-aside .acct-benefits {
+  gap: 11px;
+}
+
+.signin-aside-fine {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.signin-main {
+  position: relative;
+  display: grid;
+  align-content: center;
+  grid-column: 2;
+  min-width: 0;
+  padding: 32px 32px 28px;
+}
+
+.signin-dialog > .menu-dialog-error {
+  grid-column: 2;
+  margin: -16px 32px 24px;
+}
+
+.signin-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-2);
+  cursor: default;
+}
+
+.signin-close:hover {
+  background: var(--fill-hover);
+  color: var(--text);
+}
+
+.signin-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.signin-title {
+  margin: 0 28px 6px 0;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.signin-lead {
+  margin: 0 0 20px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.signin-main .acct-provider,
+.signin-main .acct-go {
+  height: 36px;
+  font-size: 12px;
+}
+
+.signin-main .acct-input {
+  height: 36px;
+  font-size: 13px;
+}
+
+.signin-main .acct-divider {
+  margin: 14px 0;
+}
+
+.signin-main .acct-status {
+  font-size: 14px;
+}
+
+.signin-main .acct-note {
+  font-size: 12px;
+}
+
+/* a narrow window: the ways in first, what the account adds under them */
+@media (max-width: 640px) {
+  .menu-dialog.signin-dialog {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signin-main {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 28px 22px 20px;
+  }
+
+  .signin-dialog > .menu-dialog-error {
+    grid-column: 1;
+    grid-row: 2;
+    margin: -8px 22px 16px;
+  }
+
+  .signin-aside {
+    grid-column: 1;
+    grid-row: 3;
+    gap: 12px;
+    padding: 18px 22px 22px;
+    border-top: 1px solid var(--divider);
+    border-right: none;
+    border-radius: 0 0 13px 13px;
+  }
+
+  .signin-logo {
+    display: none;
+  }
 }

@@ -120,6 +120,13 @@ const ART = {
     afill(rect(48.8, 22.8, 2.4, 2.4) + rect(68.8, 22.8, 2.4, 2.4) + rect(58.8, 12.8, 2.4, 2.4) + rect(58.8, 32.8, 2.4, 2.4)),
   // a sheet with its title block and a viewport onto a 3D view
   sheet: ink(rect(26, 7, 68, 34, 1.5) + "M78 41v-8h16") + inkDash(rect(32, 12, 40, 24)) + tint(boxTop(iso(52, 24), 7, 7, 7)) + acc(box(iso(52, 24), 7, 7, 7)),
+  // the start screen: its card, a file to open on the left and the layouts to pick from on the right, one picked
+  start:
+    ink(rect(24, 7, 72, 34, 3) + "M30 31h20M30 35h13" + rect(60, 13, 12, 9, 1.5) + rect(60, 26, 12, 9, 1.5) + rect(76, 26, 12, 9, 1.5)) +
+    inkDash(rect(30, 13, 24, 13, 2)) +
+    ink("M42 23v-6.5M39.5 19l2.5-2.5 2.5 2.5") +
+    tint(rect(76, 13, 12, 9, 1.5)) +
+    acc(rect(76, 13, 12, 9, 1.5)),
   // the editor's frame: tool bar, drawing and palettes
   workspace:
     ink(rect(22, 8, 76, 32, 2.5) + "M22 14h76M31 14v26M84 14v26M87.5 19h7M87.5 24h5M87.5 29h6") +

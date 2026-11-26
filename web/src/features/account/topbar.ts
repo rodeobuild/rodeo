@@ -20,21 +20,25 @@ export const STAR = `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.2
 const PERSON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="5.6" r="2.8"/><path d="M2.8 14c.6-2.7 2.7-4.3 5.2-4.3s4.6 1.6 5.2 4.3"/></svg>`;
 
 /**
- * The account control, in the top bar or in the start hub's header (where Sign in is a plain button
- * that keeps its words on a phone). Hidden until the server has answered, and with no server.
+ * The account control, in the top bar, in the start screen's header (where Sign in is a plain button
+ * that keeps its words on a phone) or at the end of a menu or title bar (a look of View › Work Like
+ * without the top bar: small, in the bar's own colours). Hidden until the server has answered, and
+ * with no server.
  */
-export function accountSlot(place: "topbar" | "hub" = "topbar"): HTMLElement {
-  const slot = h("div", { cls: place === "hub" ? "acct-slot acct-hub" : "acct-slot", hidden: true });
+export function accountSlot(place: "topbar" | "hub" | "bar" = "topbar"): HTMLElement {
+  const slot = h("div", { cls: place === "hub" ? "acct-slot acct-hub" : place === "bar" ? "acct-slot acct-strip" : "acct-slot", hidden: true });
   // on a phone the top bar's button keeps to its icon (account.css), with its words for its name
   const signIn =
     place === "hub"
       ? h("button", { cls: "btn", text: "Sign in", attrs: { type: "button", title: "Sign in to keep your drawings in the cloud" } })
-      : h(
-          "button",
-          { cls: "tb-btn acct-signin", attrs: { type: "button", "aria-label": "Sign in", title: "Sign in to keep your drawings in the cloud" } },
-          h("span", { cls: "acct-signin-icon", html: PERSON }),
-          h("span", { cls: "acct-signin-label", text: "Sign in" }),
-        );
+      : place === "bar"
+        ? h("button", { cls: "acct-strip-signin", text: "Sign in", attrs: { type: "button", title: "Sign in to keep your drawings in the cloud" } })
+        : h(
+            "button",
+            { cls: "tb-btn acct-signin", attrs: { type: "button", "aria-label": "Sign in", title: "Sign in to keep your drawings in the cloud" } },
+            h("span", { cls: "acct-signin-icon", html: PERSON }),
+            h("span", { cls: "acct-signin-label", text: "Sign in" }),
+          );
   signIn.addEventListener("click", () => openSignIn(""));
   const avatar = h("button", { cls: "acct-avatar", attrs: { type: "button", "aria-label": "Account", title: "Account and plan" } });
   menuButton(avatar, accountRows);

@@ -1,6 +1,24 @@
 # Files: opening, saving and tabs
 
-This page covers opening and saving drawings, autosave, working with several drawings in tabs, starting new drawings and templates, a drawing's units and file information, sharing and embedding drawings, and the desktop app. Bringing in other formats is covered in [Importing, exporting and printing](import-export.md).
+This page covers the start screen, opening and saving drawings, autosave, accounts and signing in, working with several drawings in tabs, starting new drawings and templates, a drawing's units and file information, sharing and embedding drawings, and the desktop app. Bringing in other formats is covered in [Importing, exporting and printing](import-export.md).
+
+## The start screen
+
+Rodeo opens on its start screen, a card over the editor, until a drawing is open. **Window › Home Screen** brings it back over a drawing (**Back to drawing** or <kbd>Esc</kbd> returns).
+
+Its first column starts work:
+
+- **Open file…** opens a drawing, and a file dropped anywhere on the window opens too. It takes Vectorworks, Revit, AutoCAD, SketchUp, Rhino and Archicad files among others: see [Importing, exporting and printing](import-export.md).
+- **New drawing** and **From template…** start one. **Open from Cloud…** is there once you are signed in.
+- **Recent** lists the drawings opened lately from this computer and, when you are signed in, from the cloud. Before there are any, four lines say what Rodeo does.
+
+Its second column shows what Rodeo can be:
+
+- **Work like the app you know** has a picture of each layout of [Work Like](workspace.md#work-like): Rodeo's own, Archicad, AutoCAD, Illustrator, Revit, Rhino, SketchUp and Vectorworks. A click puts that layout on, and the editor behind the card rearranges itself. It is the same choice as **View › Work Like**, and is left out on a phone, which keeps Rodeo's touch layout.
+- **Create a free account** is there while you are not signed in: what an account adds, **Continue with Google** and **Continue with email**. See [Your account](#your-account).
+- **What's new** takes its place once you are signed in: the three newest releases, and **See all** for the whole list.
+
+The links along the foot open What's new, the user guide, the gallery, the converter, the desktop app's downloads, feedback and donations, and the list at their end changes the interface's language.
 
 ## Opening and saving
 
@@ -41,6 +59,27 @@ Saving or closing a drawing removes its copy, and a copy no one recovers is dele
 **File › Version History** lists the saved versions of a cloud drawing. Choose **Restore** on an older version to make a new current version from it. Once the restore succeeds, everyone in the live session reloads that version.
 
 If the restore is refused because there is no room on the owner's plan, or the server cannot save it, the current version and pending live edits stay intact. Make room or resolve the error before trying again.
+
+## Your account
+
+### What an account adds
+
+Rodeo works without an account: opening, drawing, saving to your computer, importing and exporting need none. A free account adds drawings kept in the cloud that open on any device, a version history for each, share links and embeds, editing together with comments, and the AI agents, AI renders, cloud renders and voice commands (those are paid for as they are used). Files you open stay on your computer unless you save them to the cloud.
+
+### Signing in
+
+**Sign in** is at the end of the top bar and on the start screen. In a [Work Like](workspace.md#work-like) layout without the top bar it is at the end of the menu bar or title bar, where those applications have theirs. Signing in for the first time makes the account; there is no password.
+
+- **Continue with Google** signs in with a Google account.
+- **Email me a sign-in link** sends a link that works once, for 15 minutes.
+
+Signing in never costs you the drawing that is open. With a drawing open, Google's pages open in a small window of their own, and the editor signs in by itself when that window is done. An emailed link opens in a new tab, and the tab you asked from signs in too, as long as the link is opened in the same browser. Whatever asked you to sign in (saving to the cloud, sharing, an agent) then carries on. With no drawing open, the page goes to Google and comes back signed in.
+
+### The offer to save to the cloud
+
+When you are not signed in and have worked on a drawing for a while (a few changes, or a few minutes), a card over the foot of the drawing offers **Save to Cloud**. Taking it asks you to sign in and then saves the drawing, as **File › Save to Cloud…** does. **Not now** or its × puts the offer off for a week, and it shows at most once a visit.
+
+**Limits:** the sign-in window needs pop-ups allowed for Rodeo; where the browser refuses it, the page goes to Google instead, and the browser asks before leaving a drawing with unsaved changes. A link opened in another browser, or in a private window, signs in there and not in the tab that asked.
 
 ## The desktop app
 
@@ -129,7 +168,7 @@ Each drawing opened goes in a tab of its own, so you can work on several at once
 - **File › Close All** closes them all (Cancel on one stops there).
 - **Window › Drawings** lists them.
 - **Window › Show Document Tabs** hides the strip.
-- **Window › Home Screen** brings the start screen back over the drawing (Back to drawing or <kbd>Esc</kbd> returns).
+- **Window › Home Screen** brings [the start screen](#the-start-screen) back over the drawing (Back to drawing or <kbd>Esc</kbd> returns).
 
 Each drawing has an agent of its own in the Agents panel, and they work at the same time: see [The Agents panel](workspace.md#the-agents-panel). A tab shows what its agent is doing: a spinner while it works, an amber pause when it is waiting for the tab to come to the front, and a spark when it finished while you were in another tab (red if it stopped with an error).
 

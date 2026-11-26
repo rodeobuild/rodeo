@@ -105,31 +105,53 @@
       </div>
     </div>
 
-    <!-- the start hub (welcome.ts): over the whole editor, which shows faded behind it, until a drawing is open -->
+    <!-- the start screen (welcome.ts): over the whole editor, which shows faded behind it, until a drawing is open -->
     <section class="welcome" id="welcome" aria-label="Start">
       <div class="hub">
         <header class="hub-head">
-          <img class="hub-logo" src="/icon.svg" alt="" width="36" height="36" />
-          <div class="hub-name">
-            <h1 class="hub-title">Rodeo</h1>
-            <p class="hub-tagline">Draw, model, share and embed in your browser.</p>
-          </div>
+          <img class="hub-logo" src="/icon.svg" alt="" width="28" height="28" />
+          <span class="hub-brand" translate="no">Rodeo</span>
           <div class="hub-head-end" id="welcome-head-slot"></div>
         </header>
-        <section class="hub-start" aria-label="Open">
-          <div class="hub-actions" id="welcome-open-slot">
-            <button class="btn primary" id="welcome-open">Open file…</button>
-            <button class="btn" id="welcome-new">New drawing</button>
-            <button class="btn" id="welcome-template">From template…</button>
-            <button class="btn" id="welcome-sample" hidden>Try sample</button>
+        <div class="hub-cols">
+          <div class="hub-col hub-col-start">
+            <div class="hub-intro">
+              <h1 class="hub-title">Draw and model in your browser.</h1>
+              <p class="hub-tagline">Rodeo opens Vectorworks, Revit, AutoCAD, SketchUp, Rhino and Archicad files. Free and open source, with nothing to install.</p>
+            </div>
+            <section class="hub-start" aria-label="Open">
+              <button class="hub-drop" id="welcome-open" type="button">
+                <span class="hub-drop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3.6" /><path d="M6.4 7.2 10 3.6l3.6 3.6" /><path d="M3.6 12.4v2.4a1.6 1.6 0 0 0 1.6 1.6h9.6a1.6 1.6 0 0 0 1.6-1.6v-2.4" /></svg>
+                </span>
+                <span class="hub-drop-text">
+                  <span class="hub-drop-title">Open file…</span>
+                  <span class="hub-drop-hint">or drop a file anywhere</span>
+                </span>
+                <span class="hub-drop-types" translate="no" aria-hidden="true">.vwx .rvt .dwg .skp .3dm .pln .ifc .step</span>
+              </button>
+              <div class="hub-actions" id="welcome-open-slot">
+                <button class="btn" id="welcome-new">New drawing</button>
+                <button class="btn" id="welcome-template">From template…</button>
+                <button class="btn" id="welcome-sample" hidden>Try sample</button>
+              </div>
+            </section>
+            <section class="hub-recent" id="welcome-recent" hidden>
+              <h2 class="hub-heading">Recent</h2>
+              <ul class="hub-files" id="welcome-recent-list"></ul>
+            </section>
+            <!-- for a first visit, in the place the Recent list takes later: what Rodeo is -->
+            <ul class="hub-points" id="welcome-points">
+              <li><span class="hub-point-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5 3 10.6l7.4-7.4a1.5 1.5 0 0 1 2.2 0l.2.2a1.5 1.5 0 0 1 0 2.2L5.4 13z"/><path d="M9.3 4.3l2.4 2.4"/></svg></span><span>A full editor: walls, doors, dimensions, sheets and 3D solids</span></li>
+              <li><span class="hub-point-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M5 6.2a3.6 3.6 0 0 1 3-1.7"/></svg></span><span>Realistic and path-traced renders, made in the browser</span></li>
+              <li><span class="hub-point-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2.4l1.2 3.4L11.6 7 8.2 8.2 7 11.6 5.8 8.2 2.4 7l3.4-1.2z"/><path d="M12.2 10.4l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5z"/></svg></span><span>AI agents that draw and model alongside you</span></li>
+              <li><span class="hub-point-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><path d="M6.2 6.5 4.7 8l1.5 1.5M9.8 6.5 11.3 8 9.8 9.5"/></svg></span><span>Runs Python scripts and Vectorworks plug-ins</span></li>
+            </ul>
+            <div class="hub-slot" id="welcome-main-slot"></div>
           </div>
-          <p class="hub-hint">or drop a file anywhere</p>
-        </section>
-        <section class="hub-recent" id="welcome-recent" hidden>
-          <h2 class="hub-heading">Recent</h2>
-          <ul class="hub-files" id="welcome-recent-list"></ul>
-        </section>
-        <div class="hub-slot" id="welcome-main-slot"></div>
+          <!-- what Rodeo can be: View › Work Like's layouts, then what features add (the free account, the news) -->
+          <div class="hub-col hub-col-side" id="welcome-side-slot"></div>
+        </div>
         <footer class="hub-foot" id="welcome-foot-slot"></footer>
       </div>
       <p class="hub-fine">Files you open stay on this computer unless you save them to the cloud.</p>

@@ -467,6 +467,8 @@ The bars over the drawing move and roll up too:
 
 **View › Work Like** lays Rodeo out the way another application is laid out, so you can work in the one you know: **Archicad**, **AutoCAD**, **Illustrator**, **Revit**, **Rhino**, **SketchUp** or **Vectorworks**. **Rodeo** goes back to Rodeo's own layout. The choice is kept for the next visit.
 
+The start screen has the same choice as pictures, under **Work like the app you know**: a click on a layout's picture puts it on. And the first time you open another application's file (a Revit project, an AutoCAD drawing, a SketchUp, Rhino, Archicad or Vectorworks file) without ever having picked a layout, a card over the foot of the drawing asks **Used to Revit?** (or whichever it is) and offers **Work Like Revit**. It is offered once; **Not now** or its × closes it for good, and **View › Work Like** is always there.
+
 A look changes:
 
 - the menu bar: the application's menus in its order, each holding the Rodeo commands that do what its commands do. Commands it has no place for go at the end of the nearest menu, after a line, so nothing is lost.

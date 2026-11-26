@@ -107,6 +107,14 @@
   min-width: 0;
 }
 
+.lk-title-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
 .lk-title-mid {
   display: flex;
   align-items: center;

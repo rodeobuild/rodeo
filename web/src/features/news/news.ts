@@ -1,14 +1,16 @@
-// The start hub's "What's new" link, in its footer, over the news: the announcements an admin has
+// The start screen's "What's new" link, in its footer, and its block of the newest items, over the news: the announcements an admin has
 // posted (Help > Announcements…) and the release log that ships with the editor (releases.ts). It
 // opens the whole list (panel.ts), and a dot marks an item posted since the list was last opened
 // in this browser (on a first visit, one from the last two weeks). The newest date seen is kept
 // in localStorage.
 
 import { h } from "../../app/dom.ts";
+import { onUser, serverConfig } from "../../platform/api.ts";
 import type { Announcement } from "../../platform/protocol.ts";
 import { config, onConfig } from "../account/config.ts";
 import { isWebUrl } from "../account/format.ts";
-import type { Art } from "./banners.ts";
+import { visitor } from "../account/join.ts";
+import { banner, type Art } from "./banners.ts";
 import { RELEASES } from "./releases.ts";
 
 const SEEN_KEY = "openvwx.news.seen";
@@ -38,6 +40,57 @@ export function newsLink(seeAll: () => void): HTMLElement {
   });
   onConfig(paint);
   return link;
+}
+
+/** How many items the start screen's block shows. */
+const BLOCK_ITEMS = 3;
+
+/**
+ * The start screen's news, in its second column: the newest few items, each with its drawing, its
+ * title and its day, and a link to the whole list. It is there for someone signed in, and where no
+ * server offers accounts; someone not signed in sees the free account in its place (account/join.ts).
+ */
+export function newsBlock(seeAll: () => void): HTMLElement {
+  const list = h("ul", { cls: "hub-news-list" });
+  const all = h("button", { cls: "hub-link", text: "See all", attrs: { type: "button" } });
+  all.addEventListener("click", seeAll);
+  const block = h(
+    "section",
+    { cls: "hub-news", hidden: true, attrs: { "aria-label": "What's new" } },
+    h("div", { cls: "hub-news-head" }, h("h2", { cls: "hub-side-title", text: "What's new" }), all),
+    list,
+  );
+  let serverKnown = false;
+  const paint = (): void => {
+    const who = visitor();
+    const items = newsList().slice(0, BLOCK_ITEMS);
+    block.hidden = items.length === 0 || who === "guest" || (who === null && !(serverKnown && !config()));
+    list.replaceChildren(
+      ...items.map((a) => {
+        const row = h(
+          "button",
+          { cls: "hub-news-item", attrs: { type: "button" } },
+          banner(a.art),
+          h("span", { cls: "hub-news-title", text: a.title }),
+          h("time", { cls: "hub-news-date", text: dayOf(a.date), attrs: { datetime: a.date } }),
+        );
+        row.addEventListener("click", seeAll);
+        return h("li", {}, row);
+      }),
+    );
+  };
+  onConfig(paint);
+  onUser(paint);
+  void serverConfig().then(() => {
+    serverKnown = true;
+    paint();
+  });
+  return block;
+}
+
+/** An ISO time as a day without its year: "3 Mar". */
+function dayOf(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 /** Notes the newest item as seen, so the link's dot goes until a newer one is posted. */

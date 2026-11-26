@@ -1,7 +1,8 @@
-/* The start hub (welcome.ts, markup in index.html): one solid card in the editor's tokens, so
-   the light and dark themes both apply, over the whole editor faded and blurred behind it.
-   Feature blocks in the hub (the account control, the cloud's Open button, the sponsor, the
-   footer's links) style themselves from their own files. */
+/* The start screen (welcome.ts, markup in index.html): one solid card in the editor's tokens, so
+   the light and dark themes both apply, over the whole editor faded and blurred behind it. Two
+   columns: starting work (open, new, recent), and what Rodeo can be (the Work Like picker, then
+   features' blocks). Feature blocks (the account control, the cloud's Open button, the free
+   account, the news, the sponsor, the footer's links) style themselves from their own files. */
 
 /* the editor behind, faded: above its bars and palettes, below menus (30) and dialogs (40) */
 .welcome {
@@ -10,7 +11,8 @@
   z-index: 25;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-content: center;
+  /* centred while it fits; from the top (never cut off) once it is taller than the window */
+  align-content: safe center;
   justify-items: center;
   gap: 14px;
   overflow: auto;
@@ -25,43 +27,46 @@
 .hub {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 22px;
-  width: min(560px, 100%);
-  padding: 24px;
+  width: min(1040px, 100%);
   text-align: left;
   border: 1px solid var(--chrome-border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--chrome);
   box-shadow: var(--shadow);
+  animation: hub-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes hub-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub {
+    animation: none;
+  }
 }
 
 .hub-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-height: 32px;
+  padding: 20px 28px 0;
 }
 
 .hub-logo {
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
 }
 
-.hub-name {
-  min-width: 0;
-}
-
-.hub-title {
-  margin: 0;
-  font-size: 18px;
+.hub-brand {
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
-}
-
-.hub-tagline {
-  margin: 1px 0 0;
-  font-size: 12.5px;
-  color: var(--text-2);
 }
 
 /* back to the drawing and the account control, at the header's end */
@@ -73,7 +78,69 @@
   margin-left: auto;
 }
 
-/* the blocks features add under Recent take part in the card's gap, so a hidden one leaves no space */
+/* ---- the two columns ------------------------------------------------------------ */
+
+.hub-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 28px;
+  padding: 26px 28px 28px;
+}
+
+.hub-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 24px;
+  min-width: 0;
+}
+
+/* the second column: a panel set into the card, its blocks parted by hairlines */
+.hub-col-side {
+  gap: 0;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+
+/* a line over each block but the first on show (a hidden block leaves neither its space nor its line) */
+.hub-col-side > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--divider);
+}
+
+.hub-col-side:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+.hub-intro {
+  display: grid;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.hub-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  /* Japanese breaks between phrases, not inside a word, where the browser can tell them apart */
+  word-break: auto-phrase;
+}
+
+.hub-tagline {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+/* the blocks features add under Recent take part in the column's gap, so a hidden one leaves no space */
 .hub-slot {
   display: contents;
 }
@@ -87,21 +154,100 @@
 
 /* ---- open ------------------------------------------------------------------ */
 
-/* the open buttons, then a hint: a file dropped anywhere opens (fileio.ts shows where) */
 .hub-start {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
-.hub-hint {
-  margin: 0;
+/* Open file…: the whole box is the button, and says a file can be dropped (anywhere: fileio.ts shows where) */
+.hub-drop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 18px;
+  border: 1px dashed var(--btn-strong);
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+:root[data-theme="light"] .hub-drop {
+  border-color: rgba(0, 0, 0, 0.22);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .hub-drop {
+    border-color: rgba(0, 0, 0, 0.22);
+  }
+}
+
+.hub-drop:hover,
+.hub-drop:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.hub-drop:focus-visible {
+  outline-offset: 2px;
+}
+
+.hub-drop-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--text);
+  color: var(--chrome);
+  transition: transform 0.15s;
+}
+
+.hub-drop:hover .hub-drop-icon {
+  transform: translateY(-1px);
+}
+
+.hub-drop-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.hub-drop-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hub-drop-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.hub-drop-hint {
   font-size: 12px;
+  color: var(--text-2);
+}
+
+.hub-drop-types {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font: 10.5px/1.4 var(--mono);
   color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* a touch screen has nothing to drag from */
 @media (pointer: coarse) {
-  .hub-hint {
+  .hub-drop-hint {
     display: none;
   }
 }
@@ -174,15 +320,172 @@
   color: var(--text-3);
 }
 
+/* ---- what Rodeo is, where the Recent list goes once there is one ---- */
+
+.hub-points {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--divider);
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.hub-points li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hub-point-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--text-soft);
+}
+
+.hub-point-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- the second column's blocks: a title, a line under it, then the block's own ---- */
+
+.hub-side-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.hub-side-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+/* ---- Work Like: a tile for each look (looks/picker.ts) ------------------------ */
+
+.hub-look-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px 10px;
+  margin-top: 14px;
+}
+
+.hub-look {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: default;
+}
+
+.hub-look:focus-visible {
+  outline: none;
+}
+
+/* the look's picture: its own colours whatever the theme, in a hairline frame */
+.hub-look-art {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--border);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.hub-look-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hub-look:hover .hub-look-art {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px var(--text-3),
+    0 6px 14px rgba(0, 0, 0, 0.28);
+}
+
+.hub-look:focus-visible .hub-look-art {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.hub-look.on .hub-look-art {
+  box-shadow:
+    0 0 0 2px var(--chrome),
+    0 0 0 4px var(--accent);
+}
+
+.hub-look-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.hub-look-check svg {
+  width: 10px;
+  height: 10px;
+}
+
+.hub-look.on .hub-look-check {
+  display: grid;
+}
+
+.hub-look-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.hub-look.on .hub-look-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-look-art,
+  .hub-drop,
+  .hub-drop-icon {
+    transition: none;
+  }
+}
+
 /* ---- footer: small links (news, feedback, donations), and the line under the card ---- */
 
 .hub-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 16px;
-  margin-top: -6px;
-  padding-top: 14px;
+  gap: 4px 18px;
+  padding: 14px 28px 16px;
   border-top: 1px solid var(--divider);
 }
 
@@ -226,6 +529,8 @@
 
 .hub-lang-select {
   appearance: none;
+  /* as wide as the language chosen, not the longest on the list, so it ends at the card's edge */
+  field-sizing: content;
   padding: 0;
   border: none;
   background: none;
@@ -247,7 +552,38 @@
   text-align: center;
 }
 
-/* phones: the card fills the width and Open file takes a row of its own */
+/* ---- narrower windows -------------------------------------------------------------- */
+
+/* a narrow window: the columns stack, starting work first */
+@media (max-width: 900px) {
+  .hub {
+    width: min(600px, 100%);
+  }
+
+  .hub-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* a phone keeps Rodeo's touch layout whatever the look (looks.css has the same width), so the picker goes */
+@media (max-width: 760px) {
+  .hub-looks {
+    display: none;
+  }
+
+  /* the block after it is then the first on show: no line over it, and no panel at all with nothing in it */
+  .hub-col-side > .hub-looks ~ :not([hidden]) {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .hub-col-side:not(:has(> :not([hidden]):not(.hub-looks))) {
+    display: none;
+  }
+}
+
+/* phones: the card fills the width and the buttons share rows */
 @media (max-width: 560px) {
   .welcome {
     align-content: start;
@@ -255,18 +591,34 @@
     padding-right: max(8px, env(safe-area-inset-right));
   }
 
-  .hub {
-    gap: 18px;
-    padding: 18px;
+  .hub-head {
+    padding: 16px 18px 0;
+  }
+
+  .hub-cols {
+    gap: 22px;
+    padding: 18px 18px 20px;
+  }
+
+  .hub-col {
+    gap: 20px;
+  }
+
+  .hub-col-side {
+    padding: 16px;
+  }
+
+  .hub-title {
+    font-size: 24px;
+  }
+
+  .hub-foot {
+    padding: 12px 18px 14px;
   }
 
   .hub-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .hub-actions > .btn:first-child {
-    grid-column: 1 / -1;
   }
 
   .hub-actions .btn {

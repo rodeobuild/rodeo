@@ -79,6 +79,7 @@ import { confirmDialog, mountMenuBar } from "./menubar.ts";
 import { drawingRows, mountDocTabs, type DocTab, type DocTabActions } from "./docTabs.ts";
 import { mountMenuStrip } from "./menuStrip.ts";
 import { installLooks } from "./looks/looks.ts";
+import { installLookSuggestions } from "./looks/suggest.ts";
 import { lookCanvas, onLookCanvas } from "./looks/canvasLook.ts";
 import { installDraw3d } from "./draw3d.ts";
 import { mountPanels } from "./panels/navigation.ts";
@@ -1089,6 +1090,8 @@ export class App {
     palettes.addTopGroup("menus", strip);
     // View › Work Like: Rodeo laid out as the application last chosen (looks/looks.ts)
     installLooks({ palettes, setTool, setToolMode: (mode) => this.controller.setMode(mode), toolModes: () => this.controller.modes().map((m) => m.active), menus: () => menuBar.menus() });
+    // offered once, to someone opening another application's file who has never picked a look (looks/suggest.ts)
+    installLookSuggestions();
     for (const bar of [topbar, strip]) {
       bar.addEventListener("contextmenu", (e) => {
         if ((e.target as Element).closest("input, select, textarea")) return;
@@ -1162,7 +1165,7 @@ export class App {
       openRecent: (entry) => void this.openRecent(entry),
     });
     mountExtensionChrome(
-      { head: byId("welcome-head-slot"), open: byId("welcome-open-slot"), main: byId("welcome-main-slot"), foot: byId("welcome-foot-slot") },
+      { head: byId("welcome-head-slot"), open: byId("welcome-open-slot"), main: byId("welcome-main-slot"), side: byId("welcome-side-slot"), foot: byId("welcome-foot-slot") },
       recentSource,
       topbar.querySelector<HTMLElement>(".tb-left")!,
       topbar.querySelector<HTMLElement>(".tb-right")!,

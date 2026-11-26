@@ -58,3 +58,18 @@
   line-height: 18px;
   font-size: 12px;
 }
+
+/* the row's end (ext.ts registerBarEnd): the account control, while no top bar is there to hold it
+   (a look of View › Work Like without one); Rodeo's own layout has it in the top bar */
+.menu-strip-end {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+:root[data-look]:not(.lk-phone) .menu-strip-end {
+  display: flex;
+}
