@@ -144,9 +144,9 @@ anything must send the header `X-Requested-With: openvwx` (a CSRF guard).
 | `GET /me` | `{ user: User \| null }` |
 | `PATCH /me` `{ name }` | `{ user }` |
 | `DELETE /me` | deletes the account and everything it owns |
-| `POST /auth/email` `{ email, redirect? }` | emails a sign-in link (valid 15 minutes) |
+| `POST /auth/email` `{ email, redirect?, from? }` | emails a sign-in link (valid 15 minutes); `from` is where in the editor it was asked for |
 | `GET /auth/email/callback?token&redirect` | signs in, redirects (redirect must be a path on this site) |
-| `GET /auth/oauth/:provider?redirect` | starts OAuth (`google`, `microsoft`, `github`) |
+| `GET /auth/oauth/:provider?redirect&from` | starts OAuth (`google`, `microsoft`, `github`) |
 | `GET /auth/oauth/:provider/callback` | finishes it, redirects |
 | `POST /auth/logout` | |
 
@@ -318,14 +318,18 @@ in the editor). Its side bar has three groups of tabs:
 
 - Analytics. Live: who is in the editor now on a globe, with each visitor's place, device, way
   in and time in, the last hour, today so far and live editing sessions. Overview: visitors a
-  day, sign-ups, the AI credit bought, given, used and still owed, and where visitors came from.
+  day, sign-ups, what leads to sign-ups (where in the editor each sign-in was started, from the
+  prompt coming on screen to the account, and how the save-to-cloud prompt, the Work Like offer
+  and the start screen's layout picker fare), the AI credit bought, given, used and still owed,
+  and where visitors came from.
   Audience: visitors by country and city on a globe, accounts in Rodeo each day, week and month,
   the hours people come, visit lengths, a funnel from visiting to paying, weekly sign-up cohorts
   and new against returning members. Revenue: Rodeo Plus, credit bought and taken against what
   the providers charged, use by model, cloud renders and the top spenders. Usage: cloud drawings,
   versions and storage, the gallery, comments, merge requests and agents.
-- Manage. People lists the accounts, and an account's panel gives or takes back credit (with a
-  note the user sees, and an email if wanted), gives Rodeo Plus for a while, signs it out
+- Manage. People lists the accounts (an account's facts say where it signed up from), and an
+  account's panel gives or takes back credit (with a note the user sees, and an email if
+  wanted), gives Rodeo Plus for a while, signs it out
   everywhere, suspends it or deletes it. Feedback and Errors are the bug reports and the error
   reports; Gallery the moderation queue; Announcements and Funding and sponsor what the editor
   shows.
@@ -333,7 +337,12 @@ in the editor). Its side bar has three groups of tabs:
   the server's health, what it is set up with, and the admin log: every step an admin took.
 
 Visits come from the editor (web/src/app/visits.ts): a word when it opens, each minute while it
-is in front, and when a drawing opens (its kind only). No cookie, nothing kept on the device:
+is in front, when a drawing opens (its kind only), how the check after a file comes in was
+answered, when one of its prompts comes on screen, is taken up or is closed (the start screen's
+free-account block and layout picker, the save-to-cloud prompt, the Work Like offer: the layout's
+name where there is one, nothing else), and when the sign-in dialog is opened and a way in chosen,
+with where in the editor that was. The last three are counts a day and nothing more. No cookie,
+nothing kept on the device:
 the server knows a visitor by a hash of their address and browser with a salt that changes each
 day, so a person counts once a day and can't be followed across days. Where a visit came from
 is the country Cloudflare names (`CF-IPCountry`) and, when its "Add visitor location headers"
@@ -341,9 +350,17 @@ managed transform is on, the city, region and a position rounded to 0.1° (about
 them the globes place visitors at their country's middle. Admins' own visits, crawlers and test
 browsers (`navigator.webdriver`) aren't counted. Rows are kept 400 days.
 
+What leads to accounts: a sign-in says where in the editor it was started (`from`, one of
+protocol.ts `SIGN_IN_SOURCES`: the start screen's block, a Sign in button, the save-to-cloud
+prompt, a command that needs an account). The server keeps it on an account that sign-in makes
+(`users.signup_source`; an emailed link carries it in `magic_links.source`, a provider's in the
+OAuth cookie), and counts a sign-in by someone who already had an account as `signin:back:<from>`
+in `visit_counts`. An account made some other way (the gallery, an agent's sign-in page) or
+before this was kept has none.
+
 | | |
 | --- | --- |
-| `POST /visits` `{ event: "visit" \| "ping" \| "open", device, entry?, referrer?, campaign?, format? }` | anyone; 204, whatever happens |
+| `POST /visits` `{ event: "visit" \| "ping" \| "open" \| "check" \| "prompt" \| "signin", device, entry?, referrer?, campaign?, format?, answer?, prompt?, step?, detail?, from? }` | anyone; 204, whatever happens |
 | `GET /admin/overview?days=N` | admins; `AdminOverview` for the last N days (1 to 365) and the N before |
 | `GET /admin/users?q=&filter=&sort=&offset=` | admins; `{ users: AdminUser[], total, page }`, 50 a page |
 | `GET /admin/users.csv` | admins; every account as CSV |

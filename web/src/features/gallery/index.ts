@@ -45,7 +45,7 @@ async function publishFront(): Promise<void> {
     "Save to Cloud",
   );
   if (!save) return;
-  await saveDrawingToCloud();
+  await saveDrawingToCloud("gallery");
   // the drawing is in the cloud now only if the save went through
   const saved = documentSource();
   if (isCloudSource(saved)) openPublishDialog(saved.id);

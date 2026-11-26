@@ -9,6 +9,7 @@ import { errorMessage } from "../app/toast.ts";
 import { adminApi } from "../platform/api.ts";
 import type { AdminLedgerRow, AdminUser, AdminUserDetail, AdminUserFilter, AdminUserSort } from "../platform/protocol.ts";
 import { ago, bytes, count, country, dateTime, day, money } from "./format.ts";
+import { sourceLabel } from "./sources.ts";
 
 const FILTERS: readonly { id: AdminUserFilter; label: string }[] = [
   { id: "all", label: "Everyone" },
@@ -292,6 +293,7 @@ function accountPanel(d: AdminUserDetail, currency: string | null, hooks: PanelH
     fact("Days in Rodeo", `${d.daysActive} of the last 30`),
     fact("Last on", v ? `${v.browser} on ${v.os}, ${v.device}${v.country ? ` · ${country(v.country)}` : ""}` : "–"),
     fact("Signs in with", u.providers.map((p) => PROVIDER_LABEL[p] ?? p).join(", ")),
+    fact("Signed up from", sourceLabel(u.signupSource)),
     fact("Cloud drawings", u.files ? `${u.files} · ${bytes(u.bytes)}` : "none"),
     fact("Cloud renders", String(d.renders)),
     fact("Feedback sent", String(d.feedback)),

@@ -369,7 +369,7 @@ export function installVoice(ctx: AppContext, mics: readonly MicButton[]): void 
       primary: true,
       run: () => {
         pendingSignIn = true;
-        void requireSignIn("Sign in to use voice commands");
+        void requireSignIn("Sign in to use voice commands", "voice");
       },
     };
   }

@@ -29,7 +29,7 @@ export function openSupporterDialog(): void {
 
   const pay = (interval: Interval): void => {
     void (async () => {
-      if (!(await requireSignIn("Sign in to get Rodeo Plus"))) return;
+      if (!(await requireSignIn("Sign in to get Rodeo Plus", "plus"))) return;
       setBusy(true);
       modal?.error(null);
       try {

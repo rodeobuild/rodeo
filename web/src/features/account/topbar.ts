@@ -6,7 +6,7 @@ import { h } from "../../app/dom.ts";
 import { menuButton, type Row } from "../../app/menu.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
 import { account, currentUser, onUser, userLoaded } from "../../platform/api.ts";
-import type { User } from "../../platform/protocol.ts";
+import type { SignInSource, User } from "../../platform/protocol.ts";
 import { openAccountDialog } from "./accountDialog.ts";
 import { config, onConfig } from "./config.ts";
 import { avatarColour, formatDate, initialsOf, isWebUrl } from "./format.ts";
@@ -39,7 +39,9 @@ export function accountSlot(place: "topbar" | "hub" | "bar" = "topbar"): HTMLEle
             h("span", { cls: "acct-signin-icon", html: PERSON }),
             h("span", { cls: "acct-signin-label", text: "Sign in" }),
           );
-  signIn.addEventListener("click", () => openSignIn(""));
+  // where it sits is where the sign-in starts from (the admin page counts what leads to accounts)
+  const from: SignInSource = place === "hub" ? "start-header" : place === "bar" ? "layout-bar" : "top-bar";
+  signIn.addEventListener("click", () => openSignIn("", undefined, "methods", from));
   const avatar = h("button", { cls: "acct-avatar", attrs: { type: "button", "aria-label": "Account", title: "Account and plan" } });
   menuButton(avatar, accountRows);
   slot.append(signIn, avatar);

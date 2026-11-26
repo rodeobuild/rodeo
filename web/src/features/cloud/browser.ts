@@ -16,7 +16,7 @@ type Tab = "mine" | "shared";
 
 /** Opens the cloud browser dialog (after a sign-in, if one is needed). */
 export async function openCloudBrowser(): Promise<void> {
-  if (!(await requireSignIn("Sign in to open your cloud drawings."))) return;
+  if (!(await requireSignIn("Sign in to open your cloud drawings.", "cloud-open"))) return;
   await refreshUser();
 
   let tab: Tab = "mine";

@@ -615,7 +615,7 @@ export function planDetails(plan: Plan): Record<string, string | number | boolea
 
 /** Sends the job to the server's cloud GPU (cloud.ts), once the user is signed in. */
 async function runCloud(plan: Plan): Promise<void> {
-  if (!(await requireSignIn("Sign in to render in the cloud: it's paid for from your credit."))) return;
+  if (!(await requireSignIn("Sign in to render in the cloud: it's paid for from your credit.", "cloud-render"))) return;
   const ctx = appContext();
   const view = ctx ? await ctx.show3d() : null;
   if (!view) {

@@ -4,6 +4,7 @@
 // which keeps Rodeo's touch layout whatever the look (looks.css).
 
 import { h } from "../dom.ts";
+import { countPrompt } from "../visits.ts";
 import { currentLook, LOOKS, onLookChange, setLook } from "./looks.ts";
 import { lookThumb } from "./thumbs.ts";
 import type { LookId } from "./types.ts";
@@ -27,6 +28,8 @@ export function lookPicker(): HTMLElement {
       h("span", { cls: "hub-look-name", text: look.name, attrs: { "data-i18n": `Work Like › ${look.name}` } }),
     );
     tile.addEventListener("click", () => {
+      // a layout picked here, by name, is counted for the admin page (visits.ts)
+      if (look.id !== currentLook()) countPrompt("picker", "taken", look.id);
       // marked at once; the look itself follows as its parts load
       mark(look.id);
       void setLook(look.id).then(() => mark(currentLook()));

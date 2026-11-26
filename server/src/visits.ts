@@ -1,7 +1,10 @@
 // Visits: how many people use the editor, signed in or not, for the admin page (admin.ts). The
 // editor says when it opens (POST /api/visits, event "visit"), each minute while it is in front
-// ("ping"), when a drawing opens ("open", with its kind), and how the check after a file comes in
-// was answered ("check", with the answer and the file's kind) (web/src/app/visits.ts).
+// ("ping"), when a drawing opens ("open", with its kind), how the check after a file comes in
+// was answered ("check", with the answer and the file's kind), when one of its prompts comes on
+// screen, is taken up or is closed ("prompt"), and when the sign-in dialog is opened and a way in
+// chosen, with where in the editor that was ("signin") (web/src/app/visits.ts). Those last two are
+// counts a day and nothing more: what leads to accounts, for the admin page.
 //
 // No cookie, and nothing kept on the visitor's device: the server knows a visitor by a hash of
 // their address and browser with a salt that changes each day and is then forgotten, so the same
@@ -13,8 +16,9 @@
 // A signed-in visitor's row names the account, and the account's last_seen_at moves on.
 
 import type { Context, Hono } from "hono";
-import type { VisitEntry } from "../../web/src/platform/protocol.ts";
+import { PROMPT_STEPS, PROMPTS, SIGN_IN_SOURCES, type VisitEntry } from "../../web/src/platform/protocol.ts";
 import { allowed, clientIp, currentUser, isAdmin } from "./auth.ts";
+import { bump } from "./counts.ts";
 import { run } from "./db.ts";
 import { readJson } from "./http.ts";
 import { saveSetting, setting } from "./settings.ts";
@@ -106,9 +110,13 @@ function positionOf(c: Context): { lat: number; lon: number } | null {
   return { lat: Math.round(lat * 10) / 10, lon: Math.round(lon * 10) / 10 };
 }
 
-function bump(day: string, name: string): void {
-  run("INSERT INTO visit_counts (day, name, count) VALUES (?, ?, 1) ON CONFLICT(day, name) DO UPDATE SET count = count + 1", day, name);
+/** One of `allowed`, or null: only names the editor is known to send are counted. */
+function oneOf(allowed: readonly string[], v: unknown): string | null {
+  return typeof v === "string" && allowed.includes(v) ? v : null;
 }
+
+/** the steps of a sign-in the editor counts: its dialog opened, a way in chosen */
+const SIGN_IN_STEPS: readonly string[] = ["opened", "started"];
 
 /** Drops visits older than KEEP_DAYS (housekeeping). */
 export function pruneVisits(): void {
@@ -125,7 +133,7 @@ export function registerVisits(app: Hono): void {
     if (!ua || BOT.test(ua) || !allowed(`visit:${ip}`, 600, HOUR)) return c.body(null, 204);
     const body = await readJson(c, 4 * 1024);
     const event = body.event;
-    if (event !== "visit" && event !== "ping" && event !== "open" && event !== "check") return c.body(null, 204);
+    if (event !== "visit" && event !== "ping" && event !== "open" && event !== "check" && event !== "prompt" && event !== "signin") return c.body(null, 204);
 
     const now = nowIso();
     const day = now.slice(0, 10);
@@ -176,6 +184,18 @@ export function registerVisits(app: Hono): void {
     const format = cleanLine(body.format, 12).toLowerCase().replace(/[^a-z0-9]/g, "") || "other";
     if (counted && event === "open") bump(day, `open:${format}`);
     if (counted && event === "check" && CHECK_ANSWERS.includes(body.answer as string)) bump(day, `check:${body.answer as string}:${format}`);
+    if (counted && event === "prompt") {
+      // prompt:<which>:<step>:<detail>, the detail a layout's name where the prompt is about one
+      const prompt = oneOf(PROMPTS, body.prompt);
+      const step = oneOf(PROMPT_STEPS, body.step);
+      const detail = cleanLine(body.detail, 16).toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (prompt && step) bump(day, `prompt:${prompt}:${step}:${detail}`);
+    }
+    if (counted && event === "signin") {
+      const step = oneOf(SIGN_IN_STEPS, body.step);
+      const from = oneOf(SIGN_IN_SOURCES, body.from);
+      if (step && from) bump(day, `signin:${step}:${from}`);
+    }
     if (user) {
       run("UPDATE users SET last_seen_at = ? WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?)", now, user.id, inMs(-SEEN_EVERY));
     }

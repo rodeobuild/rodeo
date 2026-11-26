@@ -343,7 +343,7 @@ function chatView(start: DrawingRef | null): Chat {
       if (inShell()) return box("They run on rodeo.build: open it in a browser to use them.");
       return box(shared.hasServer ? "The agents aren't set up on this server yet." : "The agents run through the Rodeo server, and this copy of the editor has none.");
     }
-    if (!currentUser()) return box("Sign in to use the agents.", button("Sign In…", "primary", () => void requireSignIn("Sign in to use the agents")));
+    if (!currentUser()) return box("Sign in to use the agents.", button("Sign In…", "primary", () => void requireSignIn("Sign in to use the agents", "agents")));
     const t = shared.serverAi.credit;
     if (t && (shared.balance ?? 0) < t.hold) {
       const lead = (shared.balance ?? 0) > 0 ? `You have ${formatCredit(shared.balance ?? 0, t.currency)} of AI credit: add some to start.` : "Add AI credit to start.";
@@ -778,7 +778,7 @@ function chatView(start: DrawingRef | null): Chat {
     const el = h("div", { cls: "ag-error" }, h("span", { text: message }));
     const t = shared.serverAi?.credit;
     if (code === "credit" && t) el.append(topUpButtons(t, (m) => toast(m)));
-    else if (code === "unauthorized") el.append(button("Sign In…", "", () => void requireSignIn("Sign in to use the agents")));
+    else if (code === "unauthorized") el.append(button("Sign In…", "", () => void requireSignIn("Sign in to use the agents", "agents")));
     return el;
   }
 

@@ -49,7 +49,7 @@ const BEFORE_KEY = "openvwx.credit.before";
 
 /** Sends the user to Stripe Checkout for a top-up of `amount`. */
 export async function topUp(amount: number, onError: (message: string) => void): Promise<void> {
-  if (!(await requireSignIn("Sign in to add AI credit"))) return;
+  if (!(await requireSignIn("Sign in to add AI credit", "credit"))) return;
   try {
     const url = await billing.topUp(amount);
     // the balance before, so the return can tell when the top-up has landed

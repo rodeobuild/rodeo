@@ -172,7 +172,7 @@ export async function openConnectDialog(status?: () => string): Promise<void> {
     toast("Connecting an agent needs the Rodeo server.", "info");
     return;
   }
-  if (!(await requireSignIn("Sign in to connect an agent"))) return;
+  if (!(await requireSignIn("Sign in to connect an agent", "connect-agent"))) return;
   // the tab connects for agents from now on, even before the person has connected one, so its tools
   // are already on the server when they connect an app from another window
   holdConnection();

@@ -2,11 +2,13 @@
 // file of another application (a Revit project, an AutoCAD drawing, a SketchUp model…), and a
 // nudge (nudge.ts) over the drawing offers Rodeo laid out as that application, with its picture.
 // Offered once: taking it puts the look on, and closing it means it is not offered again. Not on a
-// phone (which keeps Rodeo's touch layout), nor in an embed or a view-only link.
+// phone (which keeps Rodeo's touch layout), nor in an embed or a view-only link. Its showing,
+// taking and closing are counted with the layout's name (visits.ts), for the admin page.
 
 import { onFileIn } from "../ext.ts";
 import { nudge, withdraw, type Nudge } from "../nudge.ts";
 import { toast } from "../toast.ts";
+import { countPrompt } from "../visits.ts";
 import { currentLook, LOOKS, onLookChange, setLook } from "./looks.ts";
 import { lookThumb } from "./thumbs.ts";
 import type { LookId } from "./types.ts";
@@ -82,9 +84,16 @@ export function installLookSuggestions(): void {
       action: `Work Like ${look.name}`,
       refuse: "Not now",
       wanted: open,
-      shown: remember,
+      shown: () => {
+        remember();
+        countPrompt("look", "shown", look.id);
+      },
       // the whole window changes: say what happened and where the way back is
-      run: () => void setLook(look.id).then(() => toast("Rodeo's layout changed. Change it back any time in View › Work Like.", "info")),
+      run: () => {
+        countPrompt("look", "taken", look.id);
+        void setLook(look.id).then(() => toast("Rodeo's layout changed. Change it back any time in View › Work Like.", "info"));
+      },
+      refused: () => countPrompt("look", "refused", look.id),
     };
     pending = offer;
     window.setTimeout(() => nudge(offer), OFFER_AFTER_MS);

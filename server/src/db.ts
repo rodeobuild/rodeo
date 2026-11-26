@@ -585,7 +585,15 @@ CREATE TABLE mail_attachments (
 CREATE INDEX mail_attachments_message ON mail_attachments(message_id);
 `;
 
-const MIGRATIONS: readonly string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12];
+// What leads to accounts (auth.ts, admin.ts): where in the editor the sign-in that made an account
+// was started (protocol.ts SIGN_IN_SOURCES; null for one made another way, or before this), and the
+// same for an emailed link, which carries it from the request to the click.
+const SCHEMA_V13 = `
+ALTER TABLE users ADD COLUMN signup_source TEXT;
+ALTER TABLE magic_links ADD COLUMN source TEXT;
+`;
+
+const MIGRATIONS: readonly string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13];
 
 let conn: DatabaseSync | null = null;
 const statements = new Map<string, StatementSync>();

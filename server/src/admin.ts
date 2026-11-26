@@ -5,17 +5,21 @@
 // credit each new account starts with. Every route here needs an account in ADMIN_EMAILS.
 
 import type { Context, Hono } from "hono";
-import type {
-  AdminDay,
-  AdminLedgerRow,
-  AdminOverview,
-  AdminPeriod,
-  AdminSettings,
-  AdminUser,
-  AdminUserDetail,
-  AdminUserFilter,
-  AdminUserSort,
-  Tally,
+import {
+  PROMPTS,
+  type AdminDay,
+  type AdminLedgerRow,
+  type AdminOverview,
+  type AdminPeriod,
+  type AdminSettings,
+  type AdminUser,
+  type AdminUserDetail,
+  type AdminUserFilter,
+  type AdminUserSort,
+  type Prompt,
+  type PromptTally,
+  type SignInTally,
+  type Tally,
 } from "../../web/src/platform/protocol.ts";
 import { deleteAccount } from "./account.ts";
 import { logAdmin } from "./adminLog.ts";
@@ -107,6 +111,54 @@ function tally(column: string, from: string, to: string): Tally[] {
     to,
     admins(),
   );
+}
+
+/**
+ * What leads to accounts between two days: accounts made by where their sign-in started (the users
+ * table, so exact), beside the day counts of sign-ins opened, started and made by people who
+ * already had an account (signin:<step>:<source>), and of each prompt's steps
+ * (prompt:<which>:<step>:<layout>).
+ */
+function signIns(from: string, end: string): AdminOverview["signIns"] {
+  const sources = new Map<string, { -readonly [K in keyof SignInTally]: SignInTally[K] }>();
+  const sourceRow = (source: string) => {
+    let row = sources.get(source);
+    if (!row) sources.set(source, (row = { source, opened: 0, started: 0, accounts: 0, returning: 0 }));
+    return row;
+  };
+  const prompts = new Map<Prompt, { -readonly [K in keyof PromptTally]: PromptTally[K] }>(PROMPTS.map((prompt) => [prompt, { prompt, shown: 0, taken: 0, refused: 0 }]));
+  const looks = new Map<string, number>();
+
+  for (const r of all<{ source: string; n: number }>(
+    "SELECT COALESCE(signup_source, '') AS source, COUNT(*) AS n FROM users WHERE created_at >= ? AND created_at < ? GROUP BY source",
+    from,
+    end,
+  )) {
+    sourceRow(r.source).accounts = r.n;
+  }
+  for (const r of all<{ name: string; n: number }>(
+    "SELECT name, SUM(count) AS n FROM visit_counts WHERE day >= ? AND day < ? AND (name LIKE 'signin:%' OR name LIKE 'prompt:%') GROUP BY name",
+    from,
+    end,
+  )) {
+    const [kind, a, b, detail = ""] = r.name.split(":");
+    if (kind === "signin" && b) {
+      const row = sourceRow(b);
+      if (a === "opened") row.opened += r.n;
+      else if (a === "started") row.started += r.n;
+      else if (a === "back") row.returning += r.n;
+    } else if (kind === "prompt") {
+      const row = prompts.get(a as Prompt);
+      if (row && (b === "shown" || b === "taken" || b === "refused")) row[b] += r.n;
+      // a layout taken from the start screen's picker or from the offer
+      if (b === "taken" && detail && (a === "picker" || a === "look")) looks.set(detail, (looks.get(detail) ?? 0) + r.n);
+    }
+  }
+  return {
+    sources: [...sources.values()].sort((x, y) => y.accounts - x.accounts || y.started - x.started || y.opened - x.opened || x.source.localeCompare(y.source)),
+    prompts: [...prompts.values()],
+    looks: [...looks].map(([label, count]) => ({ label, count })).sort((x, y) => y.count - x.count || x.label.localeCompare(y.label)),
+  };
 }
 
 function overview(days: number): AdminOverview {
@@ -209,6 +261,7 @@ function overview(days: number): AdminOverview {
         from,
       ),
     },
+    signIns: signIns(from, end),
     inbox: {
       feedback: get<{ n: number }>("SELECT COUNT(*) AS n FROM feedback WHERE status = 'new'")?.n ?? 0,
       errors: get<{ n: number }>("SELECT COUNT(*) AS n FROM error_groups WHERE last_seen >= ?", inMs(-DAY))?.n ?? 0,
@@ -277,6 +330,7 @@ function userOutAdmin(r: ListedRow): AdminUser {
     files: r.files,
     bytes: r.bytes,
     providers: r.providers ? [...new Set(r.providers.split(","))].sort() : ["email"],
+    signupSource: r.signup_source,
     suspended: r.suspended_at !== null,
     admin: isAdmin(r),
   };
@@ -379,7 +433,7 @@ export function registerAdmin(app: Hono): void {
   app.get("/api/admin/users.csv", (c) => {
     requireAdmin(c);
     const rows = all<ListedRow>(`${LISTED} ORDER BY created_at`).map(userOutAdmin);
-    const head = ["email", "name", "joined", "last seen", "sign-in", "plan", "plus until", "credit", "spent", "bought", "granted", "drawings", "bytes", "suspended"];
+    const head = ["email", "name", "joined", "last seen", "sign-in", "plan", "plus until", "credit", "spent", "bought", "granted", "drawings", "bytes", "suspended", "signed up from"];
     const lines = [
       head.join(","),
       ...rows.map((u) =>
@@ -398,6 +452,7 @@ export function registerAdmin(app: Hono): void {
           u.files,
           u.bytes,
           u.suspended ? "yes" : "",
+          u.signupSource,
         ]
           .map(cell)
           .join(","),

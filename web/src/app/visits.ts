@@ -4,12 +4,14 @@
 // "blank" for a new one). With the first word go how the visit began (the editor, a share link,
 // an invite, an embed, the installed app), the site that linked here, a campaign tag (?utm_source=
 // or ?ref=) and the kind of device. The check after a file comes in has its answers counted too
-// (countCheck). Never the drawing or its name. Nothing is kept on the device
+// (countCheck), and so have the editor's prompts (countPrompt: shown, taken up, closed) and the
+// sign-in dialog (countSignIn: opened and a way in chosen, with where in the editor that was), so
+// the admin page can say what leads to accounts. Never the drawing or its name. Nothing is kept on the device
 // and no cookie is set: the server tells visitors apart for one day only (server/src/visits.ts).
 // Test browsers (navigator.webdriver) send nothing, unless localStorage "openvwx.visits" is "on".
 
 import { serverConfig } from "../platform/api.ts";
-import type { VisitEntry } from "../platform/protocol.ts";
+import type { Prompt, PromptStep, SignInSource, VisitEntry } from "../platform/protocol.ts";
 import type { EditSession } from "../core/index.ts";
 import { onDocument } from "./ext.ts";
 import { store } from "./state.ts";
@@ -49,7 +51,7 @@ function referrerHost(): string | null {
   }
 }
 
-function send(event: "visit" | "ping" | "open" | "check", extra: Record<string, string | null> = {}): void {
+function send(event: "visit" | "ping" | "open" | "check" | "prompt" | "signin", extra: Record<string, string | null> = {}): void {
   lastSent = Date.now();
   void serverConfig()
     .then((cfg) => {
@@ -80,6 +82,20 @@ function formatOf(name: string): string {
  */
 export function countCheck(answer: "asked" | "failed" | "ok" | "report" | "closed", fileName: string): void {
   if (!testing()) send("check", { answer, format: formatOf(fileName) });
+}
+
+/**
+ * Counts a step of one of the editor's prompts: the start screen's free-account block ("join") and
+ * Work Like picker ("picker"), the save-to-cloud prompt ("keep"), the Work Like offer ("look"). A
+ * prompt about a layout names it in `detail` ("revit"); nothing else goes.
+ */
+export function countPrompt(prompt: Prompt, step: PromptStep, detail = ""): void {
+  if (!testing()) send("prompt", { prompt, step, detail });
+}
+
+/** Counts the sign-in dialog opening ("opened") and a way in being chosen ("started"), with where in the editor the sign-in began. */
+export function countSignIn(step: "opened" | "started", from: SignInSource): void {
+  if (!testing()) send("signin", { step, from });
 }
 
 if (!testing()) {

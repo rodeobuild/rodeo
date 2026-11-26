@@ -590,6 +590,44 @@ export type ServerMessage =
 /** How a visit to the editor began: the editor itself, a share link, an invite, an embed, or the installed app. */
 export type VisitEntry = "editor" | "share" | "invite" | "embed" | "app" | "convert";
 
+/**
+ * Where in the editor a sign-in was started, so the admin page can say what leads to accounts. It
+ * goes with the sign-in to the server (auth.ts), which keeps it on an account it makes then, and
+ * with the editor's counts of sign-ins opened and started (visits.ts).
+ */
+export const SIGN_IN_SOURCES = [
+  // the start screen: its free-account block, and Sign in in its header
+  "start",
+  "start-header",
+  // Sign in in the top bar, and at the end of a Work Like layout's menu or title bar
+  "top-bar",
+  "layout-bar",
+  // the save-to-cloud prompt over a drawing (features/cloud/keep.ts)
+  "keep",
+  // commands that need an account
+  "cloud-save",
+  "cloud-open",
+  "link",
+  "gallery",
+  "agents",
+  "ai-render",
+  "cloud-render",
+  "voice",
+  "connect-agent",
+  "plus",
+  "credit",
+  "site",
+  "other",
+] as const;
+export type SignInSource = (typeof SIGN_IN_SOURCES)[number];
+
+/** The editor's prompts whose steps are counted: the start screen's free-account block and its Work Like picker, the save-to-cloud prompt, the Work Like offer. */
+export const PROMPTS = ["join", "picker", "keep", "look"] as const;
+export type Prompt = (typeof PROMPTS)[number];
+/** A prompt came on screen, was taken up, or was closed. */
+export const PROMPT_STEPS = ["shown", "taken", "refused"] as const;
+export type PromptStep = (typeof PROMPT_STEPS)[number];
+
 /** A label and how many: a row of a breakdown (referrers, countries...). */
 export interface Tally {
   readonly label: string;
@@ -658,8 +696,38 @@ export interface AdminOverview {
     /** the check after a file comes in, by answer: "asked", "failed", "ok", "report", "closed" */
     readonly checks: readonly Tally[];
   };
+  /** what leads to accounts in the period: where sign-ins start, and how the prompts fare */
+  readonly signIns: {
+    /** each place a sign-in started from that had anything to count, most accounts first */
+    readonly sources: readonly SignInTally[];
+    readonly prompts: readonly PromptTally[];
+    /** layouts chosen from the start screen's picker or the Work Like offer, by look */
+    readonly looks: readonly Tally[];
+  };
   /** what waits on the admin page's Feedback and Errors tabs */
   readonly inbox: { readonly feedback: number; readonly errors: number };
+}
+
+/** One place sign-ins start from, over the period. */
+export interface SignInTally {
+  /** a SignInSource, or "" for accounts made another way (the gallery, an agent's sign-in page) or before sources were kept */
+  readonly source: string;
+  /** times the sign-in dialog was opened from there */
+  readonly opened: number;
+  /** times a way in was then chosen: a provider, or a link sent */
+  readonly started: number;
+  /** accounts made */
+  readonly accounts: number;
+  /** sign-ins by people who already had an account */
+  readonly returning: number;
+}
+
+/** One prompt over the period: times it came on screen, was taken up and was closed. */
+export interface PromptTally {
+  readonly prompt: Prompt;
+  readonly shown: number;
+  readonly taken: number;
+  readonly refused: number;
 }
 
 export interface AdminPeriod {
@@ -699,6 +767,8 @@ export interface AdminUser {
   readonly bytes: number;
   /** how it signs in: "google", "github", "microsoft", or "email" alone */
   readonly providers: readonly string[];
+  /** where in the editor the sign-in that made it was started (a SignInSource); null: another way, or not recorded */
+  readonly signupSource: string | null;
   readonly suspended: boolean;
   readonly admin: boolean;
 }

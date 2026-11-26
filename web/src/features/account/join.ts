@@ -5,6 +5,7 @@
 // not) from the first paint instead of arriving when the server answers.
 
 import { h } from "../../app/dom.ts";
+import { countPrompt } from "../../app/visits.ts";
 import { currentUser, onUser, userLoaded } from "../../platform/api.ts";
 import { benefitList } from "./benefits.ts";
 import { config, onConfig } from "./config.ts";
@@ -56,17 +57,37 @@ export function joinCard(): HTMLElement {
     cfg.auth.oauth.forEach((p, i) => {
       const btn = h("button", { cls: i === 0 ? "btn primary" : "btn", text: `Continue with ${PROVIDER_NAMES[p]}`, attrs: { type: "button" } });
       // with a drawing open behind the start screen its pages open in their own window, and the dialog says so
-      btn.addEventListener("click", () => startProvider(p));
+      btn.addEventListener("click", () => startProvider(p, "start"));
       actions.append(btn);
     });
     if (cfg.auth.email) {
       const btn = h("button", { cls: cfg.auth.oauth.length ? "btn" : "btn primary", text: "Continue with email", attrs: { type: "button" } });
-      btn.addEventListener("click", () => openSignIn("", undefined, "email"));
+      btn.addEventListener("click", () => openSignIn("", undefined, "email", "start"));
       actions.append(btn);
     }
     body.replaceChildren(benefitList(cfg, "short", 4), actions, h("p", { cls: "hub-join-fine", text: "Free, with no card and no password. Rodeo works without an account too." }));
   };
   onConfig(render);
   onUser(render);
+  // counted once a visit, when it is really on screen for someone the server says is not signed in
+  // (not for the guess from the last visit, nor while the start screen is not up)
+  let counted = false;
+  if (typeof IntersectionObserver === "function") {
+    const seen = new IntersectionObserver((entries) => {
+      if (counted || !entries.some((e) => e.isIntersecting) || !config() || !userLoaded() || currentUser()) return;
+      counted = true;
+      seen.disconnect();
+      countPrompt("join", "shown");
+    });
+    seen.observe(card);
+    // the server's answer may come after the block is already on screen: look again then
+    const again = (): void => {
+      if (counted) return;
+      seen.unobserve(card);
+      seen.observe(card);
+    };
+    onConfig(again);
+    onUser(again);
+  }
   return card;
 }

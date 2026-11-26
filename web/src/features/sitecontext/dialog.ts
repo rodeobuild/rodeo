@@ -207,7 +207,7 @@ class SiteContextDialog {
     this.signInButton = h("button", { cls: "btn primary sc-signin", text: "Sign In…", attrs: { type: "button" }, hidden: true });
     this.signInButton.addEventListener(
       "click",
-      () => void requireSignIn(`Sign in to import areas up to ${MAX_SIGNED_IN_M / 1000} km × ${MAX_SIGNED_IN_M / 1000} km.`),
+      () => void requireSignIn(`Sign in to import areas up to ${MAX_SIGNED_IN_M / 1000} km × ${MAX_SIGNED_IN_M / 1000} km.`, "site"),
     );
 
     const kindRows = KINDS.map(({ cat, label }) => this.kindRow(cat, label));

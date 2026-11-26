@@ -14,7 +14,7 @@ import { errorMessage, toast } from "../../app/toast.ts";
 import { documentBytes } from "../../app/writeOut.ts";
 import { ApiError, DOWNLOAD_STOPPED, files, serverConfig, type Progress } from "../../platform/api.ts";
 import { type CloudSource, isCloudSource } from "../../platform/cloudSource.ts";
-import { BIG_DRAWING, type CloudFile, type Role } from "../../platform/protocol.ts";
+import { BIG_DRAWING, type CloudFile, type Role, type SignInSource } from "../../platform/protocol.ts";
 import { requireSignIn } from "../account/signin.ts";
 import { openSupporterDialog } from "../account/supporter.ts";
 import { collab, type WrittenOut } from "../collab/engine.ts";
@@ -334,13 +334,14 @@ async function saveNow(fileId: string, written: WrittenOut, interactive: boolean
 /**
  * File > Save to Cloud…: saves the open drawing as a new cloud drawing, then reopens it from the
  * cloud, so File > Save writes there from then on. Changes made while it uploads are sent again
- * first, so the reopened drawing is the one that was open.
+ * first, so the reopened drawing is the one that was open. `from` is what asked, for someone who has
+ * to sign in first: the menu, or the save-to-cloud prompt (keep.ts).
  */
-export async function saveDrawingToCloud(): Promise<void> {
+export async function saveDrawingToCloud(from: SignInSource = "cloud-save"): Promise<void> {
   const ctx = appContext();
   const session = store.session;
   if (!ctx || !session) return;
-  if (!(await requireSignIn("Sign in to save drawings to the cloud."))) return;
+  if (!(await requireSignIn("Sign in to save drawings to the cloud.", from))) return;
   // writing out a large drawing takes seconds: the overlay is up first, so the wait shows
   const loading = showLoading("Getting the drawing ready…");
   await nextPaint();

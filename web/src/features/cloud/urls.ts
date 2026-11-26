@@ -36,7 +36,7 @@ registerUrlHandler("file", (id, params, ctx) => {
   void (async () => {
     if (!(await serverConfig())) return;
     try {
-      if ((await requireSignIn("Sign in to open this drawing.")) && (await openCloudFile(id))) applyLayer(params, ctx);
+      if ((await requireSignIn("Sign in to open this drawing.", "link")) && (await openCloudFile(id))) applyLayer(params, ctx);
     } finally {
       dropParams("file", "layer");
     }
@@ -53,7 +53,7 @@ registerUrlHandler("invite", (token) => {
         `${info.inviterName} invited you to ${ROLE_WORD[info.role]} “${info.fileName}”.`,
         "Accept",
       );
-      if (accept && (await requireSignIn("Sign in to accept this invitation."))) {
+      if (accept && (await requireSignIn("Sign in to accept this invitation.", "link"))) {
         const file = await sharing.acceptInvite(token);
         await openCloudFile(file.id);
       }

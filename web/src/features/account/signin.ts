@@ -7,12 +7,17 @@
 // window of their own (signInWith), and this page learns who signed in when that window says so
 // (authSignal.ts); an emailed link opens in another tab, which says so the same way. Either way the
 // dialog closes by itself and what asked for the sign-in carries on.
+//
+// Every sign-in says where in the editor it was started (`from`, protocol.ts SIGN_IN_SOURCES): the
+// server keeps that on an account it makes then, and the dialog opening and a way in being chosen
+// are counted (app/visits.ts), so the admin page can say what leads to accounts.
 
 import { h } from "../../app/dom.ts";
 import { store } from "../../app/state.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
+import { countSignIn } from "../../app/visits.ts";
 import { account, currentUser, onUser, refreshUser, userReady } from "../../platform/api.ts";
-import type { ServerConfig } from "../../platform/protocol.ts";
+import type { ServerConfig, SignInSource } from "../../platform/protocol.ts";
 import { benefitList } from "./benefits.ts";
 import { config, loadConfig } from "./config.ts";
 import { field, openModal, type Modal } from "./dialog.ts";
@@ -31,14 +36,15 @@ const CLOSE = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke
  * `reason` as its heading, and resolves when it closes: true when they signed in while it was
  * open (in a provider's window, or from the emailed link in another tab), false when they closed
  * it. Signing in with a provider and no drawing open leaves the page, so nothing resolves then.
+ * `from` is what asked: the command or prompt that needs the account.
  */
-export async function requireSignIn(reason: string): Promise<boolean> {
+export async function requireSignIn(reason: string, from: SignInSource = "other"): Promise<boolean> {
   if (await userReady()) return true;
   if (!(config() ?? (await loadConfig()))) {
     toast("Signing in is not set up on this server.", "info");
     return false;
   }
-  return new Promise((resolve) => openSignIn(reason, () => resolve(currentUser() !== null)));
+  return new Promise((resolve) => openSignIn(reason, () => resolve(currentUser() !== null), "methods", from));
 }
 
 /**
@@ -46,12 +52,12 @@ export async function requireSignIn(reason: string): Promise<boolean> {
  * drawing stays as it is ("window", or the window itself to watch); with none, or where the
  * browser refuses the window, this page goes there and comes back signed in.
  */
-export function signInWith(provider: Provider): Window | null {
+export function signInWith(provider: Provider, from: SignInSource): Window | null {
   if (store.session) {
-    const w = window.open(account.oauthUrl(provider, SIGNED_IN_PAGE), "rodeo-sign-in", "popup,width=520,height=720");
+    const w = window.open(account.oauthUrl(provider, SIGNED_IN_PAGE, from), "rodeo-sign-in", "popup,width=520,height=720");
     if (w) return w;
   }
-  location.href = account.oauthUrl(provider);
+  location.href = account.oauthUrl(provider, undefined, from);
   return null;
 }
 
@@ -62,15 +68,20 @@ export type SignInStart = "methods" | "email" | { readonly provider: Provider; r
  * Signs in with a provider from outside the dialog (the start screen's button): with a drawing open
  * its pages go in their own window and the dialog opens to say so; with none, this page goes there.
  */
-export function startProvider(provider: Provider): void {
-  const opened = signInWith(provider);
-  if (opened) openSignIn("", undefined, { provider, opened });
+export function startProvider(provider: Provider, from: SignInSource): void {
+  // one click stands for both steps the dialog has: asking to sign in, and choosing the way
+  countSignIn("opened", from);
+  countSignIn("started", from);
+  const opened = signInWith(provider, from);
+  if (opened) openSignIn("", undefined, { provider, opened }, from);
 }
 
-/** Opens the sign-in dialog; `reason` is its heading (the usual one when empty), `onClose` runs when it closes, `start` is where it opens. */
-export function openSignIn(reason: string, onClose?: () => void, start: SignInStart = "methods"): void {
+/** Opens the sign-in dialog; `reason` is its heading (the usual one when empty), `onClose` runs when it closes, `start` is where it opens, `from` where in the editor it was asked for. */
+export function openSignIn(reason: string, onClose?: () => void, start: SignInStart = "methods", from: SignInSource = "other"): void {
   const cfg = config();
   if (!cfg) return;
+  // opened on a provider's window, the click that opened both was counted (startProvider)
+  if (typeof start !== "object") countSignIn("opened", from);
   let modal: Modal | null = null;
   let timer = 0;
   let watching = 0;
@@ -81,7 +92,7 @@ export function openSignIn(reason: string, onClose?: () => void, start: SignInSt
   const send = async (address: string): Promise<boolean> => {
     modal?.error(null);
     try {
-      await account.emailSignIn(address);
+      await account.emailSignIn(address, undefined, from);
       return true;
     } catch (err) {
       modal?.error(errorMessage(err));
@@ -142,8 +153,10 @@ export function openSignIn(reason: string, onClose?: () => void, start: SignInSt
       }
       submit.disabled = true;
       void send(address).then((ok) => {
-        if (ok) showSent(address);
-        else submit.disabled = false;
+        if (ok) {
+          countSignIn("started", from);
+          showSent(address);
+        } else submit.disabled = false;
       });
     });
     return form;
@@ -155,7 +168,7 @@ export function openSignIn(reason: string, onClose?: () => void, start: SignInSt
     let w = opened;
     const again = h("button", { cls: "btn", text: "Open the window again", attrs: { type: "button" } });
     again.addEventListener("click", () => {
-      const next = signInWith(provider);
+      const next = signInWith(provider, from);
       if (next) w = next;
     });
     const back = h("button", { cls: "btn", text: "Use another way", attrs: { type: "button" } });
@@ -178,7 +191,8 @@ export function openSignIn(reason: string, onClose?: () => void, start: SignInSt
   const providerButton = (p: Provider, first: boolean): HTMLButtonElement => {
     const btn = h("button", { cls: first ? "btn primary acct-provider" : "btn acct-provider", text: `Continue with ${PROVIDER_NAMES[p]}`, attrs: { type: "button" } });
     btn.addEventListener("click", () => {
-      const w = signInWith(p);
+      countSignIn("started", from);
+      const w = signInWith(p, from);
       if (w) showWindow(p, w);
     });
     return btn;

@@ -7,9 +7,10 @@ import type { IncomingMessage } from "node:http";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { CookieOptions } from "hono/utils/cookie";
-import type { Limits, Plan, User } from "../../web/src/platform/protocol.ts";
+import { SIGN_IN_SOURCES, type Limits, type Plan, type User } from "../../web/src/platform/protocol.ts";
 import type { CollabUser } from "./collab.ts";
 import { config, type OAuthApp, type Provider } from "./config.ts";
+import { bumpToday } from "./counts.ts";
 import { get, run, tx } from "./db.ts";
 import { readJson } from "./http.ts";
 import { sendMail } from "./mail.ts";
@@ -38,6 +39,8 @@ export interface UserRow {
   last_seen_at: string | null;
   /** set by an admin: the account can't sign in, and its sessions are gone */
   suspended_at: string | null;
+  /** where in the editor the sign-in that made the account was started (protocol.ts SIGN_IN_SOURCES); null: another way, or before this was kept */
+  signup_source: string | null;
 }
 
 export function planOf(row: { supporter_until: string | null }): Plan {
@@ -163,6 +166,13 @@ export interface SignIn {
   readonly avatarUrl: string | null;
   readonly provider?: Provider;
   readonly subject?: string;
+  /** where in the editor the sign-in was started, when it said (sourceOf) */
+  readonly source?: string | null;
+}
+
+/** Where a sign-in says it was started, if that is one of the places the editor names (protocol.ts SIGN_IN_SOURCES). */
+export function sourceOf(v: unknown): string | null {
+  return typeof v === "string" && (SIGN_IN_SOURCES as readonly string[]).includes(v) ? v : null;
 }
 
 const newUserHooks: ((user: UserRow) => void)[] = [];
@@ -180,6 +190,14 @@ export function signInUser(s: SignIn): UserRow {
   let created = false;
   const user = tx(() => findOrCreateUser(s, () => (created = true)));
   if (user.suspended_at !== null) fail(403, "This account is suspended", "suspended");
+  // what leads to accounts (admin.ts): a new account keeps where its sign-in started; someone coming back is a count a day
+  if (!created && s.source) {
+    try {
+      bumpToday(`signin:back:${s.source}`);
+    } catch (e) {
+      console.error("[auth] a sign-in was not counted:", e);
+    }
+  }
   if (created) {
     for (const fn of newUserHooks) {
       try {
@@ -206,12 +224,13 @@ function findOrCreateUser(s: SignIn, onCreate: () => void): UserRow {
     onCreate();
     const id = newId();
     run(
-      "INSERT INTO users (id, email, name, avatar_url, created_at, plan) VALUES (?, ?, ?, ?, ?, 'free')",
+      "INSERT INTO users (id, email, name, avatar_url, created_at, plan, signup_source) VALUES (?, ?, ?, ?, ?, 'free', ?)",
       id,
       s.email,
       cleanLine(s.name, 80) || localPart(s.email),
       s.avatarUrl,
       nowIso(),
+      s.source ?? null,
     );
     user = get<UserRow>("SELECT * FROM users WHERE id = ?", id);
   }
@@ -380,17 +399,19 @@ export function registerAuth(app: Hono): void {
     const email = normalizeEmail(body.email);
     if (!email) fail(400, "Enter a valid email address");
     const redirect = safePath(body.redirect);
+    const source = sourceOf(body.from);
     if (!allowed(`email:${email}`, 5, HOUR) || !allowed(`ip:${clientIp(c)}`, 20, HOUR)) {
       fail(429, "Too many sign-in links requested. Try again later.", "rate_limited");
     }
     const token = newToken();
     run(
-      "INSERT INTO magic_links (token_hash, email, redirect, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO magic_links (token_hash, email, redirect, created_at, expires_at, source) VALUES (?, ?, ?, ?, ?, ?)",
       sha256Hex(token),
       email,
       redirect,
       nowIso(),
       inMs(15 * MINUTE),
+      source,
     );
     const link = `${config.publicUrl}/api/auth/email/callback?token=${token}`;
     try {
@@ -430,7 +451,7 @@ export function registerAuth(app: Hono): void {
 
   app.get("/api/auth/email/callback", (c) => {
     const token = c.req.query("token") ?? "";
-    const row = token ? get<{ token_hash: string; email: string; redirect: string; expires_at: string; used_at: string | null }>(
+    const row = token ? get<{ token_hash: string; email: string; redirect: string; expires_at: string; used_at: string | null; source: string | null }>(
       "SELECT * FROM magic_links WHERE token_hash = ?",
       sha256Hex(token),
     ) : undefined;
@@ -440,7 +461,7 @@ export function registerAuth(app: Hono): void {
     if (used !== 1) return c.redirect("/?signin=failed", 302);
     let user: UserRow;
     try {
-      user = signInUser({ email: row.email, name: localPart(row.email), avatarUrl: null });
+      user = signInUser({ email: row.email, name: localPart(row.email), avatarUrl: null, source: sourceOf(row.source) });
     } catch {
       return c.redirect("/?signin=failed", 302);
     }
@@ -457,7 +478,8 @@ export function registerAuth(app: Hono): void {
     const verifier = newToken();
     const challenge = createHash("sha256").update(verifier).digest("base64url");
     const redirect = safePath(c.req.query("redirect"));
-    const saved = Buffer.from(JSON.stringify({ p: provider, s: state, v: verifier, r: redirect })).toString("base64url");
+    // where in the editor the sign-in started waits with them, for the account it may make
+    const saved = Buffer.from(JSON.stringify({ p: provider, s: state, v: verifier, r: redirect, f: sourceOf(c.req.query("from")) })).toString("base64url");
     setCookie(c, OAUTH_COOKIE, saved, { path: OAUTH_PATH, httpOnly: true, sameSite: "Lax", secure: config.secureCookies, maxAge: 600 });
     const spec = SPECS[provider];
     const url = new URL(spec.authUrl);
@@ -480,7 +502,7 @@ export function registerAuth(app: Hono): void {
     if (c.req.query("error") || !raw) return failed();
     const code = c.req.query("code");
     const state = c.req.query("state");
-    let saved: { p?: unknown; s?: unknown; v?: unknown; r?: unknown };
+    let saved: { p?: unknown; s?: unknown; v?: unknown; r?: unknown; f?: unknown };
     try {
       saved = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as typeof saved;
     } catch {
@@ -497,6 +519,7 @@ export function registerAuth(app: Hono): void {
         avatarUrl: profile.avatarUrl,
         provider,
         subject: profile.subject,
+        source: sourceOf(saved.f),
       });
       startSession(c, user.id);
       return c.redirect(signedInPath(safePath(saved.r)), 302);

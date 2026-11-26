@@ -3,11 +3,13 @@
 // over the drawing offers to save it to the cloud. Taking it asks them to sign in (the drawing
 // stays open while they do: account/signin.ts) and then saves it, as File › Save to Cloud… does.
 // Offered once a visit; closing it puts it off for a week. Never in an embed or a view-only link,
-// and never where the server has no cloud drawings.
+// and never where the server has no cloud drawings. Its showing, taking and closing are counted
+// (app/visits.ts), and a sign-in it leads to is named as its own, for the admin page.
 
 import { documentSource, onDocument } from "../../app/ext.ts";
 import { nudge, withdraw, type Nudge } from "../../app/nudge.ts";
 import { store } from "../../app/state.ts";
+import { countPrompt } from "../../app/visits.ts";
 import type { EditSession } from "../../core/index.ts";
 import { currentUser, onUser, userLoaded } from "../../platform/api.ts";
 import { isCloudSource } from "../../platform/cloudSource.ts";
@@ -62,8 +64,15 @@ function make(): void {
     action: "Save to Cloud",
     refuse: "Not now",
     wanted: applies,
-    run: () => void saveDrawingToCloud(),
-    refused: snooze,
+    shown: () => countPrompt("keep", "shown"),
+    run: () => {
+      countPrompt("keep", "taken");
+      void saveDrawingToCloud("keep");
+    },
+    refused: () => {
+      countPrompt("keep", "refused");
+      snooze();
+    },
   };
   nudge(offer);
 }

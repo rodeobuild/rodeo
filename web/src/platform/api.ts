@@ -35,6 +35,7 @@ import type {
   ServerConfig,
   Share,
   SharedFile,
+  SignInSource,
   Sponsor,
   User,
   Version,
@@ -309,10 +310,11 @@ export const account = {
     await request("DELETE", "/me");
     setUser(null);
   },
-  emailSignIn: (email: string, redirect = here()): Promise<{ ok: true }> => json("POST", "/auth/email", { email, redirect }),
-  /** Where to send the browser to sign in with a provider. */
-  oauthUrl: (provider: string, redirect = here()): string =>
-    `${BASE}/auth/oauth/${encodeURIComponent(provider)}?redirect=${encodeURIComponent(redirect)}`,
+  /** Emails a sign-in link; `from` is where in the editor the sign-in was started (kept on an account it makes). */
+  emailSignIn: (email: string, redirect = here(), from: SignInSource = "other"): Promise<{ ok: true }> => json("POST", "/auth/email", { email, redirect, from }),
+  /** Where to send the browser to sign in with a provider; `from` as for emailSignIn. */
+  oauthUrl: (provider: string, redirect = here(), from: SignInSource = "other"): string =>
+    `${BASE}/auth/oauth/${encodeURIComponent(provider)}?redirect=${encodeURIComponent(redirect)}&from=${encodeURIComponent(from)}`,
   async logout(): Promise<void> {
     await request("POST", "/auth/logout");
     setUser(null);

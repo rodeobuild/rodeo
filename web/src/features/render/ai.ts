@@ -107,7 +107,7 @@ export function aspectOf(width: number, height: number): AiAspect {
 /** Signs in if need be, and checks there's credit for `pictures`; false (having said why) when not. */
 export async function readyToPaint(pictures: number): Promise<boolean> {
   if (!aiTerms()) return false;
-  if (!(await requireSignIn("Sign in to make AI renders."))) return false;
+  if (!(await requireSignIn("Sign in to make AI renders.", "ai-render"))) return false;
   const price = pricePerPicture();
   const credit = creditTerms();
   const balance = currentUser()?.aiCredit ?? 0;
