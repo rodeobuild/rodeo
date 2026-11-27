@@ -26,7 +26,7 @@ COPY docs/guide /app/docs/guide
 RUN mkdir -p /app/web/src/platform /app/web/src/core /app/web/src/convert \
     /app/web/src/features/gallery /app/web/src/features/branches /app/web/src/features/mcp \
   && echo '{"type":"module"}' > /app/web/package.json
-COPY web/src/platform/protocol.ts /app/web/src/platform/protocol.ts
+COPY web/src/platform/protocol.ts web/src/platform/failures.ts /app/web/src/platform/
 COPY web/src/core/splice.ts /app/web/src/core/splice.ts
 COPY web/src/convert/pages.ts /app/web/src/convert/pages.ts
 COPY web/src/convert/i18n /app/web/src/convert/i18n
