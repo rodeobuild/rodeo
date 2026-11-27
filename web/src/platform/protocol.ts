@@ -116,6 +116,34 @@ export interface NewFeedback {
    * (PUT /api/feedback/:id/screenshot, and the file in parts to /api/feedback/:id/file).
    */
   readonly attach?: { readonly screenshot: boolean; readonly file: { readonly name: string; readonly size: number } | null } | null;
+  /**
+   * A file that would not open, sent from the card after the failure (features/feedback/check.ts):
+   * its name and what the person was told, its own name taken out. With an email, the sender waits
+   * to hear when it opens. Admins also see the group it is filed under (platform/failures.ts).
+   */
+  readonly failure?: FeedbackFailure | null;
+}
+
+export interface FeedbackFailure {
+  readonly file: string;
+  readonly error: string;
+  /** "VWX: bad chunk # at 0x#: truncated" (admins only) */
+  readonly group?: string;
+}
+
+/** POST /api/admin/feedback/notify: emails everyone waiting on a failure, now that it is fixed. */
+export interface FeedbackNotify {
+  readonly group: string;
+  readonly subject: string;
+  /** "{file}" in it becomes the name of the file each person sent */
+  readonly text: string;
+}
+
+/** What came of telling them: who was emailed, whose email failed, and the reports as they are now. */
+export interface FeedbackNotified {
+  readonly sent: number;
+  readonly failed: readonly string[];
+  readonly feedback: readonly Feedback[];
 }
 
 /** POST /api/feedback's answer; `token` (for an hour) lets the attachments follow. */
@@ -137,6 +165,8 @@ export interface Feedback extends NewFeedback {
   readonly screenshot: boolean;
   /** the file it was sent with (GET /api/admin/feedback/:id/file); `received` is less than `size` while it arrives, or when it stopped */
   readonly file: { readonly name: string; readonly size: number; readonly received: number } | null;
+  /** when the sender was emailed that their file opens now (POST /api/admin/feedback/notify) */
+  readonly notifiedAt: string | null;
 }
 
 /**

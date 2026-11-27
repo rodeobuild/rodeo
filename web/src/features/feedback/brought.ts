@@ -6,6 +6,7 @@
 import type { EditSession } from "../../core/index.ts";
 import { onFileIn } from "../../app/ext.ts";
 import { store } from "../../app/state.ts";
+import { fileKind } from "../../platform/failures.ts";
 
 export interface Brought {
   readonly file: Blob | Uint8Array;
@@ -38,10 +39,7 @@ export function broughtInto(session: EditSession | null): Brought | null {
 }
 
 /** "DWG": a file's kind, from its name. */
-export function kindOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot + 1).toUpperCase() : "file";
-}
+export const kindOf = fileKind;
 
 /** "2.4 MB" */
 export function sizeText(n: number): string {

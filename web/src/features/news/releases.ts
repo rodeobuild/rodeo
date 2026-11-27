@@ -22,6 +22,15 @@ const release = (date: string, id: string, title: string, body: string, art: Art
 
 export const RELEASES: readonly Release[] = [
   release(
+    "2026-11-27T12:00:00Z",
+    "files-that-dont-open",
+    "Hear when your file opens",
+    `When a file won't open, Rodeo asks for it and tells you when it does.
+- A card says why in a line. Send file sends it to us, with your email if you'd like to hear back.
+- When a fix lands, everyone whose file failed the same way gets an email.`,
+    "filecheck",
+  ),
+  release(
     "2026-11-26T12:20:00Z",
     "feedback-fixes-symbols-holes",
     "Edit Symbol in 3D, holes in polylines",

@@ -1,7 +1,8 @@
 // Tests for feedback with attachments (src/feedback.ts): node scripts/feedback-test.ts
 // A real server on a loopback port with its own data folder. Reports are sent signed out, as most
 // people send them; an admin signs in through an email link to read them, and a script reads
-// them with REPORTS_TOKEN.
+// them with REPORTS_TOKEN. Files that didn't open are filed by failure, older reports from the
+// card too once the server starts again, and everyone waiting on one is told in one go.
 
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
@@ -16,23 +17,30 @@ const MB = 1024 * 1024;
 const data = mkdtempSync(join(tmpdir(), "rodeo-feedback-"));
 let log = "";
 
-const server: ChildProcess = spawn(process.execPath, ["src/index.ts"], {
-  cwd: join(import.meta.dirname, ".."),
-  env: {
-    ...process.env,
-    NODE_ENV: "development",
-    PORT: String(PORT),
-    DATA_DIR: data,
-    PUBLIC_URL: BASE,
-    REPORTS_TOKEN: "test-token",
-    ADMIN_EMAILS: "admin@example.com",
-    MAX_UPLOAD_BYTES: String(100 * MB),
-    FEEDBACK_FILES_MAX: String(150 * MB),
-  },
-  stdio: ["ignore", "pipe", "pipe"],
-});
-server.stdout?.on("data", (d: Buffer) => (log += d.toString()));
-server.stderr?.on("data", (d: Buffer) => (log += d.toString()));
+function start(): ChildProcess {
+  const child = spawn(process.execPath, ["src/index.ts"], {
+    cwd: join(import.meta.dirname, ".."),
+    env: {
+      ...process.env,
+      NODE_ENV: "development",
+      PORT: String(PORT),
+      DATA_DIR: data,
+      PUBLIC_URL: BASE,
+      REPORTS_TOKEN: "test-token",
+      ADMIN_EMAILS: "admin@example.com",
+      MAX_UPLOAD_BYTES: String(100 * MB),
+      FEEDBACK_FILES_MAX: String(150 * MB),
+      SMTP_URL: "",
+      MAIL_API_URL: "",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout?.on("data", (d: Buffer) => (log += d.toString()));
+  child.stderr?.on("data", (d: Buffer) => (log += d.toString()));
+  return child;
+}
+
+let server = start();
 
 let cookie = "";
 
@@ -164,6 +172,67 @@ try {
   // ---- a report with no attachments is as before ---------------------------------------------
   const plain = await sendReport({}, "10.0.0.5");
   assert.equal(plain.token, null);
+
+  // ---- files that didn't open: filed by failure, and everyone waiting told at once ---------
+  const OLD = "This file was saved by Vectorworks 2010, which Rodeo can't read yet: save it from Vectorworks 2013 or newer.";
+  const failed = async (file: string, error: string, email: string | null, ip: string): Promise<Sent> =>
+    sendReport({ message: `Didn't open: ${file}\n\n${error}`, email, failure: { file, error } }, ip);
+  const a1 = await failed("Old.vwx", OLD, "a@example.com", "10.0.1.1");
+  const a2 = await failed("Barn.vwx", OLD, "a@example.com", "10.0.1.2");
+  const b = await failed("Shed.vwx", OLD, "b@example.com", "10.0.1.3");
+  const nobody = await failed("Loft.vwx", OLD, null, "10.0.1.4");
+  const chunk1 = await failed("Bus.vwx", "bad chunk 2 at 0xad0: truncated", "c@example.com", "10.0.1.5");
+  const chunk2 = await failed("Tram.vwx", "bad chunk 3 at 0x9a4: truncated", null, "10.0.1.6");
+  // one from before reports named their failure: only its details say so
+  const legacy = await sendReport(
+    { message: "Didn't come in: Garage.vwx (no description)", email: "g@example.com", context: { file: `VWX, 4.4 MB, didn't come in: ${OLD}` } },
+    "10.0.1.7",
+  );
+
+  type Row = { id: string; status: string; email: string | null; notifiedAt: string | null; failure: { file: string; error: string; group: string } | null };
+  const rowsNow = async (): Promise<Map<string, Row>> =>
+    new Map(((await (await call("GET", "/api/admin/feedback", undefined, script)).json()) as { feedback: Row[] }).feedback.map((f) => [f.id, f]));
+  let rowsSeen = await rowsNow();
+  const OLD_GROUP = `VWX: ${OLD}`;
+  assert.deepEqual(rowsSeen.get(a1.id)!.failure, { file: "Old.vwx", error: OLD, group: OLD_GROUP }, "the year is kept in the group");
+  assert.equal(rowsSeen.get(chunk1.id)!.failure!.group, "VWX: bad chunk # at 0x#: truncated");
+  assert.equal(rowsSeen.get(chunk2.id)!.failure!.group, rowsSeen.get(chunk1.id)!.failure!.group, "numbers and offsets don't split a failure");
+  assert.equal(rowsSeen.get(legacy.id)!.failure, null, "an old report isn't filed until the server starts");
+  assert.equal(rowsSeen.get(sent.id), undefined);
+
+  // the server starts again: the old report is filed under its failure
+  const stopped = new Promise((resolve) => server.once("exit", resolve));
+  server.kill();
+  await stopped;
+  log = "";
+  server = start();
+  await until(() => log.includes("listening"), "the server again");
+  rowsSeen = await rowsNow();
+  assert.deepEqual(rowsSeen.get(legacy.id)!.failure, { file: "Garage.vwx", error: OLD, group: OLD_GROUP }, "an old report is filed by its details");
+
+  const notify = (body: Record<string, unknown>, headers: Record<string, string> = {}): Promise<Response> =>
+    call("POST", "/api/admin/feedback/notify", JSON.stringify(body), { "Content-Type": "application/json", ...headers });
+  const notice = { group: OLD_GROUP, subject: "Your file opens in Rodeo now", text: "Hi,\n\n{file} opens now.\n\nCheers,\nCal" };
+  const savedCookie = cookie;
+  cookie = "";
+  assert.equal((await notify(notice)).status, 401, "only an admin tells them");
+  cookie = savedCookie;
+  assert.equal((await notify({ ...notice, text: "" })).status, 400, "a notice needs words");
+  const told = await notify(notice);
+  assert.equal(told.status, 200, await told.clone().text());
+  const result = (await told.json()) as { sent: number; failed: string[]; feedback: Row[] };
+  assert.equal(result.sent, 3, "one email to each address: a, b and the old report's g");
+  assert.deepEqual(result.failed, []);
+  assert.match(log, /\[mail\] to a@example\.com: Your file opens in Rodeo now\nHi,\n\nOld\.vwx and Barn\.vwx opens now\./, "an address that sent two files hears of both");
+  assert.match(log, /\[mail\] to b@example\.com: [^\n]*\nHi,\n\nShed\.vwx opens now/);
+  assert.match(log, /\[mail\] to g@example\.com: [^\n]*\nHi,\n\nGarage\.vwx opens now/);
+  assert.doesNotMatch(log, /\[mail\] to c@example\.com/, "another failure's sender isn't told");
+  rowsSeen = await rowsNow();
+  for (const r of [a1, a2, b, nobody, legacy]) assert.equal(rowsSeen.get(r.id)!.status, "done", "the failure's reports are done");
+  for (const r of [a1, a2, b, legacy]) assert.ok(rowsSeen.get(r.id)!.notifiedAt, "and say when their sender was told");
+  assert.equal(rowsSeen.get(nobody.id)!.notifiedAt, null, "no email, no one told");
+  assert.equal(rowsSeen.get(chunk1.id)!.status, "new", "another failure still waits");
+  assert.equal((await notify(notice)).status, 404, "no one waits on it now");
 
   console.log("feedback tests passed");
 } finally {

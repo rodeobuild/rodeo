@@ -593,7 +593,33 @@ ALTER TABLE users ADD COLUMN signup_source TEXT;
 ALTER TABLE magic_links ADD COLUMN source TEXT;
 `;
 
-const MIGRATIONS: readonly string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13];
+// Files that would not open (feedback.ts): a report sent from the card after a failed open names the
+// file and the error, filed under a group (web/src/platform/failures.ts), and says when its sender
+// was told the file opens now. Older reports from the card are filed at start-up (backfillFailures).
+const SCHEMA_V14 = `
+ALTER TABLE feedback ADD COLUMN failure_file TEXT;
+ALTER TABLE feedback ADD COLUMN failure TEXT;
+ALTER TABLE feedback ADD COLUMN failure_group TEXT;
+ALTER TABLE feedback ADD COLUMN notified_at TEXT;
+CREATE INDEX feedback_failure_group ON feedback(failure_group) WHERE failure_group IS NOT NULL;
+`;
+
+const MIGRATIONS: readonly string[] = [
+  SCHEMA_V1,
+  SCHEMA_V2,
+  SCHEMA_V3,
+  SCHEMA_V4,
+  SCHEMA_V5,
+  SCHEMA_V6,
+  SCHEMA_V7,
+  SCHEMA_V8,
+  SCHEMA_V9,
+  SCHEMA_V10,
+  SCHEMA_V11,
+  SCHEMA_V12,
+  SCHEMA_V13,
+  SCHEMA_V14,
+];
 
 let conn: DatabaseSync | null = null;
 const statements = new Map<string, StatementSync>();

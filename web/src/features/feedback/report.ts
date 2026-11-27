@@ -15,6 +15,7 @@ import { browserName, diagnosticsNow, platformName } from "../../app/reports.ts"
 import { store } from "../../app/state.ts";
 import { errorMessage, toast } from "../../app/toast.ts";
 import { currentUser, feedback } from "../../platform/api.ts";
+import { withoutName } from "../../platform/failures.ts";
 import type { FeedbackContext, FeedbackDiagnostics, FeedbackKind, ReportValue } from "../../platform/protocol.ts";
 import { config } from "../account/config.ts";
 import { field, footButton, openModal, type Modal } from "../account/dialog.ts";
@@ -221,8 +222,9 @@ export function openFeedback(kind: FeedbackKind = "bug", options: FeedbackOption
         message: body,
         email: address || null,
         context: include.checked ? context : null,
-        diagnostics: include.checked ? diagnostics() : null,
+        diagnostics: include.checked ? feedbackDiagnostics() : null,
         attach: { screenshot: picture !== null, file: bytes && size > 0 ? { name: file!.name, size } : null },
+        failure: chosen === "bug" && about?.error ? { file: about.name, error: withoutName(about.error, about.name) } : null,
         website: trap.value,
       });
       saved = true;
@@ -292,7 +294,7 @@ function attachable(about: Brought | null): Attachable | null {
 }
 
 /** What helps reproduce a bug: the app, browser and window, whether a drawing is open, and the file. */
-function feedbackContext(about: Brought | null): FeedbackContext {
+export function feedbackContext(about: Brought | null): FeedbackContext {
   const ua = navigator.userAgent;
   const out: Record<string, string> = {
     browser: browserName(ua),
@@ -309,7 +311,7 @@ function feedbackContext(about: Brought | null): FeedbackContext {
 }
 
 /** The build, browser, GPU and memory, what happened just before, and the drawing's shape. */
-function diagnostics(): FeedbackDiagnostics {
+export function feedbackDiagnostics(): FeedbackDiagnostics {
   const { env, trail } = diagnosticsNow();
   return { env, workspace: workspace(), trail };
 }

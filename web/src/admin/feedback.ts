@@ -4,6 +4,11 @@
 // it carried, its screenshot (a click opens it whole) and its file (once all of it has arrived), and
 // its diagnostics folded away. An admin can reply by email, mark it done or new, or delete it for good.
 // Filters pick a status and a kind; the search looks through the messages and the emails.
+//
+// Above them, "Waiting on a fix" puts the files that didn't open together by failure (the card
+// after a failed open sends them, features/feedback/check.ts): how many reports and files each
+// has and how many people wait to hear. Once a failure is fixed, Tell them emails each of them,
+// about the file they sent, in words the admin can change first, and marks its reports done.
 
 import "./inbox.css";
 import { h } from "../app/dom.ts";
@@ -15,6 +20,17 @@ import { ago, bytes, dateTime } from "./format.ts";
 import { emptyView, loaded } from "./ui.ts";
 
 type Status = "new" | "done" | "all";
+
+/** The reports of one failure (platform/failures.ts), as "Waiting on a fix" shows it. */
+interface FailureGroup {
+  readonly group: string;
+  /** its reports still new */
+  readonly open: readonly Feedback[];
+  /** the addresses among them, each once */
+  readonly waiting: readonly string[];
+  readonly files: number;
+  readonly newest: string;
+}
 type Kind = "all" | FeedbackKind;
 
 const STATUSES: readonly { readonly id: Status; readonly label: string }[] = [
@@ -54,6 +70,8 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
   let status: Status = "new";
   let kind: Kind = "all";
   let query = "";
+  /** the one failure whose reports are listed, from its Show reports; null for all */
+  let only: string | null = null;
   /** the reports on screen, by id, so one can be swapped for its new state */
   const rows = new Map<string, HTMLElement>();
   /** the reports whose long message is open; kept when the list is drawn again */
@@ -67,6 +85,8 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
   const statusChips = h("div", { cls: "adm-chips", attrs: { role: "group", "aria-label": "Status" } });
   const kindChips = h("div", { cls: "adm-chips", attrs: { role: "group", "aria-label": "Kind" } });
   const list = h("div", { cls: "adm-fb-list" });
+  const waitingBox = h("section", { cls: "adm-fb-waiting", attrs: { "aria-label": "Waiting on a fix" } });
+  const onlyChip = h("div", { cls: "adm-chips" });
 
   const countOf = (s: Status): number => (s === "all" ? all.length : all.filter((f) => f.status === s).length);
 
@@ -98,9 +118,52 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
   };
 
   const matches = (f: Feedback): boolean => {
+    if (only !== null) return f.failure?.group === only;
     if (status !== "all" && f.status !== status) return false;
     if (kind !== "all" && f.kind !== kind) return false;
     return query === "" || f.message.toLowerCase().includes(query) || (f.email ?? "").toLowerCase().includes(query);
+  };
+
+  const renderOnly = (): void => {
+    onlyChip.replaceChildren(
+      ...(only !== null
+        ? [
+            chip("One failure ×", true, () => {
+              only = null;
+              renderOnly();
+              renderList();
+            }),
+          ]
+        : []),
+    );
+  };
+
+  const renderWaiting = (): void => {
+    const groups = failureGroups(all);
+    waitingBox.hidden = groups.length === 0;
+    if (groups.length === 0) {
+      waitingBox.replaceChildren();
+      return;
+    }
+    waitingBox.replaceChildren(
+      h("h2", { cls: "adm-fb-waiting-title", text: "Waiting on a fix" }),
+      ...groups.map((g) =>
+        groupRow(g, {
+          show: () => {
+            only = g.group;
+            renderOnly();
+            renderList();
+          },
+          told: (after) => {
+            const byId = new Map(after.map((f) => [f.id, f]));
+            all = all.map((f) => byId.get(f.id) ?? f);
+            renderWaiting();
+            renderList();
+            changed();
+          },
+        }),
+      ),
+    );
   };
 
   const renderList = (): void => {
@@ -129,6 +192,7 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
   /** The counts on the chips and the side bar's badge, after a report changes. */
   const changed = (): void => {
     renderChips();
+    renderWaiting();
     ctx.badge("feedback", countOf("new"));
   };
 
@@ -198,6 +262,7 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
         { cls: "adm-fb-head" },
         h("span", { cls: `adm-badge adm-fb-kind-${f.kind}`, text: KIND_LABEL[f.kind] }),
         h("span", { cls: `adm-badge adm-fb-status-${f.status}`, text: f.status === "new" ? "New" : "Done" }),
+        f.notifiedAt ? h("span", { cls: "adm-badge", text: "Told it opens", attrs: { title: dateTime(f.notifiedAt) } }) : null,
         h("span", { cls: "adm-fb-who", text: who(f), attrs: { title: f.email ?? "" } }),
         h("time", { cls: "adm-fb-when", text: ago(f.createdAt), attrs: { datetime: f.createdAt, title: dateTime(f.createdAt) } }),
       ),
@@ -221,12 +286,15 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
     (data) => {
       all = data;
       renderChips();
+      renderWaiting();
+      renderOnly();
       renderList();
       return h(
         "div",
         { cls: "adm-fb-root" },
+        waitingBox,
         h("div", { cls: "adm-toolbar" }, search),
-        h("div", { cls: "adm-fb-filters" }, statusChips, kindChips),
+        h("div", { cls: "adm-fb-filters" }, statusChips, kindChips, onlyChip),
         list,
       );
     },
@@ -236,6 +304,129 @@ export function feedbackView(ctx: AdminContext): HTMLElement {
         ctx.updated(updatedNow());
       },
     },
+  );
+}
+
+/** The failures with reports still new, those most waited on first. */
+function failureGroups(all: readonly Feedback[]): FailureGroup[] {
+  const by = new Map<string, Feedback[]>();
+  for (const f of all) {
+    const group = f.failure?.group;
+    if (!group || f.status !== "new") continue;
+    by.set(group, [...(by.get(group) ?? []), f]);
+  }
+  return [...by]
+    .map(([group, open]) => ({
+      group,
+      open,
+      waiting: [...new Set(open.flatMap((f) => (f.email ? [f.email] : [])))],
+      files: open.filter((f) => f.file && f.file.received >= f.file.size).length,
+      newest: open.reduce((a, f) => (f.createdAt > a ? f.createdAt : a), ""),
+    }))
+    .sort((a, b) => b.waiting.length - a.waiting.length || b.open.length - a.open.length || b.newest.localeCompare(a.newest));
+}
+
+/** What everyone waiting is sent, unless the admin changes it; {file} is each one's own file. */
+function noticeText(): string {
+  return [
+    "Hi,",
+    "",
+    `You sent us {file} when Rodeo couldn't open it. I've just pushed a fix, and it opens now: ${location.origin}`,
+    "",
+    "Let me know if anything looks off.",
+    "",
+    "Cheers,",
+    "Cal",
+  ].join("\n");
+}
+
+/** One failure: its kind and why, its counts, and Tell them with the email to send, folded until asked for. */
+function groupRow(g: FailureGroup, on: { show: () => void; told: (after: readonly Feedback[]) => void }): HTMLElement {
+  const colon = g.group.indexOf(": ");
+  const kind = colon > 0 ? g.group.slice(0, colon) : "file";
+  const why = colon > 0 ? g.group.slice(colon + 2) : g.group;
+  const n = g.open.length;
+  const facts = [
+    `${n} ${n === 1 ? "report" : "reports"}`,
+    `${g.files} ${g.files === 1 ? "file" : "files"}`,
+    `${g.waiting.length} waiting`,
+    `latest ${ago(g.newest)}`,
+  ].join(" · ");
+
+  const note = h("p", { cls: "adm-error", hidden: true, attrs: { role: "alert" } });
+  const subject = h("input", { cls: "adm-input", attrs: { type: "text", maxlength: "200", "aria-label": "Subject" } });
+  subject.value = "Your file opens in Rodeo now";
+  const text = h("textarea", { cls: "adm-input adm-fb-notice", attrs: { rows: "9", maxlength: "4000", "aria-label": "Message" } });
+  text.value = noticeText();
+  const send = h("button", {
+    cls: "adm-btn small primary",
+    text: g.waiting.length > 0 ? `Send to ${g.waiting.length}` : "Mark done",
+    attrs: { type: "button" },
+  });
+  const cancel = h("button", { cls: "adm-btn small ghost", text: "Cancel", attrs: { type: "button" } });
+  const compose = h(
+    "div",
+    { cls: "adm-fb-compose", hidden: true },
+    g.waiting.length > 0 ? h("p", { cls: "adm-muted", text: `To ${g.waiting.join(", ")}` }) : null,
+    g.waiting.length > 0 ? subject : null,
+    g.waiting.length > 0 ? text : null,
+    h("p", {
+      cls: "adm-muted",
+      text:
+        g.waiting.length > 0
+          ? `{file} becomes the file each one sent. Sending marks the ${n === 1 ? "report" : `${n} reports`} done.`
+          : `No one left an email. This marks the ${n === 1 ? "report" : `${n} reports`} done.`,
+    }),
+    h("div", { cls: "adm-fb-actions" }, send, cancel),
+  );
+
+  const tell = h("button", {
+    cls: "adm-btn small primary",
+    text: g.waiting.length > 0 ? `Tell them (${g.waiting.length})` : "Fixed",
+    attrs: { type: "button", "aria-expanded": "false" },
+  });
+  const fold = (open: boolean): void => {
+    compose.hidden = !open;
+    tell.hidden = open;
+    tell.setAttribute("aria-expanded", String(open));
+    if (open && g.waiting.length > 0) text.focus();
+  };
+  tell.addEventListener("click", () => fold(true));
+  cancel.addEventListener("click", () => fold(false));
+  const show = h("button", { cls: "adm-btn small ghost", text: "Show reports", attrs: { type: "button" } });
+  show.addEventListener("click", on.show);
+
+  send.addEventListener("click", () => {
+    send.disabled = true;
+    note.hidden = true;
+    feedback
+      .notify({ group: g.group, subject: subject.value, text: text.value })
+      .then((r) => {
+        if (r.failed.length > 0) {
+          note.textContent = `Told ${r.sent}. These didn't go and still wait: ${r.failed.join(", ")}`;
+          note.hidden = false;
+        }
+        on.told(r.feedback);
+      })
+      .catch((err: unknown) => {
+        note.textContent = errorMessage(err);
+        note.hidden = false;
+        send.disabled = false;
+      });
+  });
+
+  return h(
+    "article",
+    { cls: "adm-fb-group" },
+    h(
+      "div",
+      { cls: "adm-fb-head" },
+      h("span", { cls: "adm-badge", text: kind }),
+      h("span", { cls: "adm-fb-why", text: why, attrs: { title: g.group } }),
+    ),
+    h("div", { cls: "adm-fb-group-foot" }, h("span", { cls: "adm-muted", text: facts }), h("div", { cls: "adm-fb-actions" }, show, tell)),
+    compose,
+    note,
   );
 }
 

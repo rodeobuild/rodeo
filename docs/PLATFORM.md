@@ -117,6 +117,15 @@ Feature… or the start screen. Reports are kept in the database and listed for 
 the admin page's Feedback tab; with SMTP set up, each one is also emailed to `ADMIN_EMAILS`, with
 Reply-To set to the sender's address when they gave one.
 
+A report sent from the card after a file failed to open (`features/feedback/check.ts`) carries
+`failure: { file, error }`, the error with the file's name taken out. The server files it under a
+group (`web/src/platform/failures.ts`: the file's kind and the error with numbers and offsets
+made `#`, years kept), and at start-up files older reports from the card by their `file` detail.
+The Feedback tab's "Waiting on a fix" lists each group with new reports; **Tell them** sends
+everyone in it who gave an email one message (`{file}` becomes the files they sent, Reply-To the
+admin), records `notifiedAt` and marks the group's reports done. An address whose mail fails stays
+waiting.
+
 The editor also reports errors on its own (`web/src/app/reports.ts`): errors nothing caught,
 failures the user was shown (a render, a cloud save, opening a drawing), and saves that took
 over 30 s. Each carries the build, browser, GPU, memory and view, and a trail of what happened
@@ -299,6 +308,7 @@ and sends the recording here, which passes it once to the speech model and keeps
 | `POST /feedback` `NewFeedback` | anyone, signed in or not; 10 an hour per address (and per account); the optional `context` keeps only the keys in `FEEDBACK_CONTEXT_KEYS` |
 | `GET /admin/feedback` | admins; `{ feedback: Feedback[] }`, the newest 500 |
 | `PATCH /admin/feedback/:id` `{ status: "new" \| "done" }` | admins; `{ feedback }` |
+| `POST /admin/feedback/notify` `FeedbackNotify` | admins; emails everyone waiting on a failure group and marks its new reports done; `FeedbackNotified` |
 | `DELETE /admin/feedback/:id` | admins |
 
 ### Error reports

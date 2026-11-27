@@ -23,6 +23,8 @@ import type {
   ErrorReport,
   ErrorReportGroup,
   Feedback,
+  FeedbackNotified,
+  FeedbackNotify,
   FeedbackSent,
   Funding,
   Invite,
@@ -535,6 +537,8 @@ export const feedback = {
   setStatus: async (id: string, status: Feedback["status"]): Promise<Feedback> =>
     (await json<{ feedback: Feedback }>("PATCH", `/admin/feedback/${encodeURIComponent(id)}`, { status })).feedback,
   remove: async (id: string): Promise<void> => void (await request("DELETE", `/admin/feedback/${encodeURIComponent(id)}`)),
+  /** Emails everyone waiting on a failure that their file opens now, and marks its reports done. */
+  notify: async (n: FeedbackNotify): Promise<FeedbackNotified> => json<FeedbackNotified>("POST", "/admin/feedback/notify", n),
 };
 
 /** The admin page's Mail tab: the mailbox the rodeo.build addresses receive into (admins only). */

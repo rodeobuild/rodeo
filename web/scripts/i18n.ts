@@ -24,7 +24,8 @@ const PAGES = ["index.html", "gallery.html", "convert.html"];
  */
 const SKIP = [
   /\.check\.ts$/,
-  /(^|\/)check\.ts$/,
+  // a feature's check runner, but not the card after a file comes in, which people read
+  /^(?!features\/feedback\/)(.*\/)?check\.ts$/,
   /\.d\.ts$/,
   /\.worker\.ts$/,
   /^admin\//,

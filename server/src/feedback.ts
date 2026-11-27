@@ -11,6 +11,11 @@
 // for 90 days, and all of them together at most FEEDBACK_FILES_MAX; past that a report goes
 // without its file. Admins, or a script with REPORTS_TOKEN (server/scripts/feedback.ts), fetch
 // them from /api/admin/feedback/:id/screenshot and /file.
+//
+// A report sent from the card after a file would not open names the file and the error, and is
+// filed under a group of the same failure (web/src/platform/failures.ts). Its sender, when they
+// gave an email, waits to hear that it opens; once it is fixed an admin tells everyone waiting on
+// that failure in one go (POST /api/admin/feedback/notify), which marks the group's reports done.
 
 import { createWriteStream } from "node:fs";
 import { rm, truncate } from "node:fs/promises";
@@ -19,12 +24,15 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import type { Context, Hono } from "hono";
+import { failureGroup, fileKind } from "../../web/src/platform/failures.ts";
 import {
   FEEDBACK_CONTEXT_KEYS,
   type Feedback,
   type FeedbackContext,
   type FeedbackDiagnostics,
+  type FeedbackFailure,
   type FeedbackKind,
+  type FeedbackNotified,
   type FeedbackSent,
   type ReportValue,
 } from "../../web/src/platform/protocol.ts";
@@ -51,8 +59,12 @@ const KEEP_ATTACHMENTS = 90 * DAY;
 const PENDING_FOR = HOUR;
 
 const SELECT = `SELECT f.id, f.kind, f.message, f.email, f.context_json, f.diagnostics_json, f.status, f.created_at,
-  f.screenshot_blob, f.file_blob, f.file_name, f.file_size, f.file_received, u.name AS user_name
+  f.screenshot_blob, f.file_blob, f.file_name, f.file_size, f.file_received, f.failure_file, f.failure, f.failure_group,
+  f.notified_at, u.name AS user_name
   FROM feedback f LEFT JOIN users u ON u.id = f.user_id`;
+/** a notice to everyone waiting on a failure: its subject and text at most */
+const MAX_NOTICE_SUBJECT = 200;
+const MAX_NOTICE_TEXT = 4000;
 
 interface FeedbackRow {
   id: string;
@@ -68,6 +80,10 @@ interface FeedbackRow {
   file_name: string | null;
   file_size: number | null;
   file_received: number;
+  failure_file: string | null;
+  failure: string | null;
+  failure_group: string | null;
+  notified_at: string | null;
   user_name: string | null;
 }
 
@@ -128,6 +144,15 @@ function cleanFileName(v: unknown): string {
   return name || "file";
 }
 
+/** The file that would not open and what the person was told, or null when the report is about something else. */
+function parseFailure(v: unknown): FeedbackFailure | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const raw = v as Record<string, unknown>;
+  const file = cleanFileName(raw.file);
+  const error = cleanLine(raw.error, 400);
+  return error ? { file, error } : null;
+}
+
 function feedbackOut(r: FeedbackRow): Feedback {
   const diagnostics = r.diagnostics_json ? (JSON.parse(r.diagnostics_json) as FeedbackDiagnostics) : null;
   return {
@@ -142,7 +167,32 @@ function feedbackOut(r: FeedbackRow): Feedback {
     createdAt: r.created_at,
     screenshot: r.screenshot_blob !== null,
     file: r.file_name !== null ? { name: r.file_name, size: r.file_size ?? 0, received: r.file_blob ? (r.file_size ?? 0) : r.file_received } : null,
+    failure: r.failure !== null && r.failure_group !== null ? { file: r.failure_file ?? "file", error: r.failure, group: r.failure_group } : null,
+    notifiedAt: r.notified_at,
   };
+}
+
+/**
+ * Files the reports sent from the card after a failed open before reports named their failure
+ * (their details say "VWX, 2.1 MB, didn't come in: <error>"), so the people who sent them can
+ * be told too. Runs at start-up; a report filed once is not looked at again.
+ */
+export function backfillFailures(): void {
+  const rows = all<{ id: string; context_json: string; file_name: string | null; message: string }>(
+    "SELECT id, context_json, file_name, message FROM feedback WHERE failure IS NULL AND context_json LIKE ?",
+    "%didn't come in: %",
+  );
+  for (const r of rows) {
+    const said = (JSON.parse(r.context_json) as FeedbackContext).file ?? "";
+    const at = said.indexOf("didn't come in: ");
+    if (at < 0) continue;
+    const kind = said.split(",", 1)[0]?.trim() || "file";
+    const named = /^Didn't come in: (.+) \(no description\)$/.exec(r.message)?.[1];
+    const file = r.file_name ?? named ?? `a ${kind} file`;
+    const error = said.slice(at + "didn't come in: ".length).trim();
+    if (!error) continue;
+    run("UPDATE feedback SET failure_file = ?, failure = ?, failure_group = ? WHERE id = ?", file, error, failureGroup(kind, error), r.id);
+  }
 }
 
 /** Emails a new report to the admins; a failure is logged, since the report is already saved. */
@@ -252,6 +302,7 @@ function pictureType(head: Buffer): string | null {
 }
 
 export function registerFeedback(app: Hono): void {
+  backfillFailures();
   app.post("/api/feedback", async (c) => {
     const body = await readJson(c, 160 * 1024);
     const user = currentUser(c);
@@ -270,6 +321,7 @@ export function registerFeedback(app: Hono): void {
     }
     const context = parseContext(body.context);
     const diagnostics = parseDiagnostics(body.diagnostics);
+    const failure = parseFailure(body.failure);
 
     const attach = typeof body.attach === "object" && body.attach !== null ? (body.attach as Record<string, unknown>) : {};
     const screenshot = attach.screenshot === true;
@@ -281,8 +333,9 @@ export function registerFeedback(app: Hono): void {
 
     const id = newId();
     run(
-      `INSERT INTO feedback (id, kind, message, email, user_id, context_json, diagnostics_json, status, created_at, file_name, file_size)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)`,
+      `INSERT INTO feedback (id, kind, message, email, user_id, context_json, diagnostics_json, status, created_at, file_name, file_size,
+         failure_file, failure, failure_group)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?)`,
       id,
       kind,
       message,
@@ -293,6 +346,9 @@ export function registerFeedback(app: Hono): void {
       nowIso(),
       file?.name ?? null,
       file?.size ?? null,
+      failure?.file ?? null,
+      failure?.error ?? null,
+      failure ? failureGroup(fileKind(failure.file), failure.error) : null,
     );
     let token: string | null = null;
     if (screenshot || file) {
@@ -403,6 +459,49 @@ export function registerFeedback(app: Hono): void {
     c.header("Content-Disposition", `attachment; filename="${name.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`);
     c.header("Cache-Control", "private, no-store");
     return c.body(fileStream(blobPath(row.file_blob)));
+  });
+
+  // everyone waiting on a failure is told it is fixed, each about the file they sent, and the
+  // failure's reports are marked done; one whose email fails stays waiting, to be told again
+  app.post("/api/admin/feedback/notify", async (c) => {
+    const admin = requireReader(c);
+    const body = await readJson(c, 32 * 1024);
+    const group = cleanLine(body.group, 200);
+    const subject = cleanLine(body.subject, MAX_NOTICE_SUBJECT);
+    const text = cleanBody(body.text, MAX_NOTICE_TEXT);
+    if (!group) fail(400, "Say which failure");
+    if (!subject || text.length < 3) fail(400, "Write a subject and a message");
+    const rows = all<FeedbackRow>(`${SELECT} WHERE f.failure_group = ? AND f.status = 'new'`, group);
+    if (rows.length === 0) fail(404, "No one is waiting on that failure", "not_found");
+    // one email to each address, naming every file it sent
+    const files = new Map<string, string[]>();
+    for (const r of rows) {
+      if (!r.email) continue;
+      const names = files.get(r.email) ?? [];
+      const name = r.failure_file ?? "your file";
+      if (!names.includes(name)) names.push(name);
+      files.set(r.email, names);
+    }
+    const now = nowIso();
+    const failed: string[] = [];
+    let sent = 0;
+    for (const [to, names] of files) {
+      const named = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "your file");
+      try {
+        await sendMail(to, subject, text.split("{file}").join(named), admin?.email ?? undefined);
+        run("UPDATE feedback SET notified_at = ? WHERE failure_group = ? AND status = 'new' AND email = ?", now, group, to);
+        sent++;
+      } catch (err) {
+        console.error(`[feedback] could not tell ${to} their file opens:`, err);
+        failed.push(to);
+      }
+    }
+    // the reports are done, except those whose sender could not be told
+    for (const r of rows) if (!r.email || !failed.includes(r.email)) run("UPDATE feedback SET status = 'done' WHERE id = ?", r.id);
+    if (admin) logAdmin(admin, "feedback.notify", group, `${sent} told`);
+    const after = all<FeedbackRow>(`${SELECT} WHERE f.id IN (${rows.map(() => "?").join(", ")})`, ...rows.map((r) => r.id));
+    const out: FeedbackNotified & { ok: true } = { ok: true, sent, failed, feedback: after.map(feedbackOut) };
+    return c.json(out);
   });
 
   app.patch("/api/admin/feedback/:id", async (c) => {

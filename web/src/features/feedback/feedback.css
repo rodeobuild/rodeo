@@ -182,10 +182,52 @@
   gap: 6px;
 }
 
+/* a file that didn't open: why, an email to hear when it does, and Send file */
+.fb-check-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.fb-check-email {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fb-check-error {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  color: var(--danger, #e5484d);
+}
+
+.fb-check-fine {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-3, var(--text-2));
+}
+
+.fb-check-body > .fb-check-text:only-child {
+  margin-bottom: 2px;
+}
+
+/* over the start screen (welcome.css, z-index 25), under the toasts (50): in the window's
+   corner, clear of the toasts across the foot */
+.fb-check.over-start {
+  position: fixed;
+  top: auto;
+  bottom: 20px;
+  right: 20px;
+  z-index: 40;
+}
+
 /* a phone: near the foot of the drawing, clear of the bars across its top and above the toasts
    (styles.css .toasts), which say what came in as the card shows */
 @media (max-width: 600px) {
-  .fb-check {
+  .fb-check,
+  .fb-check.over-start {
     top: auto;
     bottom: 64px;
     left: 12px;
